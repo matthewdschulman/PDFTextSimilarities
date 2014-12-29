@@ -1,0 +1,1501 @@
+Multi-Task Policy Search for Robotics
+Marc Peter Deisenroth
+1;2
+, Peter Englert
+3
+, Jan Peters
+2;4
+, and Dieter Fox
+5
+Abstract— Learning policies that generalize across multiple
+tasks is an important and challenging research topic in rein-
+forcement learning and robotics. Training individual policies
+for every single potential task is often impractical, especially
+for continuous task variations, requiring more principled ap-
+proaches to share and transfer knowledge among similar tasks.
+We present a novel approach for learning a nonlinear feedback
+policy that generalizes across multiple tasks. The key idea is to
+deﬁne a parametrized policy as a function of both the state and
+the task, which allows learning a single policy that generalizes
+across multiple known and unknown tasks. Applications of our
+novel approach to reinforcement and imitation learning in real-
+robot experiments are shown.
+I. INTRODUCTION
+Complex robots often violate common modeling assump-
+tions, such as rigid-body dynamics. A typical example is
+a tendon-driven robot arm, shown in Fig. 1, for which
+these typical assumption are violated due to elasticities and
+springs. Therefore, learning controllers is a viable alternative
+to programming robots. To learn controllers for complex
+robots, reinforcement learning (RL) is promising due to the
+generality of the RL paradigm [21]. However, without a
+good initialization (e.g., by human demonstrations [19], [3])
+or speciﬁc expert knowledge [4] RL often relies on data-
+intensive learning methods (e.g., Q-learning). For a fragile
+robotic system, however, thousands of physical interactions
+are practically infeasible because of time-consuming exper-
+iments and hardware wear.
+To make RL practically feasible in robotics, we need
+to speed up learning by reducing the number of necessary
+interactions. For this purpose, model-based RL is often more
+promising than model-free RL, such as Q-learning or TD-
+learning [5]. In model-based RL, data is used to learn a
+model of the system. This model is then used for policy
+evaluation and improvement, reducing the interaction time
+with the system. However, model-based RL suffers from
+model errors as it typically assumes that the learned model
+closely resembles the true underlying dynamics [20], [19].
+These model errors propagate through to the learned policy,
+which inherently depends on the quality of the learned
+model. A principled way of accounting for model errors and
+The research leading to these results has received funding from the
+European Community’s Seventh Framework Programme (FP7/2007-2013)
+under grant agreement #270327, ONR MURI grant N00014-09-1-1052, and
+the Department of Computing, Imperial College London.
+1
+Department of Computing, Imperial College London, UK
+2
+Department of Computer Science, TU Darmstadt, Germany
+3
+Department of Computer Science, University of Stuttgart, Germany
+4
+Max Planck Institute for Intelligent Systems, Germany
+5
+Department of Computer Science and Engineering, University of Wash-
+ington, WA, USA
+An extended paper version is available at http://arxiv.org/abs/1307.0813.
+Fig. 1. Tendon-driven BioRob X4.
+the resulting optimization bias is to take the uncertainty about
+the learned model into account for long-term predictions and
+policy learning [20], [6], [4], [9]. Besides sample-efﬁcient
+learning, generalizing learned concepts to new situations is
+a key research topic in RL. Learned controllers often deal
+with a single situation/context, e.g., they drive the system to
+a desired state. In a robotics context, solutions for multiple
+related tasks are often desired, e.g., for grasping multiple
+objects [17] or in robot games, such as robot table tennis [18]
+or soccer [7].
+We consider a multi-task learning set-up with a continuous
+set of tasks for which a policy has to be learned. Since it
+is often impossible to learn individual policies for all con-
+ceivable tasks, a multi-task learning approach is required that
+generalizes across these tasks. Two general approaches exist
+to tackle this challenge by either hierarchically combining
+local controllers or a richer policy parametrization.
+First, local policies can be learned, and generalization
+can be achieved by combining them, e.g., by means of a
+gating network [14]. This approach has been successfully
+applied in RL [22] and robotics [18]. In [18], a gating
+network generalizes a set of motor primitives for playing
+robot-table tennis. The limitation of this approach is that it
+can only deal with convex combinations of local policies,
+implicitly requiring local policies that are linear in the
+policy parameters. In [23], [7], it was proposed to share
+state-action values across tasks to transfer knowledge. This
+approach was successfully applied to kicking a ball with a
+NAO robot in the context of RoboCup. However, a mapping
+from source to target tasks is explicitly required. In [8],
+it was proposed to sample a number of tasks from a task
+distribution, learn the corresponding individual policies, and
+generalize them to new problems by combining classiﬁers
+and nonlinear regression. In [15], [8] mappings from tasks
+to meta-parameters of a policy were learned to generalize
+across tasks. The task-speciﬁc policies are trained indepen-
+dently, and the elementary movements are given by Dynamic
+Movement Primitives [13]. Second, instead of a combination
+of local policies, we can parametrize the policy directly by
+the task. For instance, in [16], a value function-based transfer
+learning approach is proposed that generalizes across tasks
+by ﬁnding a regression function mapping a task-augmented
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 3876
+state space to expected returns.
+We follow this second approach as it allows for general-
+izing nonlinear policies: During training, access to a set of
+tasks is given and a single controller is learned jointly for
+all tasks using policy search. Generalization to new tasks
+in the same domain is achieved by deﬁning the policy as
+a function of both the state and the task. At test time, this
+allows for generalization to unseen tasks without retraining.
+For learning the parameters of the multi-task policy, we use
+the PILCO policy search framework [9]. PILCO learns ﬂexible
+Gaussian process (GP) forward models and uses fast deter-
+ministic approximate inference for long-term predictions for
+data-efﬁcient learning. In a robotics context, policy search
+methods have been successfully applied to many tasks [10]
+and seem to be more promising than value function-based
+methods. Hence, this paper addresses two key problems in
+robotics: multi-task and data-efﬁcient policy learning.
+II. POLICY SEARCH FOR LEARNING MULTIPLE TASKS
+We consider dynamical systems x
+t+1
+= f(x
+t
+;u
+t
+) +w
+with continuous states x2 R
+D
+and controls u2 R
+F
+and
+unknown transition dynamics f, where wN(0; 
+w
+) is
+i.i.d. Gaussian noise with covariance 
+w
+. In (single-task)
+policy search, we seek a deterministic policy  : x 7!
+(x;) =u that minimizes the expected long-term cost
+J
+
+() =
+X
+T
+t=1
+E
+xt
+[c(x
+t
+)]; p(x
+0
+) =N(
+x
+0
+; 
+x
+0
+); (1)
+of following  for T steps. Note that the trajectory
+x
+1
+;:::;x
+T
+depends on the policy and, thus, the parameters
+. In (1), c(x
+t
+) is a cost function of statex at time t. The
+policy  is parametrized by 2R
+P
+. Typically, the cost c
+incorporates some information about a task, e.g., a desired
+target locationx
+target
+. A policy that minimizes (1) solves the
+task of controlling the robot toward the target.
+A. Task-Dependent Policies
+We propose to learn a single policy for all tasks jointly to
+generalize classical policy search to a multi-task scenario. We
+assume that the dynamics are stationary with the transition
+probabilities and control spaces shared by all tasks. By ﬁnd-
+ing a single policy that is sufﬁciently ﬂexible to learn a set
+of training tasks
+train
+i
+, we aim to obtain good generalization
+performance to related test tasks
+test
+j
+by reducing the danger
+of overﬁtting to the training tasks, a common problem with
+current hierarchical approaches.
+To learn a single controller for multiple tasks 
+k
+, we
+propose to make the policy a function of the state x, the
+parameters , and the task , such that u = (x;;).
+In this way, a trained policy has the potential to generalize
+to previously unseen tasks by computing different control
+signals for a ﬁxed statex and parameters but varying tasks
+
+k
+. Fig. 2 gives an intuition of what kind of generalization
+power we can expect from such a policy: Assume a given
+policy parametrization, a ﬁxed state, and ﬁve training targets
+
+train
+i
+. For each pair (x;
+train
+i
+;), the policy determines the
+corresponding controls (x;
+train
+i
+;), which are denoted by
+the red circles. The differences in these control signals are
+?1.5 ?1 ?0.5 0 0.5 1 1.5
+?9.5
+?9
+?8.5
+?8
+?7.5
+?7
+?6.5
+?6
+Task ?
+Control u
+ 
+ 
+Policy augmentation
+Hierarchical policy
+Fig. 2. Two multi-task policies for a given state, but varying task . The
+change in the controls is solely due to the change in the task. The black
+policy is determined by our proposed multi-task approach (MTPS+); the
+blue, dashed policy is obtained by hierarchically combining local controllers
+(RW-IC). The controls of the training tasks u = (x;) are marked
+by the red circles (MTPS+) and the green stars (RW-IC), respectively.
+MTPS+ generalizes more smoothly across tasks, whereas the hierarchical
+combination of independently trained local policies does not generalize well.
+Fig. 3. Multi-Task Policy Search
+1: init: Pass in training tasks 
+train
+i
+, initialize policy pa-
+rameters randomly. Apply random control signals and
+record data.
+2: repeat
+3: Update GP forward dynamics model using all data
+4: repeat
+5: Long-term predictions: ComputeE
+
+[J
+
+(;)]
+6: Analytically compute gradientE
+
+[dJ
+
+(;)=d]
+7: Update policy parameters (e.g., BFGS)
+8: until convergence; return
+
+9: Set 
+
+ (
+
+)
+10: Apply 
+
+to robot and record data
+11: until8i: task
+train
+i
+learned
+12: Apply 
+
+to test tasks
+test
+j
+achieved solely by changing
+train
+i
+in(x;
+train
+i
+;) asx and
+ were assumed ﬁxed. The parametrization of the policy by
+ and  determines the generalization power of  to new
+(but related) tasks 
+test
+j
+at test time. The policy for a ﬁxed
+state but varying test tasks
+test
+j
+is represented by the black
+curve. A corresponding policy for a hierarchical combination
+of local policies is shown in the blue curve. To ﬁnd good
+parameters of the multi-task policy, we incorporate our multi-
+task learning approach into the model-based PILCO policy
+search framework [9]. The high-level steps of the resulting
+algorithm are summarized in Fig. 3. We assume that a set
+of training tasks
+train
+i
+is given. The parametrized policy is
+initialized randomly, and, subsequently, applied to the robot,
+see line 1 in Fig. 3. Based on the initial collected data, a
+probabilistic GP forward model of the robot dynamics is
+learned (line 3) to consistently account for model errors.
+We deﬁne the policy  as an explicit function of both
+the state x and the task , i.e., the policy depends on a
+task-augmented state andu =(x;;). Before going into
+details, let us consider the case where a function g relates
+state and task. In this paper, we consider two cases: (a)
+A linear relationship between the task  and the state x
+t
+with g(x
+t
+;) =  x
+t
+. For example, the state and the
+task (corresponding to a target location) can be both deﬁned
+in camera coordinates, and the target location parametrizes
+3877
+and deﬁnes the task. (b) The task variable  and the state
+vector are not directly related, in which case g(x
+t
+;) =.
+For instance, the task variable could simply be an index. We
+approximate the joint distribution p(x
+t
+;g(x
+t
+;)) by
+N
+
+
+x
+t
+
+
+t
+
+;
+
+
+x
+t
+C
+x
+t
+C
+x
+t
+
+
+t
+
+=:N
+ 
+x
+x;
+t
+j
+x;
+t
+; 
+x;
+t
+
+; (2)
+where the state distribution isN
+ 
+x
+t
+j
+x
+t
+; 
+x
+t
+
+andC
+x
+t
+is the
+cross-covariance between the state and g(x
+t
+;). The cross-
+covariances for g(x
+t
+;) = x
+t
+areC
+x
+t
+= 
+x
+t
+. If state
+and task are unrelated, i.e., g(x
+t
+;) =, thenC
+x
+t
+= 0.
+The Gaussian approximation of the joint p(x
+t
+;g(x
+t
+;))
+in (2) serves as the input distribution to the controller
+function. Although we assume that the tasks
+test
+i
+are given
+deterministically at test time, introducing a task uncertainty
+
+
+t
+> 0 during training can make sense: First, 
+
+t
+deﬁnes a
+task distribution, which may allow for better generalization
+performance compared to 
+
+t
+= 0. Second, 
+
+t
+> 0 serves
+as a regularizer and makes policy overﬁtting less likely.
+B. Multi-Task Policy Evaluation
+For policy evaluation, we analytically approximate the
+expected long-term cost J
+
+() by averaging over all tasks
+, see line 5 in Fig. 3, according to
+E
+
+[J
+
+(;)]
+1
+M
+X
+M
+i=1
+J
+
+(;
+train
+i
+); (3)
+where M is the number of tasks considered during training.
+The expected cost J
+
+(;
+train
+i
+) corresponds to (1) for a
+speciﬁc training task
+train
+i
+. The intuition behind the expected
+long-term cost in (3) is to allow for learning a single
+controller for multiple tasks jointly. Hence, the controller
+parameters  have to be updated in the context of all
+tasks. The resulting controller is not necessarily optimal
+for a single task, but (neglecting approximations and local
+minima) optimal across all tasks on average, presumably
+leading to good generalization performance. The expected
+long-term cost J
+
+(;
+train
+i
+) in (3) is computed as follows.
+First, based on the learned GP dynamics model, ap-
+proximations to the long-term predictive state distributions
+p(x
+1
+j);:::;p(x
+T
+j) are computed analytically: For a joint
+Gaussian prior p(x
+t
+;u
+t
+j), the successor state distribution
+p(x
+t+1
+j
+train
+i
+)=
+ZZZ
+p(x
+t+1
+jx
+t
+;u
+t
+)p(x
+t
+;u
+t
+j
+train
+i
+)dfdx
+t
+du
+t
+(4)
+cannot be computed analytically for nonlinear covari-
+ance functions. However, we approximate it by a Gaus-
+sian distribution N
+ 
+x
+t+1
+j
+x
+t+1
+; 
+x
+t+1
+
+using exact mo-
+ment matching [9]. In (4), the transition probability
+p(x
+t+1
+jx
+t
+;u
+t
+) = p(f(x
+t
+;u
+t
+)jx
+t
+;u
+t
+) is the GP predictive
+distribution at (x
+t
+;u
+t
+). Iterating the moment-matching ap-
+proximation of (4) for all time steps of the ﬁnite hori-
+zon T yields Gaussian marginal predictive distributions
+p(x
+1
+j
+train
+i
+);:::;p(x
+T
+j
+train
+i
+).
+Second, these approximate Gaussian long-term predictive
+state distributions are used to compute the expected imme-
+diate cost E
+xt
+[c(x
+t
+)j
+train
+i
+] =
+R
+c
+
+(x
+t
+)p(x
+t
+j
+train
+i
+)dx
+t
+for a
+particular task 
+train
+i
+, where p(x
+t
+j
+train
+i
+) =N
+ 
+x
+t
+j
+x
+t
+; 
+x
+t
+
+and c
+
+is a task-speciﬁc cost function. This integral can be
+solved analytically for many choices of the immediate cost
+functionc
+
+, such as polynomials or unnormalized Gaussians.
+Summing the values E
+xt
+[c(x
+t
+)j
+train
+i
+] from t = 1;:::;T
+ﬁnally yields J
+
+(;
+train
+i
+) in (3).
+C. Gradient-based Policy Improvement
+The closed-form approximation of J
+
+(;) by means of
+moment matching allows for an analytic computation of the
+corresponding gradient dJ
+
+(;)=d with respect to the
+policy parameters, see (3) and line 6 in Fig. 3, given by
+dJ
+
+(;)=d =
+X
+T
+t=1
+d
+d
+E
+xt
+[c(x
+t
+)j]: (5)
+These gradients can be used in any gradient-based opti-
+mization toolbox, e.g., BFGS (line 7). The derivatives of
+J
+
+(;
+train
+i
+) with respect to the policy parameters  re-
+quires repeated application of the chain-rule. DeﬁningE
+t
+:=
+E
+xt
+[c(x
+t
+)j
+train
+i
+] in (5) yields
+dE
+t
+d
+=
+dE
+t
+dp(x
+t
+)
+dp(x
+t
+)
+d
+:=
+@E
+t
+@
+x
+t
+d
+x
+t
+d
++
+@E
+t
+@
+x
+t
+d
+x
+t
+d
+; (6)
+where we took the derivative with respect to p(x
+t
+), i.e., the
+parameters (mean 
+x
+t
+and covariance 
+x
+t
+) of the Gaussian
+approximation to the state distributionp(x
+t
+). The chain-rule
+yields the total derivative
+dp(x
+t
+)
+d
+=
+@p(x
+t
+)
+@p(x
+t 1
+)
+dp(x
+t 1
+)
+d
++
+@p(x
+t
+)
+@
+: (7)
+We assume that the total derivative dp(x
+t 1
+)=d is known
+from the computation for the previous time step. Hence,
+we only need to compute the partial derivative @p(x
+t
+)=@.
+Note that x
+t
+= f(x
+t 1
+;u
+t 1
+) + w and u
+t 1
+=
+(x
+t 1
+;g(x
+t 1
+;);). Therefore, we obtain @p(x
+t
+)=@ =
+f@
+x
+t
+=@;@
+x
+t
+=@g with
+@f
+x
+t
+; 
+x
+t
+g
+@
+=
+@f
+x
+t
+; 
+x
+t
+g
+@p(u
+t 1
+)
+@p(u
+t 1
+)
+@
+=
+@f
+x
+t
+; 
+x
+t
+g
+@
+u
+t 1
+@
+u
+t 1
+@
++
+@f
+x
+t
+; 
+x
+t
+g
+@
+u
+t 1
+@
+u
+t 1
+@
+: (8)
+We approximate the distribution of the control signal
+p(u
+t 1
+) =
+R
+(x
+t 1
+;g(x
+t 1
+;);)p(x
+t 1
+)dx
+t 1
+by a
+Gaussian with mean 
+u
+t 1
+and covariance 
+u
+t 1
+. These
+moments (and their gradients with respect to) can often be
+computed analytically, e.g., in linear models with polynomial
+or Gaussian basis functions. The augmentation of the policy
+with the (transformed) task variable requires an additional
+layer of gradients for computing dJ
+
+()=d. The variable
+transformation affects the partial derivatives of 
+u
+t 1
+and
+
+u
+t 1
+(marked red in (8)), such that
+@f
+u
+t 1
+; 
+u
+t 1
+g
+@f
+x
+t 1
+; 
+x
+t 1
+;g
+=
+@f
+u
+t 1
+; 
+u
+t 1
+g
+@p(x
+t 1
+;g(x
+t 1
+;))
+
+@p(x
+t 1
+;g(x
+t 1
+;))
+@f
+x
+t 1
+; 
+x
+t 1
+;g
+: (9)
+We incorporate these derivatives into (8) via the chain and
+product-rules for an analytic gradientdJ
+
+(;
+train
+i
+)=d in (3)
+to update the policy (lines 6–7 in Fig. 3).
+3878
+III. EVALUATIONS AND RESULTS
+We applied our approach to multi-task policy search to
+three tasks: 1) the under-actuated cart-pole swing-up, 2)
+a low-cost robotic manipulator system that learns block
+stacking, 3) an imitation learning ball-hitting task with a
+tendon-driven robot. In all cases, the system dynamics were
+unknown and inferred from data using GPs.
+A. Multi-Task Cart-Pole Swing-up
+The cart-pole system consists of a cart with mass 0:5kg
+and a pendulum of length 0:6m and mass 0:5kg attached
+to the cart. Every 0:1s, an external force was applied to the
+cart, but not to the pendulum. The state x = [; _ ;'; _ ']
+of the system comprised the position  and velocity _ 
+of the cart, the angle ' and angular velocity _ ' of the
+pendulum. The nonlinear controller was parametrized as a
+regularized RBF network with 100 Gaussian basis functions.
+The controller parameters were the locations of the basis
+functions, a shared (diagonal) width-matrix, and the weights,
+resulting in approximately 800 policy parameters.
+Initially, the system was expected to be in a state, where
+the pendulum hangs down; more speciﬁcally, p(x
+0
+) =
+N(0;0:1
+2
+I). By pushing the cart to the left and to the right,
+the objective was to swing the pendulum up and to balance
+it in the inverted position at a target location  of the cart
+speciﬁed at test time, such that x
+target
+= [;; + 2k;]
+with2 [ 1:5;1:5]m andk2Z. The cost functionc in (1)
+was chosen asc(x) = 1 exp( 8kx x
+target
+k
+2
+)2 [0;1] and
+penalized the Euclidean distance of the tip of the pendulum
+from its desired inverted position with the cart being at target
+location . Optimally solving the task required the cart to
+stop at the target location . Balancing the pendulum with
+the cart offset by 20cm caused an immediate cost (per time
+step) of about 0.4. We considered four experimental set-ups:
+Nearest neighbor independent controllers (NN-IC):
+A baseline experiment with ﬁve independently learned
+controllers for the desired swing-up locations  =
+f1m;0:5m;0mg. Each controller was learned by the
+PILCO framework [9] in 10 trials with a total experience
+of 200s. For the test tasks 
+test
+, we applied the controller
+with the nearest training task 
+train
+.
+Re-weighted independent controllers (RW-IC): Training
+was identical to NN-IC. At test time, we combined individual
+controllers using a gating network, similar to [18], resulting
+in a convex combination of local policies with weights
+v
+i
+=
+exp
+ 
+ 
+1
+2
+k
+test
+ 
+train
+i
+k
+2
+
+P
+j
+train
+j
+j
+exp
+ 
+ 
+1
+2
+k
+test
+ 
+train
+j
+k
+2
+
+; (10)
+such that the applied control signal was u =
+P
+i
+v
+i
+
+i
+(x).
+An extensive grid search resulted in = 0:0068m
+2
+, leading
+to the best test performance in this scenario, making RW-IC
+nearly identical to the NN-IC.
+Multi-task policy search, 
+
+= 0 (MTPS0): Multi-task
+policy search with ﬁve known tasks during training, which
+only differ in the location of the cart where the pendulum is
+supposed to be balanced. The target locations were 
+train
+=
+f1m;0:5m;0mg. Moreover, g(x
+t
+;) =  (t) and
+?1.5 ?1 ?0.5 0 0.5 1 1.5
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+0.9
+1
+target location (test time)
+per?step cost
+(a) NN-IC: No generalization.
+?1.5 ?1 ?0.5 0 0.5 1 1.5
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+0.9
+1
+target location (test time)
+per?step cost
+(b) RW-IC: No generalization.
+?1.5 ?1 ?0.5 0 0.5 1 1.5
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+0.9
+1
+target location (test time)
+per?step cost
+(c) MTPS0: Some generalization.
+?1.5 ?1 ?0.5 0 0.5 1 1.5
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+0.9
+1
+target location (test time)
+per?step cost
+(d) MTPS+: Good generalization in
+the “coverage” of the Gaussians.
+Fig. 4. Generalization performance for the multi-task cart-pole swing-
+up. The graphs show the expected cost per time step along with twice the
+standard errors.
+
+
+= 0. We show results after 20 trials, i.e., a total
+experience of 70s only.
+Multi-task policy search, 
+
+> 0 (MTPS+): Multi-
+task policy search with the ﬁve training tasks 
+train
+=
+f1m;0:5m;0mg, but with training task covariance
+
+
+= diag([0:1
+2
+;0;0;0]). We show results after 20 trials,
+i.e., 70s total experience.
+For the performance analysis, we applied the learned
+policies 100 times to the test-target locations 
+test
+=
+ 1:5; 1:4;:::;1:5. The initial state of a rollout was sam-
+pled fromp(x
+0
+). For the MTPS experiments, we plugged the
+test tasks into (2) to compute the corresponding controls.
+Fig. 4 illustrates the generalization performance of the
+learned controllers. The horizontal axes denote the locations
+
+test
+of the target position of the cart at test time. The height
+of the bars show the average (over trials) cost per time step.
+The means of the training tasks 
+train
+are the location of the
+red bars. Fig. 4(d) shows the distributionp(
+train
+i
+) used during
+training as the bell-curves, which approximately covers the
+task range 2 [ 1:2m;1:2m].
+The NN-IC controller, see Fig. 4(a), balanced the pen-
+dulum at a cart location that was not further away than
+0:2m, which incurred a cost of up to 0.45. In Fig. 4(b),
+the performances for the hierarchical RW-IC controller are
+shown. The performance for the best value  in the gating
+network, see (10), was similar to the performance of the
+NN-IC controller. However, between the training tasks for
+the local controllers, i.e., in the range of [ 0:9m;0:9m],
+the convex combination of local controllers led to more
+failures than in NN-IC, where the pendulum could not be
+swung up successfully: Convex combinations of nonlinear
+local controllers eventually decreased the (non-existing) gen-
+eralization performance of RW-IC.
+Fig. 4(c) shows the performance of the MTPS0 controller.
+The MTPS0 controller successfully performed the swing-up
+plus balancing task for all tasks 
+test
+close to the training
+3879
+tasks. However, the performance varied strongly. Fig. 4(d)
+shows that the MTPS+ controller successfully performed the
+swing-up plus balancing task for all tasks 
+test
+at test time
+that were sufﬁciently covered by the uncertain training tasks
+
+train
+i
+;i = 1;:::;5, indicated by the bell curves representing
+
+
+> 0. Relatively constant performance across the test
+tasks covered by the bell curves was achieved. An average
+cost of 0.3 meant that the pendulum might be balanced with
+the cart slightly offset. Fig. 2 shows the learned MTPS+
+policy for all test tasks 
+test
+with the statex =
+0
+ﬁxed.
+Tab. I summarizes the controller performances. We av-
+eraged over all test tasks 
+test
+and 100 applications of the
+learned policy, where the initial state was sampled from
+p(x
+0
+). Although NN-IC and RW-IC performed the swing-up
+reliably, they incurred the largest cost: For most test tasks,
+they balanced the pendulum at the wrong cart position as they
+did not generalize from training tasks to unseen test tasks. In
+the MTPS experiments, the average cost was lowest. MTPS+
+led to the best overall generalization performance, although
+it might not solve each individual test task optimally.
+Fig. 2 illustrates the difference in generalization per-
+formance between our MTPS+ approach and the RW-IC
+approach, where controls u
+i
+from local policies 
+i
+are
+combined. Since the local policies are trained independently,
+a (convex) combination of local controls makes only sense
+in special cases, e.g., when the local policies are linear in the
+parameters. In this example, however, the local policies are
+nonlinear. Since the local policies are learned independently,
+their overall generalization performance is poor. On the other
+hand, MTPS+ learns a single policy for a task 
+i
+always in
+the light of all other tasks
+j6=i
+as well, and, therefore, leads
+to an overall smooth generalization.
+B. Multi-Task Robot Manipulator
+B1
+B2
+B3
+B4
+B5
+B6
+Fig. 5. Low-cost manipulator by
+Lynxmotion [1] performing a block-
+stacking task using visual feedback
+from a PrimeSense depth camera.
+We applied our pro-
+posed multi-task learning
+method to a block-stacking
+task with a low-cost, off-
+the-shelf robotic manipu-
+lator ($370) by Lynxmo-
+tion [1], see Fig. 5, and
+a PrimeSense [2] depth
+camera ($130) as a vi-
+sual sensor. The arm had
+six controllable degrees of
+freedom: base rotate, three
+joints, wrist rotate, and a
+gripper (open/close). The plastic arm could be controlled
+by commanding both a desired conﬁguration of the six
+servos and the duration for executing the command [11].
+The camera was identical to the Kinect sensor, providing a
+synchronized depth and RGB image at 30Hz. We used the
+camera for 3D-tracking of the block in the robot’s gripper.
+TABLE I
+MULTI-TASK CART-POLE: AVERAGE COSTS ACROSS 31 TEST TASKS.
+NN-IC RW-IC MTPS0 MTPS+
+Cost 0.39 0.4 0.33 0.30
+The goal was to make the robot learn to stack a tower
+of six blocks using multi-task learning. The cost function
+c in (1) penalized the distance of the block in the gripper
+from the desired drop-off location. We only speciﬁed the
+3D camera coordinates of the blocks B2, B4, and B5 as the
+training tasks
+train
+, see Fig. 5. Thus, at test time, stacking B3
+and B6 required exploiting the generalization of our multi-
+task policy search. We chose g(x;) = x and set 
+
+such that the task space, i.e., all 6 blocks, was well covered.
+The mean
+0
+of the initial distribution p(x
+0
+) corresponded
+to an upright conﬁguration of the arm.
+A GP dynamics model was learned that mapped the 3D
+camera coordinates of the block in the gripper and the
+commanded controls at time t to the corresponding 3D
+coordinates of the block in the gripper at time t + 1. The
+control signals were changed at a rate of 2Hz. Note that
+the learned model is not an inverse kinematics model as
+the robot’s joint state is unknown. We used an afﬁne policy
+u
+t
+=(x
+t
+;;) =Ax
+x;
+t
++b with =fA;bg. The policy
+deﬁned a mapping  :R
+6
+!R
+4
+, where the four controlled
+degrees of freedom were the base rotate and three joints.
+0.5 1 1.5 2 2.5 3 3.5 4 4.5 5
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+time in seconds
+average distance to target in meters
+ 
+ 
+block2
+block3
+block4
+block5
+block6
+Fig. 6. Average distances of the block in the
+gripper from the target position with twice the
+standard error.
+We report
+results based
+on 16 training
+trials, each of
+length 5s, which
+amounts to a
+total experience
+of 80s only.
+The test phase
+consisted of 10
+trials per stacking
+task, where the arm was supposed to stack the block on
+the currently topmost block. The tasks 
+test
+j
+at test time
+corresponded to stacking blocks B2–B6 in Fig. 5. Fig. 6
+shows the average distance of the block in the gripper from
+the target position, which wasb = 4:3cm above the topmost
+block. Here, “block2” means that the task was to move
+block B2 in the gripper on top of block 1. The horizontal
+axis shows times at which the manipulator’s control signal
+was changed (rate 2Hz), the vertical axis shows the average
+distances (over 10 test trials) to the target position in meters.
+For all blocks (including blocks B3 and B6, which were not
+part of the training tasks 
+train
+) the distances approached
+zero over time. Thus, the learned multi-task controller
+interpolated (block B3) and extrapolated (block B6) from
+the training tasks to the test tasks without re-training.
+C. Multi-Task Imitation Learning of Ball-Hitting Movements
+We demonstrate the successful application of our MTPS
+approach to imitation learning. Instead of deﬁning a cost
+function c in (1), a teacher provides demonstrations that
+the robot should imitate. We show that our MTPS approach
+allows to generalize from demonstrated behavior to behaviors
+that have not been observed before. In [12], we developed
+a method for model-based imitation learning based on prob-
+abilistic trajectory matching for a single task. The key idea
+3880
+(a) Set-up for the imitation learning experi-
+ments. Orange balls represent the three train-
+ing tasks 
+train
+i
+. The blue rectangle indicates
+the regions of the test tasks
+test
+j
+to which the
+learned controller is supposed to generalize.
+distance [m]
+(b) Training task lo-
+cations (white disks).
+Blue and cyan indi-
+cate that the task was
+solved successfully.
+Fig. 7. Set-up and results for the imitation learning experiments with a
+bio-inspired BioRob
+TM
+.
+is to match a distribution over predicted robot trajectories
+p(
+
+) directly with an observed distribution p(
+exp
+) over
+expert trajectories
+exp
+by ﬁnding a policy
+
+that minimizes
+the KL divergence between them.
+In this paper, we extend this imitation learning approach
+to a multi-task scenario to jointly learning to imitate multiple
+tasks from a small set of demonstrations. In particular, we
+applied our multi-task learning approach to learning a con-
+troller for hitting movements with variable ball positions in a
+2D-plane using the tendon-driven BioRob
+TM
+X4, a ﬁve DoF
+compliant, light-weight robotic arm, capable of achieving
+high accelerations, see Fig. 7(a). While the BioRob’s design
+has advantages over traditional approaches, modeling and
+controlling such a compliant system is challenging.
+We considered three joints of the robot, such that the state
+x 2 R
+6
+contained the joint positions q and velocities _ q
+of the robot. The corresponding motor torquesu2R
+3
+were
+directly determined by the policy. For learning a controller,
+we used an RBF network with 250 Gaussian basis functions
+with about 2300 policy parameters. Unlike in the previous
+examples, we represented a task as a two-dimensional vector
+ 2 R
+2
+corresponding to the ball position in Cartesian
+coordinates in an arbitrary reference frame within the hitting
+plane. As the task representation  was basically an index
+and, hence, unrelated to the state of the robot, g(x;) =,
+the cross-covariancesC
+x
+in (2) were 0.
+As training tasks 
+train
+j
+, we deﬁned hitting movements
+for three different ball positions, see Fig. 7(a). For each
+training task, an expert demonstrated two hitting movements
+via kinesthetic teaching. Our goal was to learn a single policy
+that a) learns to imitate three distinct expert demonstrations,
+and b) generalizes from demonstrated behaviors to tasks that
+were not demonstrated. These tests tasks were deﬁned as
+hitting balls in a larger region around the training locations,
+indicated by the blue box in Fig. 7(a). We set the matrices 
+
+such that the blue box was covered well. Fig. 7(b) shows the
+performance results as a heatmap after 15 iterations of the
+algorithm in Fig. 3. The evaluation measure was the distance
+in m between the ball position and the center of the table-
+tennis racket. We computed this error in a regular 7x5 grid of
+the blue area in Fig. 7(a). The distances in the blue and cyan
+areas were sufﬁcient to successfully hit the ball (the racket’s
+radius is about 0:08m). Hence, our approach successfully
+generalized from given demonstrations to new tasks.
+IV. CONCLUSION
+We have presented a policy-search approach to multi-
+task learning for robots with stationary dynamics. Instead
+of combining local policies, our approach learns a single
+policy jointly for all tasks. The key idea is to explicitly
+parametrize the policy by the task and, thus, enable the policy
+to generalize from training tasks to similar, but unknown,
+tasks at test time. This generalization is phrased as an opti-
+mization problem, which can be solved jointly with learning
+the policy parameters. For solving this optimization problem,
+we incorporated our approach into the PILCO policy search
+framework, which allows for data-efﬁcient policy learning.
+We have reported promising real-robot results on both multi-
+task RL and imitation learning, the latter of which allows to
+generalize imitated behavior to solving tasks that were not
+in the library of demonstrations.
+REFERENCES
+[1] http://www.lynxmotion.com.
+[2] http://www.primesense.com.
+[3] P. Abbeel and A. Ng. Exploration and Apprenticeship Learning in
+Reinforcement Learning. In ICML, pages 1–8, 2005.
+[4] P. Abbeel, M. Quigley, and A. Ng. Using Inaccurate Models in
+Reinforcement Learning. In ICML, pages 1–8, 2006.
+[5] C. Atkeson and J. Santamar´ ıa. A Comparison of Direct and Model-
+Based Reinforcement Learning. In ICRA, 1997.
+[6] J. Bagnell and J. Schneider. Autonomous Helicopter Control using
+Reinforcement Learning Policy Search Methods. In ICRA, 2001.
+[7] S. Barrett, M. Taylor, and P. Stone. Transfer Learning for Reinforce-
+ment Learning on a Physical Robot. In AAMAS, 2010.
+[8] B. da Silva, G. Konidaris, and A. Barto. Learning Parametrized Skills.
+In ICML, 2012.
+[9] M. Deisenroth, D. Fox, and C. Rasmussen. Gaussian Processes for
+Data-Efﬁcient Learning in Robotics and Control. IEEE TPAMI, 2014.
+[10] M. Deisenroth, G. Neumann, and J. Peters. A Survey on Policy Search
+for Robotics. NOW Publishers, 2013.
+[11] M. Deisenroth, C. Rasmussen, and D. Fox. Learning to Control a
+Low-Cost Manipulator using Data-Efﬁcient Reinforcement Learning.
+In RSS, 2011.
+[12] P. Englert, A. Paraschos, J. Peters, and M. Deisenroth. Probabilistic
+Model-based Imitation Learning. Adaptive Behavior, 21, 2013.
+[13] A. Ijspeert, J. Nakanishi, and S. Schaal. Learning Attractor Landscapes
+for Learning Motor Primitives. In NIPS, pages 1523–1530, 2002.
+[14] R. Jacobs, M. Jordan, S. Nowlan, and G. Hinton. Adaptive Mixtures
+of Local Experts. Neural Computation, 3:79–87, 1991.
+[15] J. Kober, A. Wilhelm, E. Oztop, and J. Peters. Reinforcement
+Learning to Adjust Parametrized Motor Primitives to New Situations.
+Autonomous Robots, 33(4):361–379, 2012.
+[16] G. Konidaris, I. Scheidwasser, and A. Barto. Transfer in Reinforce-
+ment Learning via Shared Features. JMLR, 13:1333–1371, 2012.
+[17] O. Kroemer, R. Detry, J. Piater, and J. Peters. Combining Active
+Learning and Reactive Control for Robot Grasping. Robotics and
+Autonomous Systems, 58:1105–1116, 2010.
+[18] K. M¨ ulling, J. Kober, O. Kroemer, and J. Peters. Learning to Select
+and Generalize Striking Movements in Robot Table Tennis. IJRR,
+2013.
+[19] S. Schaal. Learning From Demonstration. In NIPS. 1997.
+[20] J. Schneider. Exploiting Model Uncertainty Estimates for Safe
+Dynamic Control Learning. In NIPS. 1997.
+[21] R. Sutton and A. Barto. Reinforcement Learning: An Introduction.
+The MIT Press, 1998.
+[22] M. Taylor and P. Stone. Cross-Domain Transfer for Reinforcement
+Learning. In ICML, 2007.
+[23] M. Taylor and P. Stone. Transfer Learning for Reinforcement Learning
+Domains: A Survey. JMLR, 10(1):1633–1685, 2009.
+3881

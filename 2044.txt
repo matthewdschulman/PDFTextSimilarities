@@ -1,0 +1,964 @@
+Mapping sound emitting structures in 3D
+Jani Even, Yoichi Morales, Nagasrikanth Kallakuri
+2
+, Jonas Furrer, Carlos Toshinori Ishi, Norihiro Hagita
+Abstract—This paper presents a framework for creating a
+3D map of an environment that contains the probability of a
+geometric feature to emit a sound. The goal is to provide an
+automated tool for condition monitoring of plants. The map
+is created by a mobile platform equipped with a microphone
+array and laser range sensors. The microphone array is used
+to estimate the sound power received from different directions
+whereas the laser range sensors are used for estimating the
+platform pose in the environment. During navigation, a ray
+casting method projects the audio measurements made on-
+board the mobile platform to the map of the environment.
+Experimental results show that the created map is an efﬁcient
+tool for sound source localization.
+I. INTRODUCTION
+In acoustic signal processing, spatial ﬁltering techniques
+using microphone arrays have been increasingly used [6].
+To efﬁciently use spatial ﬁltering methods it is necessary to
+knowthepreciselocationsfromwhichthesoundstoﬁlterare
+emitted. Consequently, sound source localization has been
+extensively studied in the ﬁeld of acoustic signal processing.
+Microphone arrays and spatial ﬁltering techniques have
+naturally made their way into robotics [16], [1], [13]. For
+some applications, like speech interfaces for example, the
+sound source localization algorithms can be used without
+robotic speciﬁc modiﬁcations [7]. This is especially true if
+the robot is not moving during speech acquisition.
+But in the case of a mobile platform, it is possible
+to exploit the mobility of the platform for sound source
+localization.Thenaturalapproachistoperformsoundsource
+localization from different positions of the platform and
+combine the results. A straightforward approach is to use
+triangulation techniques to combine bearing estimates [14].
+In [11], [12], this combination problem is treated in a
+probabilistic manner by estimating the probability of having
+a sound source for the cells of a grid covering the environ-
+ment. This approach is very interesting as the results, the
+grid with assigned probability, can be seen as a probabilistic
+map of the sound source.
+In [10], we proposed a method for building probabilistic
+maps of sound sources that reduces the complexity of the
+grid approach in [11] by considering only grid cells that are
+occupied by an object as a potential sound source candidate.
+In this paper, we are interested in developing a method
+to automate the detection of sound sources in a known
+This research was funded by the Ministry of Internal Affairs and Com-
+munications of Japan under the Strategic Information and Communications
+R&D Promotion Programme (SCOPE).
+The authors are with ATR Intelligent Robotics and Communication
+Laboratories, Kyoto, Japan. even at atr.jp
+2
+Now with the Electrical and Computer Engineering Dept, Carnegie
+Mellon University.
+no hit
+Fig. 1. View of the experimental room and the sound map. The scale
+[L
+min
+,Lmax] denotes the probability of sound source presence. The active
+air conditioning grills in the ceiling appear in red.
+environment. An important goal of the proposed work is
+to establish the correspondence between the detected sound
+sources in the acoustic domain and geometric structures in
+the environment. The motivation for this aspiration is in
+condition monitoring of plants [9]. The purpose of condition
+monitoring is to assess the condition of the machinery
+componentsinordertoschedulemaintenancebeforeafailure
+occurs. Thus, an important task is to detect the apparition
+of an unexpected sound and pinpoint the localization of the
+sound source on the machinery.
+The correspondence between a sound source and a struc-
+ture in the environment is kept in a 3D map of the envi-
+ronment. In the remainder, this map is referred to as the
+sound map if it contains sound information and geometric
+information or geometric map if it contains only geometric
+information.
+The sound map is build from the data collected by a
+mobile platformthat navigates throughthe environment.The
+platform is equipped with wheel encoders and laser range
+ﬁnders (LRFs) to localize itself and a microphone array to
+perform sound source localization.
+Soundsourcelocalizationis performedcontinuouslywhile
+navigatingtheenvironmentandthesoundsourcelocalization
+results obtained from the different positions are fused. Prior
+to the fusion process, the received sound power is trans-
+formed into a likelihood of sound source presence. Then
+this likelihood is accumulated to obtain the odds of having
+a sound source at a given position. Consequently, the output
+of the proposed approach is a 3D map of the environment
+that contains information on the presence of sound sources
+in a probabilistic form.
+Fig.1 represents the sound map (right) created for a room
+(left). The colors in the 3D map shows the accumulated log-
+odds of having a sound source at that location (The gray
+color indicates that no information is available). Using this
+sound map, it is possible to detect that the air conditioning
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 677
+grills in the ceiling are pulsing air at the time of mapping.
+As illustrated by this example,the created sound map can be
+a powerful condition monitoringtool for detecting structures
+emitting sound. Moreover, it is important to stress that for
+detection of sound sources in real structures, the proposed
+3D sound map approach is an improvement over the maps
+obtained with the methods in [11], [10].
+The presentation of the method is composed of ﬁve parts.
+First the creation of the geometric map is discussed. Then
+the localization of the platform in this geometric map is
+presented. The two next parts describes the onboard audio
+sensing and the creation of the likelihood from the audio
+power. Finally the last part explains how the likelihood is
+fused to create the sound map.
+An experimental section illustrates the creation of the
+sound map and evaluates the inﬂuence of the different
+parameters.
+II. GEOMETRIC MAP BUILDING
+The creation of the 3D sound map requires the availability
+of a 3D geometric map that describes the environment.
+Thegeometricmapisbuiltinadvanceusingthe3DToolkit
+library framework [4], [15]. In this framework, to build
+the geometric maps, odometry data and 3D scan data are
+necessary.
+These data were acquired by driving a mobile platform
+through the environments to model. The mobile platform is
+equipped with wheel encoders, to provide odometry data,
+and a 3D Lidar, to providescan data. Fig.2 shows one of the
+platforms we used (a Pioneer P3).
+The scans are aligned by correcting the trajectory of the
+platform using iterative closest point based simultaneous lo-
+cationandmapping(SLAM)[3]andanoctreerepresentation
+of the environment is created [8].
+In this paper,at the ﬁnest level of decomposition,the edge
+length of the voxels is 0.05 m and the voxels centered at the
+position {x,y,z} is denoted by c
+xyz
+. The geometric map
+refers to the voxels at the lowest level that are occupied.
+In Fig.3, a view of an indoors environment and the
+corresponding view in the associated geometric map are
+juxtaposed. Note that the voxels that compose the octree are
+clearly visible.
+III. PLATFORM LOCALIZATION
+To create the sound map, it is necessary to precisely de-
+termine the position of the mobile platform in the geometric
+map that describes the environment.
+In this paper, it is assumed that the ground is ﬂat and that
+the platform’s pitch and roll are negligible. Consequently,
+the pose of the platform is composed of its 2D location
+{x
+r
+(t),y
+r
+(t)} and its orientation ?
+r
+(t). The altitude is as-
+sumed constant z
+r
+(t) = z
+0
+and the pitch and roll null
+{?
+r
+(t) = 0,?
+r
+(t) = 0}.
+Since the localization is reduced to a 2D problem, laser
+range ﬁnders (LRFs) scanning in the horizontal plane at a
+height h
+LRF
+are used to localize the mobile platform in a
+2D map (The platform in Fig.2 is equipped with two LRFs
+Fig. 2. Mobile platform example with sensors placement (a) and close
+views of the sensors: 16 Sony ECM-C10 microphone array (b), Hokuyo
+UTM-30LX LRF (c) and Velodyne HDL-32E 3D LIDAR (d).
+Fig. 3. Photo of the indoor environment and the corresponding view in the
+geometric map. The scale [h
+min
+=?0.1,hmax = 2.8] denotes the height
+in meter.
+scanning the horizontal plane, one in front and one in the
+back). The 2D map is created by taking an horizontal slice
+of the geometric map at the height{h
+LRF
+??,h
+LRF
++?} and
+ﬂattening it. Then the referential in the 2D map coincide
+perfectly with the one in the geometric map. Fig.4 gives
+the naming conventions for the pose {x
+r
+(t),y
+r
+(t),?
+r
+(t)} in
+the referential of the 2D map. The green arrows shows the
+orientation of the mobile platform. This map correspond to
+the environment depicted in Fig.(3).
+The localization algorithm is a particle ﬁlter (see [17]
+and references herein). In the prediction step, the particles
+are propagated accordingly to the odometry data. In the
+correction step, the likelihood of the particle is computed
+by using the ray casting approach to match the LRFs scan
+to the 2D map. Resampling is performed when the number
+of effective particles is too low.
+Thenumberofparticlesis 200andcorrectionisperformed
+when the platform moved by 0.1 m or rotated by 5 degrees.
+IV. STEERED RESPONSE POWER
+In the ﬁeld of sound source localization, steered response
+power (SRP) algorithms are regarded as efﬁcient approaches
+(see [6] and references herein). In particular, the steered
+response power algorithms that make use of the phase
+transform (SRP-PHAT) [5] are considered a good match for
+678
+Fig. 4. Mobile platform localization in the 2D map created from the
+geometric map (the unit vectors {x[m],y[m]} show the axes of the room
+coordinate frame and their units).
+roboticapplications[2].Consequently,weuseanSRP-PHAT
+algorithm to process the signals from the microphone array
+mounted on the mobile platform.
+Let us ﬁrst present the general idea of SRP algorithms.
+The response of the microphone array is the output signal
+obtained by applying a ﬁlter to combine the N signals
+received by the microphone into one. In SRP algorithm, this
+ﬁlter is a spatial ﬁlter than ideally lets only pass through
+the signals coming form a given direction {?
+i
+,?
+i
+}, see
+conventions in Fig.5. The steered response power is the
+power of this spatial ﬁlter’s output signal. Namely, it is an
+estimate of the power coming from the direction {?
+i
+,?
+i
+}.
+Then sound source localization is performed by steering the
+array to a set of candidate directions, estimating the power
+foreachofthem,andﬁndingcandidatedirectionswithhigher
+power.Thedirectionswithhigherpowerpointtothelocation
+of the sound sources.
+Now let us describe the SRP-PHAT algorithm used on-
+board the mobile platform in more details. The mobile
+platform is equipped with a microphone array depicted in
+Fig.2.ThemicrophonearrayiscomposedofN = 16omnidi-
+rectional microphones. The audio signals are synchronously
+sampled at 16 kHz by the capture interface. The audio
+processing is done in the frequency domain. The frequency
+domain signals are denoted by X
+n
+(f,t) where n is the
+microphoneindex,f the frequencybinindexandt theframe
+index. They are obtained by applying a short time Fourier
+transform (STFT) to the audio signals. The analysis window
+is W points long and the shift of the window is W/2.
+First the PHAT transform is applied to the frequency
+components
+V
+n
+(f,t) =
+X
+n
+(f,t)
+|X
+n
+(f,t)|
+. (1)
+Then the power of the received sound is estimated for a
+set of candidate directions {?
+i
+,?
+i
+}
+i?[1,I]
+. The green dots in
+Fig.5 represent a set of candidate directions.
+Foreachofthecandidatedirections,thefrequencydomain
+processing is decomposed in 3 stages. First the response
+is steered in the candidate direction {?
+i
+,?
+i
+} by applying a
+Fig. 5. Set of candidate directions (green dots) and conventions for the
+angles {?,?} in the array referential.
+delay and sum spatial ﬁlter
+Y(?
+i
+,?
+i
+,f,t) = H(?
+i
+,?
+i
+,f)
+?
+?
+?
+V
+1
+(f,t)
+.
+.
+.
+V
+N
+(f,t)
+?
+?
+?, (2)
+with
+H(?
+i
+,?
+i
+,f) =
+1
+N
+h
+e
+?j?1(?i,?i,f)
+,··· ,e
+?j?N(?i,?i,f)
+i
+, (3)
+where?
+n
+(?
+i
+,?
+i
+,f) is the phase delayat the microphonen in
+the frequency bin f for a signal coming from the direction
+{?
+i
+,?
+i
+}.Assumingthatthe soundsourcesareinthefar ﬁeld,
+the ﬁlter is entirely characterized by the angles {?
+i
+,?
+i
+} and
+the microphone positions.
+Then the power of the beamformer output is estimated by
+a K frame averaging
+S(?
+i
+,?
+i
+,f,k) =
+1
+K
+K?1
+X
+t=0
+|Y(?
+i
+,?
+i
+,f,k?t)|
+2
+. (4)
+Note the introduction of the index k to show that the power
+has a different rate (the period is KW/2 samples).
+Finally, the steered response power in the direction
+{?
+i
+,?
+i
+} is obtained by selecting a limited band of frequen-
+cies
+S(?
+i
+,?
+i
+,k) =
+fmax
+X
+f=fmin
+S(?
+i
+,?
+i
+,f,k). (5)
+In the remainder, the term audio scan refers to the set
+of candidate directions {?
+i
+,?
+i
+}
+i?[1,I]
+(where I denotes the
+numberof directions)and their associated powerS(?
+i
+,?
+i
+,k)
+computed at a given framek. The kth audio scan is denoted
+by S(k) ={S(?
+1
+,?
+1
+,k),··· ,S(?
+I
+,?
+I
+,k)}.
+An audio scan is represented as a colored portion of a
+sphere in Fig.6 (left). The color is function of the power for
+each of the candidate directions. This audio scan clearly ex-
+hibits an area of higher power on the top left side indicating
+the presence of a sound source.
+V. AUDIO LIKELIHOOD
+In order to fuse the sound source localization results
+of different audio scans together, the power S(?
+i
+,?
+i
+,k) is
+ﬁrst transformed in a likelihood L(?
+i
+,?
+i
+,k). This likelihood
+L(?
+i
+,?
+i
+,k) expresses the belief of having a sound source in
+the candidate direction {?
+i
+,?
+i
+}.
+679
+Fig. 6. Transformation by the thresholding function of the power (left)
+into a likelihood (right).
+From the sound source localization literature and the idea
+behind the SRP approach, it is expected that a large power
+should correspond to a strong belief. For example in [12],
+[10] a scale version of the power was used as likelihood. In
+audio source tracking, creating a likelihood by scaling the
+power is also common [18].
+In this paper,ratherthan using a scaled power,a nonlinear
+function is applied in order to create the likelihood. The
+selected nonlinear function is a double thresholdingfunction
+F(x) =
+?
+?
+?
+?
+?
+p
+min
+, if x<T
+1
+p
+max
+, if x>T
+2
+p
+med
+, else
+(6)
+Fig.6 shows the transformation of an audio scan with the
+nonlinear function (the parameters are set to T
+1
+= 20, T
+2
+=
+30, p
+min
+= 0.1, p
+med
+= 0.5, p
+max
+= 0.9).
+Consequently while the mobile platform is navigat-
+ing the environment for each audio scan S(k) =
+{S(?
+1
+,?
+1
+,k),··· ,S(?
+I
+,?
+I
+,k)} a likelihood scan L(k) =
+{L(?
+1
+,?
+1
+,k),··· ,L(?
+I
+,?
+I
+,k)} is create by applying the
+nonlinear function. Each of these likelihood scans contains
+the likelihood of having a sound source for one of the
+candidate directions {?
+i
+,?
+i
+}.
+VI. AUDIO MAP BUILDING
+To understand the creation of the sound map, let us
+ﬁrst discuss about the structure used to store the audio
+information.
+The sound map is an octree having the same resolution as
+the geometric map. A voxel at the lowest level in the sound
+map is consideredoccupiedif the correspondingvoxel in the
+geometric map is occupied. The voxels of the sound map
+have some additional ﬁelds to store the audio information.
+L(c
+xyz
+) denotes the log-odds of having a sound source
+within the voxel c
+xyz
+. M(c
+xyz
+) counts the number of times
+the voxel c
+xyz
+was updated during sound map creation.
+U(c
+xyz
+) contains the last time the voxel c
+xyz
+was updated.
+The candidate directions {?
+i
+,?
+i
+} are deﬁned in the ref-
+erential centered at the microphone array depicted in Fig.5.
+This referential is rigidly attached to the mobile platform.
+The axis coincide with the platform’s ones but the array
+originis at a heightz
+a
+= 1.6m. Thus to relate the likelihood
+L(?
+i
+,?
+i
+,k) to a geometric structure in the environment, the
+candidate direction has to be combined with the estimated
+pose of the platform.
+Fig. 7. Ray casting from the mobile platform pose {xr(t),yr(t),?r(t)}
+in the direction {?
+i
+,?
+i
+} hitting the voxel cxyz.
+This combination is illustrated in Fig.7. For simplicity, a
+top view is presented and the elevation angle ?
+i
+is omitted.
+The grayed squares represent the voxels of the geometric
+map.
+ForthelikelihoodscanL(k),thepose{x
+r
+(t),y
+r
+(t),?
+r
+(t)}
+of the platform with t the closest to k is considered.
+For each of the candidate direction, a ray is casted from
+the pose of the robot in the referential of the geometric map.
+Namely a ray is casted from the point {x
+r
+(t),y
+r
+(t),z
+a
+} in
+the direction {?
+r
+(t) +?
+i
+,?
+i
+}. The rationale behind the use
+of ray casting is to trace back the sound until its sources
+as in [10]. However, by using a 3D representation of the
+environment, the sources are not restricted to be in a plane
+as in [10].
+The ray casting is limited to a maximum range R
+max
+.
+If the ray hit a voxel c
+xyz
+of the geometric map then the
+likelihood L(?
+i
+,?
+i
+,k) is used to update the log-odds of
+having a sound source in the corresponding voxel of the
+sound map.
+Theaudiorelatedﬁeldsofthevoxelareupdatedasfollows
+L(c
+xyz
+) = L(c
+xyz
+)+log
+L(?
+i
+,?
+i
+,k)
+1?L(?
+i
+,?
+i
+,k)
+M(c
+xyz
+) = M(c
+xyz
+)+1
+U(c
+xyz
+) = t
+k
+,
+where t
+k
+is the time corresponding to the frame k. At
+initialization L(c
+xyz
+) = 0, M(c
+xyz
+) = 0 and U(c
+xyz
+) is
+undetermined. The choice L(c
+xyz
+) = 0 means that a voxel
+has equal chance to emit or not sound.
+The log-odds L(c
+xyz
+) is no longer updated when it goes
+out of the interval [L
+min
+,L
+max
+]. Meaning that the odds of
+having a sound source at the voxel c
+xyz
+is considered high
+or low enough to stop updating it.
+VII. EXPERIMENTAL RESULTS
+The experimental setting corresponds to the indoors envi-
+ronment depicted in Fig.3. At the time of the experiments,
+the sound sources in this environment are the grills of the
+680
+-1 0 1 2 3 4 5
+-4
+-3
+-2
+-1
+0
+1
+2
+Fig. 8. Top view of the grills placement in blue, their center in green and
+the estimated positions in magenta.
+no hit
+Fig. 9. Top view of the probabilistic 3D sound map, the color represents
+the probability of sound source presence.
+air conditioning system. The grills are in the ceiling of the
+room and have a square shape (0.5 m edge). Fig.8 shows a
+top view of the room with the grills in blue.
+To build the sound map, the mobile platform was driven
+three times around the table in the center of the room in
+a clockwise manner (see the 2D map in Fig.4). During the
+driving, the sensor data were all logged. Then in addition
+to the actual driving, the logged sensor data were played
+back in order to obtain results for other parameter settings.
+Moreover,to take into account the probabilisticnature of the
+particle ﬁlter based navigation, for each of the experimental
+conditions, 10 repetitions of the experiment (referred to as
+runs) are generated. It is important to stress that these runs
+are not simulated data but equivalent to the actual driving as
+all the sensor data necessary for the processing are logged.
+Fig.9 shows the top view of one of the sound maps
+generated. Areas of high log-odds are visible around the
+location of the grills. The localization of the sound sources
+is estimated by clustering the voxels with positive log-odds
+(probability of having a sound source larger than 0.5). The
+clustering method is a kmeans method seeded with the
+positions of the local maximaof the log-odds.Each obtained
+cluster is assigned to the closest grill, then that grill is
+markedas detectedandthe distance to this grill is computed.
+In Figure 8, the magenta circles indicates the position of
+the detected sound sources (note that two sources are not
+detected).
+Thesoundsourcedetectionis evaluatedinterm ofaverage
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+2 3 4 5 6
+0
+1
+2
+3
+4
+5
+6
+7
+8
+9
+2 3 4 5 6
+Fig. 10. Average error (left) and average number of detected sources (right)
+versusraycasting range limit andforthesmallaperture. Theerror barsshow
+the standard deviations.
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+2 3 4 5 6
+0
+1
+2
+3
+4
+5
+6
+7
+8
+9
+2 3 4 5 6
+Fig. 11. Average error (left) and average number of detected sources (right)
+versus ray casting range limit and for the medium aperture. The error bars
+show the standard deviations.
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+2 3 4 5 6
+0
+1
+2
+3
+4
+5
+6
+7
+8
+9
+2 3 4 5 6
+Fig. 12. Average error (left) and average number of detected sources (right)
+versus ray casting range limit and forthe large aperture. Theerror barsshow
+the standard deviations.
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+10 20 30 40 50 60 70 80
+0
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10 20 30 40 50 60 70 80
+Fig. 13. Average error (left) and average number of detected sources (right)
+versus log-odds limit.
+number of detected sources C and average localization error
+E for these detected sources. For a given set of parameters,
+C isanaverageonthe10generatedruns.ButE isanaverage
+on all the detected sources for the 10 runs.
+The inﬂuence of the aperture of the scan grid was studied
+by using a small aperture ?
+i
+? [?15,15], a middle aperture
+?
+i
+? [?30,30] and a large aperture ?
+i
+? [?60,60]. All with
+?
+i
+= 0 indicating the front the platform and ?
+i
+? [?30,75].
+The inﬂuence of aperture was evaluated jointly with the
+ray casting range R
+max
+.
+The other parameters of the methods are set to W = 400,
+K = 5, f
+min
+= 1000 Hz, f
+max
+= 3000 Hz, L
+min
+= ?50
+681
+Fig. 14. Photo of an outdoor environment and the corresponding view in
+the sound map showing sound leakage from the door.
+and L
+max
+= 50. The parameters of the nonlinear function
+are the ones used in Fig.6.
+Figures 10-12 illustrate the inﬂuence of two parameters:
+the ray casting range limit R
+max
+and the the aperture of the
+scangrid(therangeof?
+i
+).Foreachofthepointsthestandard
+deviation is also indicated by error bars. For the plots of the
+average error, the horizontal black lines correspond to the
+radii of the circle circumscribed to the grill (≈ 0.35 m) and
+the circle inscribed in the grills (0.25 m).
+As expected a larger aperture and a longer range increase
+the numberof detectedsoundsources.Howevertheaccuracy
+of the detection is better with the small and medium aper-
+tures. A good trade off is the medium aperture with a range
+of 6 m as the error is among the small ones and the number
+of detected sources quite high. But the performance of the
+method is somehow robust to the choice of these parameters
+as the worst result for the large aperture with a range of 4
+m is no catastrophic considering the size of the grills. As
+a comparison, the maps presented in [11], [10] also exhibit
+localization errors in the 0.2?0.3 m range for the 2D case.
+Fig.13illustratestheeffectofthelog-oddslimitationL
+max
+(the lower limit is set to L
+min
+= ?L
+max
+) in the case of
+the small aperture with a range of R
+max
+= 3. The number
+of detected grills slightly decreases for larger values but the
+distanceerrorislargerforsmallervalues.Thustakingavalue
+in the range 30?70 seem a good trade-off.
+The undetected grills are the ones in the corners because
+the platform made three loops around the table in the center
+of the room. Moreover, the directivity of the grills may also
+makethemeasiertodetectforlargervaluesof?
+i
+.Drivingthe
+platform closer to the corners should reduce the variability
+of the count C.
+VIII. CONCLUSION
+This paper introduced a framework for creating a 3D
+description of the environment that contains the probability
+that a structure to emit sound. The aim of the method is
+to provide an automatic tool to sound source detection and
+associating them with geometric structures. Experimental
+results in an indoors environment showed that using the
+proposed approach it is possible to efﬁciently detect air
+conditioninggrillsandassociate themwith geometricfeature
+in the environment. The method is not limited to indoors
+environment as illustrated by Fig.14, where the sound map
+shows the sound leakage from the door of a machinery
+building and from behind the building (higher intensities in
+red). The future work is to experiment in more diverse en-
+vironments in order to determine the best parameter settings
+for different situations.
+REFERENCES
+[1] S. Argentieri and P. Dan` es, “Broadband variations of the music high-
+resolution method for sound source localization in robotics,” Proceed-
+ings of IEEE/RSJ International Conference on Intelligent Robots and
+Systems, IROS-2007, San Diego, USA, pp. 2009–2014, 2007.
+[2] A. Badali, J.-M. Valin, F. Michaud, and P. Aarabi, “Evaluating real-
+time audio localization algorithms for artiﬁcial audition on mobile
+robots,” in Proceedings of IEEE/RSJ International Conference on
+Intelligent Robots and Systems, IROS 2009, 2009, pp. 2033–2038.
+[3] P. Besl and H. McKay, “A method for registration of 3-D shapes,”
+Pattern Analysis and Machine Intelligence, IEEE Transactions on,
+vol. 14, no. 2, pp. 239–256, Feb. 1992.
+[4] D. Borrmann, J. Elseberg, K. Lingemann, A. N¨ uchter, and
+J. Hertzberg, “The Efﬁcient Extension of Globally Consistent Scan
+Matching to 6 DoF,” in Proceedings of the 4th International Sympo-
+sium on 3D Data Processing, Visualization and Transmission (3DPVT
+’08), Atlanta, USA, June 2008, pp. 29–36.
+[5] M. Brandstein and H. Silverman, “A robust method for speech signal
+time-delay estimation in reverberant rooms,” in IEEE Conference on
+Acoustics, Speech, and Signal Processing, ICASSP 1997, 1997, pp.
+375–378.
+[6] H. DiBiase, J. nad Silverman and M. Brandstein, Microphone arrays
+: Signal Processing Techniques and Applications. Springer-Verlag,
+2007.
+[7] J. Even, H. Saruwatari, and K. Shikano, “An improved permutation
+solver for blind signal separation based front-ends in robot audition,”
+2008 IEEE/RSJ International Conference on Intelligent Robots and
+Systems, Nice, France, pp. 2172–2177, 2008.
+[8] A. Hornung, K. M. Wurm, M. Bennewitz, C. Stachniss,
+and W. Burgard, “OctoMap: An efﬁcient probabilistic 3D
+mapping framework based on octrees,” Autonomous Robots, 2013,
+software available at http://octomap.github.com. [Online]. Available:
+http://octomap.github.com
+[9] A. Jar dine and L. Banjevic, “A review on machinery diagnostics and
+prognostics implementing condition-based maintenance,” Mechanical
+Systems and Signal Processing, vol. 20, no. 7, p. 14831510, 2006.
+[10] N.Kallakuri, J.Even,Y.Morales, C.Ishi,andN.Hagita, “Probabilistic
+approach for building auditory maps with a mobile microphone array,”
+in Proceedings of 2013 IEEE International Conference on Robotics
+and Automation, ICRA 2013, 2013, pp. –.
+[11] E. Martinson and A. C. Schultz, “Auditory evidence grids.” in Pro-
+ceedings of IEEE/RSJ International Conference on Intelligent Robots
+and Systems, IROS 2006. IEEE, 2006, pp. 1139–1144.
+[12] ——, “Robotic discovery of the auditory scene,” in Proceedings of
+2013 IEEE International Conference on Robotics and Automation,
+ICRA 2007, 2007, pp. 435–440.
+[13] K. Nakadai, H. Okuno, H. Nakajima, Y. Hasegawa, and H. Tsujino,
+“An open source software system for robot audition hark and its evala-
+tion,” in IEEE-RAS International Conference on Humanoid Robots,
+2008, pp. 561–566.
+[14] Y. Sasaki, S. Thompson, M. Kaneyoshi, and S. Kagami, “Map-
+generation and identiﬁcation of multiple sound sources from robot
+in motion,” in Proceedings of IEEE/RSJ International Conference on
+Intelligent Robots and Systems, IROS 2010, 2010, pp. 437–443.
+[15] slam6d, “Slam6d - simultaneous localization and mapping
+with 6 dof,” Retrieved December May, 20 2011 from
+http://www.openslam.org/slam6d.html, 2011.
+[16] R. Takeda, K. Nakadai, K. Komatani, T. Ogata, and H. Okuno,
+“Exploiting known sound sources to improve ica-based robot audition
+in speech separation and recognition,” Proceedings of IEEE/RSJ
+International Conference on Intelligent Robots and Systems IROS-
+2007, pp. 1757–1762, 2007.
+[17] S. Thrun, W. Burgard, and D. Fox, Probabilistic Robotics (Intelligent
+Robotics and Autonomous Agents). The MIT Press, 2005.
+[18] D. B. Ward, E. A. Lehmann, and R. C. Williamsin, “Particle ﬁltering
+algorithms for tracking an acoustic source in a reverberant environ-
+ment,” IEEE Trans. Speech and Audio Processing, vol. 11, pp. 826–
+836, Nov. 2003.
+682

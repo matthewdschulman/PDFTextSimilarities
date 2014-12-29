@@ -1,0 +1,1162 @@
+A Two-Point Algorithm for Stereo Visual Odometry
+in Open Outdoor Environments
+Kyohei Otsu
+1
+and Takashi Kubota
+2
+AbstractÑThis paper proposes a novel method to estimate
+relative poses for a calibrated stereo camera. Three correspond-
+ing points in 3D space are theoretically required to recover
+unconstraint motion which has six degrees of freedom. The
+proposed method solves this problem with only two 3D points
+by exploiting a common reference direction between poses.
+Two points are selected in accordance with the distance to
+the camera: one distant point is used for deriving a reference
+direction, and one near point is used for estimating accurate
+translation. The distance is computed by triangulation in stereo
+vision. The uncertainty of triangulation can be mitigated by the
+appropriate selection strategy. The experiments using synthetic
+and real data demonstrate the effectiveness and higher stability
+of the proposed method against image pixel noise.
+I. INTRODUCTION
+This paper describes an efÞcient solution to the relative
+pose problem using two image point correspondences in two
+stereo views. The relative pose problem is one of the major
+problems in a number of Þelds, including computer vision,
+photogrammetry, robotics, augmented reality, etc. This paper
+assumes a stereo camera rig in an open outdoor environment,
+which can be applied to SLAM (Simultaneous Localization
+and Mapping) and VO (visual odometry).
+Thereisacrucialchallengeforposeestimationinhandling
+outliers of point correspondences. In outdoor environments,
+therearealotofpossiblecauseswhichmakedataassociation
+problem difÞcult, e.g., moving objects, occlusions, illumina-
+tion changes, and image noise. The RANSAC [1] has been
+established as a standard method for outlier removal. It is a
+hypothesis-and-test framework which produces hypotheses
+with randomly sampled data sets and selects the hypoth-
+esis that acquires highest consensus with other data. It is
+important to Þnd the minimal number of data points which
+can estimate model parameters, since the required number of
+iterative operations is exponential in the number of necessary
+data points [1], [2].
+Several attempts have been performed to Þnd the minimal
+solverfortherelativeposeproblem.Foramonocularcamera,
+the minimal number of recovering motion parameters is Þve
+[3], [4]. It has been reduced by adding cues for the orienta-
+tion. Naroditsky et al. [5] proposed a three-plus-one (four)
+algorithm by exploiting a point at inÞnity. They formulate
+a close-form solution and a solution using action matrix.
+Fraundorfer et al. [6] proposed a three-point algorithm based
+1
+K. Otsu is with Department of Electrical Engineering and Information
+Systems, The University of Tokyo, 7-3-1 Hongo, Bunkyo, Tokyo, Japan.
+kyon@ac.jaxa.jp
+2
+T. Kubota is with Institute of Space and Astronautical Science, Japan
+AerospaceExplorationAgency,3-1-1Yoshinodai,Chuo,Sagamihara,Kana-
+gawa, Japan. kubota@isas.jaxa.jp
+on the formulation of the Þve-point algorithm [3]. They
+resolve two orientational angles with inertia measurements.
+Kalantari et al. [7] also showed a three-point algorithm
+with different formulation using Gr¬ obner basis. They used
+inertial measurements or a vertical vanishing point to reduce
+the number of motion parameters. Kneip et al. [8] further
+reduced it to two, by computing full rotation matrix from an
+IMU rigidly attached to the camera. A single-point algorithm
+was proposed by Scaramuzza [2] for a planar motion of a
+nonholonomic wheeled vehicle. These monocular methods
+can also be applied for a stereo camera.
+For a stereo camera, three correspondences are required to
+recover motion parameters. The solvers may be divided into
+two approaches. The 3D-to-2D methods use the correspon-
+dences between 3D space points and 2D image points. These
+methods are often referred as the perspective-three-point
+(P3P) solvers [1], [9], [10]. The 3D-to-3D methods compute
+poses using 3D space point correspondences. The solution
+can be obtained algebraically by least squares [11], [12]
+and weighted least squares [13], or solved by optimization
+procedure [14]. The number of data points can be reduced by
+exploitingtheprojectivegeometry.Theone-pointsolverfora
+stereorigisproposedbyNiandDellaert[14],whichresolves
+the camera orientation using the inÞnite homography. Their
+follow-up work in [15] solves the orientation using two
+distant points and the translation using one near points.
+Recent approaches for reducing the number of data points
+are summarized in TableI. A major approach to reduce
+the number of data points is to use common directional
+references between two camera poses. The directional cor-
+respondences are often computed by inertial measurements
+or points at inÞnity. However, such measurements are not
+always available particularly for off-road vehicles in an
+outdoor environment. The inertial measurements may be
+unstable for running vehicle on uneven terrain, and vanishing
+points are hard to be found on environments without man-
+made objects.
+This paper proposes a new scheme to use two correspond-
+ing points, instead of three, obtained from a stereo camera
+rig. It estimates the orientation and translation separately,
+similar to [14], [15]. This strategy can greatly improve the
+computational efÞciency. The two corresponding points are
+selected in accordance with the distance to the camera. One
+corresponding point is a distant point used for orientation
+estimation. As demonstrated in [5], the points which are
+sufÞciently far can be used as reference direction. While
+[5] uses the RANSAC to select distant points, the proposed
+method simply uses stereo triangulation to know the depths
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 1042
+TABLE I
+RECENT APPROACHES TO REDUCE DATA POINTS
+Reference Camera(Min) Points Clues Natural Scene Driving 6DoF Scale Solutions
+Naroditsky et al. [5] Monocular(5) 3+1 Point at inÞnity ! ! ! 4
+Fraundorfer et al. [6] Monocular(5) 3 IMU ! ! 4
+Kalantari et al. [7] Monocular(5) 3 Vanishing point/IMU (!) (!) ! 4
+Kneip et al. [8] Monocular(5) 2 IMU ! ! 1
+Scaramuzza [2] Monocular(5) 1 Planar, nonholonomic ! ! 1
+Ni and Dellaert [14] Stereo(3) 1 InÞnite homography ! !! 1
+Proposed method Stereo(3) 2 Distant point ! ! !! 2
+of points. The other corresponding point is a near point used
+for translation estimation. Near space points are accurately
+triangulated and therefore less uncertain. A single point in
+3D space is sufÞcient to recover a translational motion with
+known camera orientation.
+The proposed two-point method is quantitatively evaluated
+through the experiments with synthetic and real data. The
+impact of distance for the accuracy of pose estimation is
+studied. The proposed method outperformed other methods
+in noisy situation which often appears in outdoor Þelds.
+II. STEREO CAMERA MODELS
+To understand the error model in stereo vision, the geom-
+etry of stereo camera is reviewed in this section.
+A. Front-Parallel ConÞguration
+A standard conÞguration of stereo cameras is using two
+horizontally displaced cameras viewing the same direction
+(Fig.1).Thecamerasarecalibrated,i.e.,withknownintrinsic
+and extrinsic parameters, which together form a projection
+matrix P. The position of a pointX ?R
+3
+is estimated by
+the triangulation using two set of projected pointsu
+L
+,u
+R
+?
+R
+2
+. The ideal case of this speciÞc conÞguration derives the
+simple stereo equations
+X =
+? ? x
+y
+z
+? ? =
+b
+d
+? ? u
+v
+f
+? ? (1)
+where b denotes the length of the baseline, f denotes the
+focal length of cameras, and d = u
+L
+? u
+R
+denotes the
+disparity of a projected feature point. However, the presence
+of noise complicates the problem. Under the noisy situation,
+two rays from the cameras are not guaranteed to cross,
+thus the stereo equations do not hold. Several methods have
+tackled with this problem, some of which can be found in
+[16].Acommonmethodisthelineartriangulationalgorithm.
+In this paper, the Linear-LS (Least Square) method is used
+which is fast to compute and afÞne-invariant.
+Fig. 1. Geometry of front-parallel stereo camera
+B. Range Uncertainty and Statistical Bias
+The accuracy of motion estimation is degraded by the
+range estimation uncertainty derived from triangulation [17].
+The uncertainty grows larger along the depth direction.
+A study has conducted to reveal how the pixel uncertainty
+of feature detectors (e.g. corner detectors) translates into the
+range estimation uncertainty in long-range stereo measure-
+ments [18]. The pixel uncertainty is commonly modeled as a
+gaussian distribution [18], [19]. As one can see in Fig.1, the
+pixel uncertainty in an image direction forms a quadrilateral
+uncertainty in 3D space (gray region). Analytically, this
+can be shown in Fig.2 as the range probability density
+function. Note that the range uncertainty derived from the
+pixel uncertainty has a heavy-tailed distribution. Supposing
+the Gaussian uncertainty in pixels, the range uncertainty can
+be modeled as
+bf
+Ã
+2¹?
+d
+z
+2
+exp
+%
+?(bf/z?µ
+d
+)
+2
+2?
+2
+d
+&
+(2)
+where µ
+d
+and ?
+d
+denotes the mean and standard deviation
+of disparity measurements. The numerical analysis in [18]
+shows that the mean of (2) statistically overestimates the
+true mean due to the heavy tail. Such uncertainty increases
+as a strong function of range and the bias does as well.
+As discussed in [20], this range measurement bias has a
+strong inßuence on motion estimation. Their experimental
+result claims that the improper selection of feature points
+may cause the bias error in motion estimation. A bias
+reduction scheme is proposed in [18] based on Taylor series
+expansion of (1) under the assumption that the variation of
+disparity measurements around the true value is small.
+The proposed method, however, does not compensate the
+bias errors. Rather, it selects points in a proper way so that
+the motion estimation error can be reduced. The idea is to
+0 1 2 3 4 5
+0
+0.5
+1
+1.5
+Disparity d [pixel]
+Probability
+0 100 200
+0
+0.01
+0.02
+0.03
+0.04
+Range Z[m]
+Probability
+Z =
+bf
+d
+True mean=45
+Estimated mean=51.02
+(Bias 13%)
+Fig. 2. Statistical bias in stereo triangulation (Parameters:?=0.3, d=1,
+bf=45).
+1043
+use a distant point as a reference direction since it is less
+uncertaininlocationbuthasnon-biasedGaussiandistribution
+in direction. The translation is estimated with a near point
+which is accurately triangulated in 3D space.
+III. RELATIVE POSE ESTIMATION
+The mathematical formulation of the relative pose solver
+is described in this section. The solution mentioned here uses
+only two point correspondences. The key technique is esti-
+mating two rotation angles using an approximated reference
+direction derived from a distant point correspondence, and
+three translation parameters and the rest one rotation angle
+from a near point correspondence.
+A. Notations
+Let F
+(á)
+denote a three dimensional coordinate frame. The
+relation between the frames F
+s
+and F
+d
+is expressed by
+two elements {
+d
+R
+s
+,t
+d
+s
+}, where
+d
+R
+s
+?R
+3?3
+is the rotation
+matrix which rotates vectors expressed in F
+s
+to F
+d
+, and
+t
+d
+s
+? R
+3?1
+is the vector in F
+s
+to the origin of F
+d
+. A 3D
+point in F
+s
+can be transformed to F
+d
+by
+X
+d
+=
+d
+R
+s
+(X
+s
+?t
+d
+s
+)+N(z) (3)
+whereX
+(á)
+?R
+3?1
+is the vector specifying a point in F
+(á)
+andN(z)?R
+3?1
+is the distance-dependent noise vector.
+Four coordinate frames F
+L
+,F
+R
+,F
+L
+?,F
+R
+? are deÞned for
+the left and right camera frames at time t and t+1. The
+originofthecameraframesare settotheopticalcenters. The
+relationsoftheseframesaredescribedbytheknownextrinsic
+parameters {
+R
+R
+L
+,t
+R
+L
+} = {
+R
+?
+R
+L
+?,t
+R
+?
+L
+?} and the unknown
+relative pose {
+L
+?
+R
+L
+,t
+L
+?
+L
+}. See Fig.3 for the relation of
+frames.
+B. Recovering Two Angles from a Distant Correspondence
+Consider unit vectors to a distant point d
+L
+and d
+R
+as
+shown in Fig.4. Since these two vectors are not guaranteed
+to cross, compute the midpoint of two rays given by
+?
+M
+d
+M
+=
+?
+L
+d
+L
++t
+R
+L
++?
+R
+L
+R
+R
+d
+R
+2
+(4)
+where ?
+(á)
+denotes the length of each ray. The normalization
+of the vector gives the unit vectord
+M
+. Two vectorsd
+M
+and
+d
+M
+? should be aligned in the ideal case.
+For realizing efÞcient computation, let us deÞne the in-
+termediate frame F
+Z
+as in Fig.5. F
+Z
+has the same origin
+with F
+L
+, and its z-axis is aligned with d
+M
+in F
+L
+. The
+Fig. 3. Coordinate frames
+Fig. 4. Distant point correspondence
+transformation between two frames are described only with
+rotation and given by
+X
+Z
+=R
+?
+(?)X
+L
+(5)
+where
+R
+?
+(?)= 1+[?]
+?
+sin?+(1?cos?)[?]
+2
+?
+(6)
+? = e
+z
+?d
+M
+(7)
+? = arccos(e
+z
+ád
+M
+) (8)
+which is derived from RodriguesÕ formula. Here, 1 denotes
+the identity matrix and e
+z
+denotes the unit vector aligned
+with z-axis.
+The frame F
+Z
+? can also be introduced for the frame F
+L
+?.
+If the point is sufÞciently far, d
+M
+? ? d
+M
+and thus the z-
+axes of F
+Z
+and F
+Z
+? are approximately aligned. The rotation
+matrix between two poses can then be expressed as
+L
+?
+R
+L
+=
+L
+?
+R
+Z
+?
+Z
+?
+R
+Z
+Z
+R
+L
+(9)
+?R
+?
+?(?
+?
+)
+?
+R
+ez
+(?)R
+?
+(?) (10)
+where ? is the rotation angle for solving the rotational
+ambiguity around z-axis.
+C. Recovering One Angle and Three Translation Parameters
+from a Near Correspondence
+Next, the remaining parameters are solved by a near point
+correspondence. In (3), the triangulation uncertainty N(z)
+can be negligible where the point is close to the camera.
+Thus, the translation is computed as
+t
+L
+?
+L
+?X
+L
+?
+L
+?
+R
+?
+L
+X
+L
+? . (11)
+From (10) and (11), the translation vector between two
+intermediate frames is derived as
+t
+Z
+?
+Z
+?X
+Z
+?R
+ez
+(?)
+?
+X
+Z
+? , (12)
+Fig. 5. Transformation to intermediate frame
+1044
+Fig. 6. Directional error imposed by using a point at Þnite distance
+which is three equations with four unknown parameters.
+Notice that the vectors are transformed to the intermediate
+frames. By introducing the epipolar constraint as
+÷ m
+?
+Z
+[t
+Z
+?
+Z
+]
+?
+R
+ez
+(?)
+?
+÷ m
+Z
+? =0 (13)
+all unknown parameters can be recovered by solving poly-
+nomial systems. Note that (12) and (13) are incompatible
+in the ideal case (i.e., without any noise), although it does
+not cause big problems in most real world cases. See the
+numerical accuracy in the simulation.
+Supposing X
+Z
+=
+'
+xy z
+(
+and m
+Z
+=
+'
+uv 1
+(
+,
+substitution with (12) and (13) results in the following
+polynomials:
+a
+2
+c+a
+1
+s+a
+0
+=0 (14)
+c
+2
++s
+2
+?1=0 (15)
+where c = cos? and s=sin?, and the coefÞcients
+a
+2
+= uy
+?
+?vx
+?
+?v
+?
+x+u
+?
+y?(uv
+?
+?vu
+?
+)(z
+?
+?z) (16)
+a
+1
+= ux
+?
++vy
+?
+?u
+?
+x?v
+?
+y?(uu
+?
++vv
+?
+)(z
+?
+?z) (17)
+a
+0
+= vx?uy +v
+?
+x
+?
+?u
+?
+y
+?
+(18)
+Now,solveforcandsusing(14)and(15).Thesequadratic
+equations gives at most two roots for c and s that cannot be
+neglected. Finally, the two set of c and s yield two solutions
+for ?, which means all unknowns are solved. The relative
+pose {
+L
+?
+R
+L
+,t
+L
+?
+L
+} can be recovered using (10) and (11).
+D. Extension to Over-determined Case
+The method can be extended to the over-determined case,
+where more than two point correspondences can be obtained,
+by returning least squares solution.
+In the step of orientation estimation, two corresponding
+common directions disambiguates the parameter ?, and thus
+uniquely determines the orientation. In the case of more than
+two correspondences, the solution can be obtained by the
+classic least squares Þtting [11].
+The least squares solution for the translation parameters is
+givenby replacingX in (11) with mean vector
+ø
+X =
+)
+i
+X
+i
+.
+It will be shown in the experiments that the stability and
+accuracy are improved by adding extra points.
+E. Thresholds
+In the proposed algorithm, there are two distances to be
+concerned: the thresholds for distant and near. The simple
+model of orientation error is depicted in Fig.6. The two
+reference vectors are ideally parallel. However, if the point is
+at Þnite distance, the vectors form an acute-angled triangle.
+The orientation error ?
+?
+can be expressed by the theorem of
+cosines:
+?
+?
+= arccos
+%
+?
+2
+M
++?
+2
+M
+???
+2
+2?
+M
+?
+M
+?
+&
+(19)
+? arccos
+%
+1?
+?
+2
+2?
+2
+M
+&
+(20)
+where ? = |t| and ?
+M
+? ?
+M
+?. Hence, the threshold for
+distant points can be determined in function of the motion
+size and affordable error:
+?
+dist
+³
+ø ?
+*
+2(1?cos
+ø
+?
+?
+)
+(21)
+On the other hand, the threshold for near points is given
+by several tangled factors: the location uncertainty, the
+directional error in (20), and the triangulation bias derived
+from (2). Under the assumption ofz>>b, the location
+uncertainty is formulated as
+?
+z
+=
+?
+d
+z
+2
+bf
+. (22)
+According to [18], the bias can be computed by the second-
+order Taylor series expansion as
+?
+z
+=
+%
+?
+d
+bf
+&
+2
+z
+3
+. (23)
+The theorem of cosines gives the bound to determine the
+threshold as
+?
+near
+*
+p
+4
+?
+4
+near
++p
+2
+q?
+2
+near
++q +
+Ã
+2
+p
+?
+2
+near
+²
+ø
+?
+t
+(24)
+where p = ?
+d
+/bf and q = 2(1? cos?
+?
+). The proper
+threshold ?
+near
+should be selected so as to satisfy (24).
+IV. SIMULATION STUDY
+The proposed two-point algorithm is studied using syn-
+thetic data. The numerical accuracy and stability are statis-
+tically evaluated in comparison with three-point methods.
+A. Setup
+In the simulation, reference points in the 3D space are
+randomly generated within a visible range of cuboid. Con-
+sidering the properties of camera projection and feature point
+extraction, the distribution of points is clearly the function
+of distance. A heavy-tailed distribution is assumed in this
+simulation through observation of real outdoor data. The
+points are then projected into 1024? 768 (XGA) image
+planes using the camera pose and camera parameters. Some
+oftheprojectedpointsareeliminatedwiththenon-maximum
+suppression. The image points are perturbed by pixel noise,
+modeled by zero-mean Gaussian distribution with the stan-
+dard deviation ?
+p
+which is speciÞed in the experiments. One
+hundred points are generated for each camera pose.
+The camera poses are synthetically generated assuming
+general outdoor vehicles. The translation of the camera
+system is speciÞed by unit vectors for forward and sideways
+motion. The orientation of the camera system is randomly
+1045
+generated within reasonable bounds. The focal length is set
+to 900 and the principal point to the center of the image.
+The baseline of the stereo camera is set to 0.85.
+B. Distance vs Estimation Accuracy
+Firstly, the impact of distance against estimation accuracy
+is studied. The orientation estimation is evaluated by the
+smallest rotation angle of relative rotation between the true
+and estimate orientation. The translation estimation is evalu-
+ated by the euclidean distance between the true and estimate
+position.
+The distant points at inÞnity, i.e., vanishing points, are not
+alwaysavailableinnaturalscenes.Theimpactofusingpoints
+at Þnite distance is shown in Fig.7. The error decreases
+exponentially within the bound given by (21). Therefore,
+the rotation error can be suppressed given a certain level
+of estimation accuracy.
+On the other hand, the near points should be close to the
+camera to suppress the growing triangulation uncertainty.
+The translation error with respect to the distance of near
+points is shown in Fig.7. This simulation uses a Þxed distant
+point locating at 100m distance (=7.65pixel). The error for
+most data points increases linearly, while the upper bound is
+given by the exponential function. It is important to choose
+sufÞciently near points for better accuracy.
+In the later experiments, the thresholds are set to 10 to
+40m for near points and >100m for distant points as is
+otherwise stated.
+C. Numerical Stability
+The proposed algorithm can be adopted for overdeter-
+mined cases. The number of points greater than two can
+exhibit higher stability in numeric accuracy. Fig.8 shows the
+numerical stability of the method with respect to the number
+of near point correspondences for four different noise levels.
+The error metric is the Frobenius norm of the estimated and
+true pose matrices over 10
+5
+trials.
+The straightforward result suggests using more points
+resultsinbetternumericalaccuracy.However,thesolverwith
+onlyonenearpointshowsrelativelygoodperformanceinthe
+presence of noise.
+D. Comparison with Three-point Methods
+The proposed method is compared with the classic 3D-
+to-3D least squares estimation [11] and a recent P3P solver
+0 50 100 150 200 250
+0
+2
+4
+6
+8
+10
+Distance Far Point [m]
+Rotation Error
+(2 angles) [deg]
+ 
+ 
+Data
+UpperBound
+0 50 100 150
+0
+20
+40
+60
+80
+Distance Near Point [m]
+Translation Error
+[m]
+ 
+ 
+Data
+UpperBound
+Fig. 7. Estimation error w.r.t.point distance. Left: Rotation error using
+points at Þnite distance. Right: Translation error using a near point and a
+distant point at 100m. The pixel noise level is set to ?p=1.0.
+10
+?10
+10
+?5
+10
+0
+0
+500
+1000
+Pose Error ?=0.0
+Count
+ 
+ 
+1np
+2np
+3np
+10
+?10
+10
+?5
+10
+0
+0
+500
+1000
+Pose Error ?=1.0
+Count
+ 
+ 
+1np
+2np
+3np
+10
+?10
+10
+?5
+10
+0
+0
+500
+1000
+Pose Error ?=2.0
+Count
+ 
+ 
+1np
+2np
+3np
+10
+?10
+10
+?5
+10
+0
+0
+500
+1000
+Pose Error ?=3.0
+Count
+ 
+ 
+1np
+2np
+3np
+Fig. 8. Distribution of pose error w.r.t. the number of near points at varying
+pixel noise levels. The error metric is the Frobenius norm of pose matrices
+over 10
+5
+trials.
+0 1 2 3
+0
+0.2
+0.4
+0.6
+0.8
+1
+Noise level [pixel]
+Rotation Error [deg]
+ 
+ 
+Proposed 2P
+Arun 4P
+Kneip P3P
+(a) Rotation error (forward)
+0 1 2 3
+0
+0.2
+0.4
+0.6
+0.8
+1
+Noise level [pixel]
+Translation Error [m]
+ 
+ 
+Proposed 2P
+Arun 4P
+Kneip P3P
+(b) Translation Error (forward)
+0 1 2 3
+0
+0.2
+0.4
+0.6
+0.8
+1
+Noise level [pixel]
+Rotation Error [deg]
+ 
+ 
+Proposed 2P
+Arun 4P
+Kneip P3P
+(c) Rotation error (sideways)
+0 1 2 3
+0
+0.2
+0.4
+0.6
+0.8
+1
+Noise level [pixel]
+Translation Error [m]
+ 
+ 
+Proposed 2P
+Arun 4P
+Kneip P3P
+(d) Translation error (sideways)
+Fig. 9. Method comparison for forward and sideways motion at varying
+pixel noise levels. (Arun: 3D-to-3D least squares method [11] using four
+points. Kneip: 3D-to-2D P3P method [10] using three points.)
+[10]. Due to the instability of the 3D-to-3D estimation, it
+uses four points instead of three.
+The rotation and translation errors for forward and side-
+ways motion are shown in Fig.9. Each plot represents the
+medians over 1000 trials for each noise level. The reason to
+use the median is that the fraction of good estimates is more
+important in the RANSAC framework.
+Due to the approximation of directional correspondences,
+the consistent error can be observed in both of the mo-
+tions. However, it is clearly seen that the proposed method
+performs stably against the increasing levels of pixel noise
+compared to the other methods. SpeciÞcally, the proposed
+method outperforms other methods in translation estimation,
+while it requires less point correspondences.
+The reason that the proposed method performs better
+against pixel noise is that it avoids triangulation uncertainty
+of distant points. While other methods can also avoid this
+1046
+Fig. 10. Typical camera views in a volcanic Þeld
+TABLE II
+EXPERIMENTAL RESULT
+Time RMS Error
+Arun [11] 0.18ms 1.061m (3.16%)
+Gao [9] 1.32ms 2.757m (8.23%)
+Proposed 0.12ms 1.357m (4.05%)
+by Þltering points by distance, it may lead excessively small
+number of feature points in untextured environments, e.g.,
+sandy terrain.
+V. EXPERIMENTS
+The proposed two-point algorithm is evaluated with the
+real dataset taken at a volcanic Þeld. A stereo camera rig,
+whichprovides 1024?768grayscaleimagepairs,ismounted
+on a four-wheeled vehicle robot. Sample images are shown
+in Fig.10.
+The algorithm is compared with [11] and [9], all of which
+are implemented in C++. The trajectories are estimated in
+Fig.11 along a 40m drive on a circular path. The motion
+is estimated within the RANSAC framework. The two-
+point algorithm successfully recovers a circular path while it
+contains small ßuctuation in yaw direction. The ßuctuation
+is derived from the approximation using points at Þnite
+distance. Even so, this formulation recovers trajectory with
+sufÞcientlysmallRMSerrorandtime(TableII).Theremain-
+ing error can be eliminated with the optimization procedure
+such as Bundle Adjustment.
+VI. CONCLUSIONS
+This paper proposes an efÞcient method to solve the rela-
+tive pose problem using only two corresponding 3D points.
+It gives up to two solutions using one reference direction
+from a distant point correspondence and one near point
+correspondence. The experiments using synthetic data show
+higherstabilityagainstimagepixelnoise,whichmaybeabig
+problem in real world systems. Furthermore, the algorithm
+successfully recovers the path from a real video sequence
+by an outdoor vehicle. This high-speed relative pose solver
+is suitable for a hypotheses generator of RANSAC systems,
+which are widely used in robotic localization applications.
+REFERENCES
+[1] M. A. Fischler and R. C. Bolles, ÒRandom sample consensus: a
+paradigm for model Þtting with applications to image analysis and
+automated cartography,Ó Communications of the ACM, vol. 24, no. 6,
+pp. 381Ð395, 1981.
+[2] D. Scaramuzza, ÒPerformance evaluation of 1-point-RANSAC visual
+odometry,Ó Journal of Field Robotics, vol. 28, no. 5, pp. 792Ð811,
+2011.
+?10 ?8 ?6 ?4 ?2 0 2 4
+?4
+?2
+0
+2
+4
+6
+X [m]
+Y [m]
+ 
+ 
+Proposed
+Arun
+Gao
+GPS
+Fig. 11. Estimated trajectories (Arun: 3D-to-3D least squares method [11]
+using four points. Gao: 3D-to-2D P3P method [9] using three points.)
+[3] D. Nist« er, ÒAn efÞcient solution to the Þve-point relative pose prob-
+lem,Ó IEEE Transactions on Pattern Analysis and Machine Intelli-
+gence, vol. 26, no. 6, pp. 756Ð770, 2004.
+[4] H. Stew« enius, C. Engels, and D. Nist« er, ÒRecent developments on
+direct relative orientation,Ó ISPRS Journal of Photogrammetry and
+Remote Sensing, vol. 60, no. 4, pp. 284Ð294, 2006.
+[5] O. Naroditsky, X. S. Zhou, J. Gallier, S. I. Roumeliotis, and K. Dani-
+ilidis, ÒTwo efÞcient solutions for visual odometry using directional
+correspondence.Ó IEEE Transactions on Pattern Analysis and Machine
+Intelligence, vol. 34, no. 4, pp. 818Ð824, 2012.
+[6] F. Fraundorfer, P. Tanskanen, and M. Pollefeys, ÒA minimal case
+solution to the calibrated relative pose problem for the case of two
+known orientation angles,Ó in European Conference on Computer
+Vision, 2010, pp. 269Ð282.
+[7] M.Kalantari,A.Hashemi,F.Jung,andJ.-P.Guedon,ÒANewSolution
+to the Relative Orientation Problem Using Only 3 Points and the
+Vertical Direction,Ó Journal of Mathematical Imaging and Vision,
+vol. 39, no. 3, pp. 259Ð268, 2011.
+[8] L. Kneip, M. Chli, and R. Siegwart, ÒRobust Real-Time Visual
+Odometry with a Single Camera and an IMU,Ó in British Machine
+Vision Conference, 2011, pp. 16.1Ð16.11.
+[9] X. Gao, X. Hou, J. Tang, and H. Cheng, ÒComplete solution classiÞ-
+cation for the perspective-three-point problem,Ó IEEE Transactions on
+PatternAnalysisandMachineIntelligence,vol.25,no.8,pp.930Ð943,
+2003.
+[10] L. Kneip, D. Scaramuzza, and R. Siegwart, ÒA novel parametrization
+of the perspective-three-point problem for a direct computation of
+absolute camera position and orientation,Ó in IEEE Conference on
+Computer Vision and Pattern Recognition, 2011, pp. 2969Ð2976.
+[11] K. Arun, T. Huang, and S. Blostein, ÒLeast-Squares Fitting of Two
+3-D Point Sets,Ó IEEE Transactions on Pattern Analysis and Machine
+Intelligence, vol. 9, no. 5, pp. 698Ð700, 1987.
+[12] S. Umeyama, ÒLeast-squares estimation of transformation parameters
+between two point patterns,Ó IEEE Transactions on Pattern Analysis
+and Machine Intelligence, vol. 13, no. 4, pp. 376Ð380, 1991.
+[13] Y. Cheng, M. W. Maimone, and L. H. Matthies, ÒVisual odometry
+on the Mars Exploration Rovers,Ó IEEE Robotics & Automation
+Magazine, pp. 54Ð62, 2006.
+[14] K.NiandF.Dellaert,ÒStereoTrackingandThree-Point/One-PointAl-
+gorithms - A Robust Approach in Visual Odometry,Ó in International
+Conference on Image Processing, 2006, pp. 2777Ð2780.
+[15] M. Kaess, K. Ni, and F. Dellaert, ÒFlow separation for fast and robust
+stereo odometry,Ó in IEEE International Conference on Robotics and
+Automation, 2009, pp. 3539Ð3544.
+[16] R. I. Hartley and P. Sturm, ÒTriangulation,Ó Computer Vision and
+Image Understanding, vol. 68, no. 2, pp. 146Ð157, 1997.
+[17] D. Nist« er, O. Naroditsky, and J. Bergen, ÒVisual odometry for ground
+vehicle applications,Ó Journal of Field Robotics, vol. 23, no. 1, pp.
+3Ð20, 2006.
+[18] G. Sibley, L. Matthies, and G. Sukhatme, ÒBias reduction and Þlter
+convergence for long range stereo,Ó Robotics Research, 2007.
+[19] L.MatthiesandS.Shafer,ÒErrormodelinginstereonavigation,ÓIEEE
+Journal on Robotics and Automation, vol. 3, no. 3, pp. 239Ð248, 1987.
+[20] A. J. Lambert, ÒVisual odometry aided by a sun sensor and an
+inclinometer,Ó Master Thesis, University of Toronto, 2011.
+1047

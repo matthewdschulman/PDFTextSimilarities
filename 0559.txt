@@ -1,0 +1,990 @@
+Curiosity Based Exploration for Learning Terrain Models
+Yogesh Girdhar, David Whitney, and Gregory Dudek
+Abstract— We present a robotic exploration technique in
+which the goal is to learn a visual model that can be used
+to distinguish between different terrains and other visual com-
+ponents in an unknown environment. We use ROST, a realtime
+online spatiotemporal topic modeling framework to model these
+terrains using the observations made by the robot, and then use
+an information theoretic path planning technique to deﬁne the
+exploration path. We conduct experiments with aerial view and
+underwater datasets with millions of observations and varying
+path lengths, and ﬁnd that paths that are biased towards
+locations with high topic perplexity produce better terrain
+models with high discriminative power.
+I. INTRODUCTION
+This work presents an exploration technique using a
+realtime online topic modeling framework, which models
+the cause of the observations made by a robot with a latent
+variable (called topic) that is representative of different kinds
+of terrains or other visual constructs in the scene, and then
+uses simple gradient ascent in semantic information space to
+ﬁnd an exploratory path through the world.
+We deﬁne curiosity as the unsupervised act of moving
+through the world in order to seek novel observations with
+high information content. We posit that observation data
+collected from such paths that seek novelty and maximize
+information gain would result in better terrain models. Com-
+puting information gain on low level sensor data, which
+in the case of vision corresponds to pixel colors or edges,
+might not work in many scenarios where we are interested in
+modeling more abstract visual constructs. Hence, we propose
+the use of a topic modeling framework, which have been
+shown to produce semantic labeling of text [1] and images
+[2], including satellite maps [3].
+In this work we use a realtime online spatiotemporal topic
+modeling technique called ROST [4] that is suitable for
+use in the robotic exploration context. ROST allows for
+topic modeling of streaming data (observations made by
+a robot over time), while taking into account the spatial
+and temporal distribution of the data. Moreover, ROST can
+process the incoming observation data in real time, while
+providing a very close approximation to traditional batch
+implementations [4].
+At each time step, we add the observations from the
+current location to the topic model, and compute the per-
+plexity of the observations from the neighboring locations.
+This perplexity score, along with a repulsive potential from
+previously visited locations, is then used to bias the proba-
+bility of next step in the path. Since observations with high
+The authors are at: Center for Intelligent Machines,
+McGill University, Montreal, QC H3A0E9, Canada
+fyogesh,dwhitney,dudekg@cim.mcgill.ca
+Fig. 1. Example of an exploratory path (top) produced by the proposed
+technique on a satellite map. The path begins in Blue, and ends in Red.
+Output of this exploration is a terrain model, which when applied to the ob-
+servation from entire map produces terrain label for every location(bottom).
+Different colors represent different terrains.
+perplexity have high information gain, we claim that this
+approach would results in faster learning of the terrain topic
+model, which would imply shorter exploration paths for the
+same accuracy in predicting terrain labels for unseen regions.
+The main contribution of this work is in demonstrating
+that ﬁrst, robots can use online topic modeling to learn a
+visual terrain model with no supervision, and second, that
+even with the use of a simple greedy exploration approach,
+we can achieve improved results.
+II. PRIOR WORK
+Autonomous exploration is a well studied ﬁeld in robotics,
+and there are different variants of the exploration problem.
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 578
+A. Exploration for Navigation
+Navigating a robot through free space is a fundamental
+problem in robotics. Yamauchi [5] deﬁned exploration as
+the “act of moving through an unknown environment while
+building a map that can be used for subsequent navigation”.
+Yamauchi’s proposed solution involved moving the robot
+towards the frontier regions in the map, which were described
+as the boundary between known free space and the uncharted
+territories.
+If we have an inverse sensor model of the range sensor,
+it is possible to compute locations in the world which
+would maximize the utility of the sensor reading in resolving
+obstacle position and shape. Grabowski [6] proposed such
+an exploration strategy where the goal is to maximize the
+understanding of obstacles rather than the exposure to free
+space. In this approach, the robot identiﬁes the location
+with next best view in space where a sonar sensor reading
+would have the greatest utility in improving the quality of
+representation of an obstacle.
+If there is no external localizer available to the robot, then
+it is desirable that robot explores, maps and localizes in the
+environment at the same time [7][8][9][10]. Bourgault [2]
+and Stachniss [11] have proposed an exploration strategy
+which moves the robot to maximize the map information
+gain, while minimizing the robot’s pose uncertainty.
+B. Exploration for Monitoring Spatiotemporal Phenomenon
+In underwater and aerial environments, obstacle avoidance
+is typically not the primary concern, but many different kinds
+of high level exploration tasks still exist.
+Binney [12] has described an exploration technique to op-
+timize the monitoring spatiotemporal phenomena by taking
+advantage of the submodularity of the objective function.
+Bender [13] has proposed a Gaussian process based explo-
+ration technique for benthic environments, which uses an
+experiment speciﬁc utility function. Das et al. [14] have pre-
+sented techniques to autonomously observe oceanographic
+features in the open ocean. Hollinger et al. [15] have studied
+the problem of autonomously studying underwater ship hulls
+by maximizing the accuracy of sonar data stream. Smith
+et al. [16] have looked at computing robot trajectories
+which maximize information gained, while minimizing the
+deviation from the planned path.
+Thompson et al. [17] have experimented with autonomous
+planetary surveys using a rover and an orbiter providing non-
+local information. They used a gaussian process to model
+sensor data uncertainty, using the data from the orbiter and
+the rover, and then planned a path maximizing information
+gain.
+III. TERRAIN MODELING
+A. Topic Models
+Topic modeling methods were originally developed for
+text analysis. Probabilistic Latent Semantic Analysis (PLSA)
+proposed by Hoffman [18], models the probability of observ-
+ing a word w
+i
+in a given document M as:
+P(w
+i
+=vjM) =
+K
+X
+k=1
+P(w
+i
+=vjz
+i
+=k)P(z
+i
+=kjM): (1)
+where v takes a value between 1:::V , the vocabulary size,
+and z
+i
+is the hidden variable or topic label for w
+i
+. Topic
+label z
+i
+takes a value between 1:::K, where K is a much
+smaller than V . The central idea here is the introduction
+of the latent variable z, which models the underlying topic,
+or the context responsible for generating the word. Latent
+Dirichlet Allocations [1] improve upon PLSA by placing
+Dirichlet priors on P(wjz) and P(zjM), which bias these
+distributions to be sparse, preventing overﬁtting.
+Spatial LDA (SLDA) [19] is an extension to LDA allowing
+it to be useful on data with spatial information, such as
+images. SLDA models the documents as spatial regions in an
+image, and models them as another random variable. A word
+is likely to be assigned to a document if its location is close
+to other words in the document, and has the same topic label
+as other words in the document. This approach is however
+not suitable for realtime implementation because computing
+the topic distribution of the spatial context (document) of
+the word requires O(W
+M
+) time, where W
+M
+is the number
+of words in an image. ROST on the other hand models
+the spatial and temporal context of the words using only
+the spatiotemporal information and not the topic label. As
+a result, it is able to compute the topic distribution of the
+spatiotemporal context of a word in O(1) time through the
+use of a cellular decomposition of the spatiotemporal data.
+For modeling visual data observed by the robot, instead
+of text words, we use two different kinds of visual words:
+Oriented BRIEF (ORB) [20] based visual words [21] that
+describing local visual features, and texton words [22] in
+Lab color space to describe texture properties of a region.
+Moreover, instead of documents, we compute the prior topic
+distribution for a given word by taking into account the topic
+distribution in its spatial neighborhood. We posit that the
+resulting topic labels modeled by the system then represent
+high level visual patterns that are representative of different
+terrain types in the world.
+B. Generative Process for Observations
+We assume the following generative process for obser-
+vations produced by the spatial region being explored. The
+world is decomposed intoC cells, in which each cellc2C is
+connected to its neighboring cellsG(c)  C. In this paper,
+we only experiment with grid decomposition of the world,
+where each cell is connected to its four nearest neighbors.
+However, the general ideas presented here are applicable
+to any topological decomposition of space-time. Note that
+neighborhoods of neighboring cells are overlapping, which
+is essential to model continuity in space-time.
+Each cell is modeled by a mixture of at most K different
+kinds of terrain topics, each of which when observed by a
+robot can result in one of the V different types of visual
+words. Let 
+G(c)
+be the distribution of topics in and around
+the cell. Intuitively, we would like visual words with the
+579
+n 1 2 5
+0.001
+0.01
+0.1
+1.0
+Fig. 2. Dirichlet Priors for 2D Maps. The table shows random maps
+sampled from the generative process used to characterize spatial terrain
+information in 2D worlds. Columns show variation in neighborhood size
+, and rows show variation in Dirichlet concentration parameter . We see
+that changes in control cluster sizes, whereas changes in control mixing
+of adjacent clusters.
+same topic to cluster together in space. This phenomena can
+be modeled by placing a Dirichlet prior on 
+G(c)
+.
+Figure 2 shows random samples from the generative pro-
+cess used to describe these terrain topic distribution in a 2D
+map, with 16 topics. As we vary the Dirichlet concentration
+parameter and the neighborhood size, we see that smaller
+ results in fewer topics in the neighborhood of any given
+cell, and smaller  results is clusters with less mixing.
+Similar to LDA, we describe each topic k by a word
+distribution 
+k
+over V different types of visual words, and
+
+k
+is assumed to have a Dirichlet prior with parameter .
+This Dirichlet prior puts a constraint on the complexity of the
+terrain being described by this topic. Topic model  =f
+k
+g
+is a KV matrix that encodes the global topic description
+information shared by all cells.
+The overall generative process for a word w in cell c is
+thus described as following:
+1) Word distribution for each topic k:
+
+k
+ Dirichlet()
+2) Topic distribution for words in neighborhood of c :
+
+G(c)
+ Dirichlet()
+3) Topic label for w:
+z Discrete(
+G(c)
+)
+4) Word label:
+w Discrete(
+z
+)
+where x Y implies that random variable x is sampled
+from distribution Y .
+C. Gibbs Sampling
+At each time step, we add the observed words to their
+corresponding cells, and use a Gibbs sampler to update and
+reﬁne the topic labels until the next time step.
+Let P =fp
+1
+;:::;p
+T
+g; p
+i
+2C, be the set of cells in the
+current path at time T .
+The posterior topic distribution for a wordw
+i
+in cellp
+t
+=c
+is given by:
+P(z
+i
+=kjw
+i
+=v;p
+t
+=c)/
+n
+v
+k; i
++
+P
+V
+v=1
+(n
+v
+k; i
++)
+
+n
+k
+G(c); i
++
+P
+K
+k=1
+(n
+k
+G(c); i
++)
+;
+(2)
+where n
+v
+k; i
+counts the number of words of type v in
+topic k, excluding the current word w
+i
+, and n
+k
+G(c); i
+is the
+number of words with topic label k in neighborhood of cell
+c, excluding the current word w
+i
+, and ; are the Dirichlet
+hyper-parameters. Note that for a neighborhood size of 0,
+G(c) =c, and the above Gibbs sampler is equivalent to the
+LDA Gibbs sampler proposed by Grifﬁths et al. [23].
+Several different strategies exist in the literature to do
+online reﬁnement of the topic label assignment on streaming
+data [24]. However, in this work, we are interested in the
+more constrained realtime version of the problem. After each
+new observation, we only have a constant amount of time
+to do topic label reﬁnement, hence any online reﬁnement
+algorithm that has computational complexity which increases
+with new data is not applicable.
+We then must use a reﬁnement strategy which only par-
+tially updates the topic labels after each time step. To ensure
+that the topic labels from the last observation converge before
+the next observation arrives, at each time step, for each
+reﬁne iteration, we reﬁne the last observation with probability
+, or a previous observation with probability (1 ). We
+pick the previous observation using age proportional random
+sampling. We found  = 0:5 to work well in most cases,
+however on faster machines,  could be set to a lower
+value, which would encourage better globally optimal topic
+labels. Algorithm 1 summarizes the proposed realtime topic
+reﬁnement strategy.
+IV. CURIOSITY BASED EXPLORATION
+At time t, let the robot be in cell p
+t
+=c, and let G(c) =
+fg
+i
+g be the set of cells in its neighborhood. We would like
+to compute a weight value for each g
+i
+, such that
+P(p
+t+1
+=g
+i
+)/ weight(g
+i
+) (3)
+In this work we consider a four different weight functions.
+580
+while true do
+while no new observation do
+a Bernoulli()
+if a == 0 then
+(*select last observation*)
+t T
+else
+(*pick an observation with probability
+proportional to its timestamp*)
+t q;P(q =j)/j; 1jT
+end
+foreach word w
+i
+in p
+t
+do
+(*update the topic label for word in the
+observation *)
+z
+i
+P(z
+i
+=kjw
+i
+=v;p
+t
+=c)
+end
+end
+T T + 1
+Add new observed words to their corresponding
+cells.
+end
+Algorithm 1: Keep topic labels up-to-date as new obser-
+vations arrive.
+1) Random Walk - Each cell in the neighborhood is
+equally likely to be the next step:
+weight(g
+i
+) = 1: (4)
+2) Stochastic Coverage - Use a potential function to repel
+previously visited locations:
+weight(g
+i
+) =
+1
+P
+j
+n
+j
+=d
+2
+(p
+t
+;c
+j
+)
+: (5)
+where n
+j
+is the number of times we have visited cell
+c
+j
+, and d(p
+t
+;c
+j
+) is the Euclidean distance between
+these two cells.
+3) Word Perplexity - Bias the next step towards cells
+which have high word perplexity:
+weight(g
+i
+) =
+WordPerplexity(g
+i
+)
+P
+j
+n
+j
+=d
+2
+(p
+t
+;g
+j
+)
+: (6)
+4) Topic Perplexity - Bias the next step towards cells
+which have high topic perplexity:
+weight(g
+i
+) =
+TopicPerplexity(g
+i
+)
+P
+j
+n
+j
+=d
+2
+(p
+t
+;g
+j
+)
+: (7)
+We compute the word perplexity of the words observed in
+g
+i
+by taking the inverse geometric mean of the probability
+of observing the words in the cell, given the current topic
+model and the topic distribution of the path thus far.
+WordPerplexity(g
+i
+) =
+exp
+ 
+ 
+P
+W
+i
+log
+P
+k
+P(w
+i
+=vjk)P(kjP )
+W
+!
+;
+(8)
+whereW is the number of words observed ing
+i
+,P(w
+i
+=
+vjk) is the probability of observing word v if its topic label
+Dataset width(px) height(px) n.cells n.words
+Montreal1 1024 1024 4096 3,239,631
+Montreal2 1024 1024 4096 1,675,171
+SouthBellairs 2500 2500 6241 1,664,749
+TABLE I
+DATASET SPECIFICATIONS
+is k, andP(kjP ) is the probability of seeing topic label k
+in the path executed by the robot thus far.
+To compute topic perplexity of the words observed in g
+i
+,
+we ﬁrst compute topic labelsz
+i
+for these observed words by
+sampling them from the distribution in Eq. 2, without adding
+these words to the topic model. These temporary topic labels
+are then used to compute the perplexity ofg
+i
+in topic space.
+TopicPerplexity(g
+i
+) =
+exp
+ 
+ 
+P
+W
+i
+logP(z
+i
+=kjP )
+W
+!
+:
+(9)
+V. EXPERIMENTS
+To validate our hypothesis that biasing exploration towards
+high perplexity cells will result in a better terrain topic model
+of the environment, we conducted the following experiment.
+We considered three different maps, two aerial view, and
+one underwater coral reef map, the speciﬁcations of which
+is given in Table I. We extracted ORB words describing local
+features, and texton words describing texture at every pixel
+(every second pixel for the SouthBellairs underwater dataset).
+ORB words had a dictionary size of 5000, and texton words
+had a dictionary size of 1000. The dictionary was computed
+by extracting features from every 30th frame of a completely
+unrelated movie
+1
+.
+Each of these maps were decomposed into square cells
+of width 16 (32 for SouthBellairs). Now for each weight
+function, we computed exploration paths of varying length,
+with 20 different random restart locations for each case. Each
+time step was ﬁxed at 200 milliseconds to allow the topic
+model to converge. We limited the path length to 320 steps,
+which is about 5
+p
+jCj.
+Each of these exploration runs returned a topic model 
+p
+,
+which we then used to compute topic labels for each pixel
+in the map in batch mode. Let Z
+p
+be these topic labels. We
+compared this topic labeling with two other labelings: human
+labeled ground-truthZ
+h
+, and labels computed in batch mode
+Z
+b
+, with random access to the entire map. An example of
+this labeling for each of the three dataset is shown in Fig.
+3 (j,k,l). Here different colors correspond to different topic
+labels, and hence regions with the same color, within a map,
+correspond to similar terrains. Note that there is no relation
+between colors of topic labels between different maps.
+We then computed the mutual information betweenZ
+p
+and
+Z
+h
+, Z
+p
+and Z
+b
+, and plotted the results as a function of path
+length, as shown in Fig. 4.
+1
+We used the documentary movie Baraka(1992) for extracting visual
+feature, because of its rich visuals from many different contexts
+581
+(a) (b) (c)
+(d) (e) (f)
+(g) (h) (i)
+(j) (k) (l)
+Fig. 3. (a)-(c) Input image used to generate observation data, (d)-(f) Groundtruth labeling. (g)-(i) An example path and the topic labels computed online.
+Parts of the path with higher density of points is indicative of multiple passes through that cell. (j)-(l) Terrain labeling of the map using the topic model
+computed on the path. Similar colors in the ground truth and topic labels correspond to similar terrains, however the colors between differnt ground truth
+and topic label maps are not related.
+582
+Batch-Boxwhiskers Batch-Mean GroundTruth-Boxwhiskers GroundTruth-Mean
+Montreal1
+40 80 160 320
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+Path Length
+Mutual Information
+Ê
+Ê
+Ê
+Ê
+‡
+‡
+‡
+‡
+Ï
+Ï
+Ï
+Ï
+Ú
+Ú
+Ú
+Ú
+100 200 300 150
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+Path Length
+Mutual Information
+40 80 160 320
+0.00
+0.05
+0.10
+0.15
+0.20
+0.25
+0.30
+Path Length
+Mutual Information
+Ê
+Ê
+Ê
+Ê
+‡
+‡
+‡
+‡
+Ï
+Ï
+Ï
+Ï
+Ú
+Ú
+Ú
+Ú
+100 200 300 150
+0.05
+0.10
+0.15
+0.20
+0.25
+Path Length
+Mutual Information
+SouthBellairs
+40 80 160 320
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+1.2
+1.4
+Path Length
+Mutual Information
+Ê
+Ê
+Ê
+Ê
+‡
+‡
+‡
+‡
+Ï
+Ï
+Ï
+Ï
+Ú
+Ú
+Ú
+Ú
+100 200 300 150
+0.4
+0.6
+0.8
+1.0
+Path Length
+Mutual Information
+40 80 160 320
+0.05
+0.10
+0.15
+0.20
+Path Length
+Mutual Information
+Ê
+Ê
+Ê
+Ê
+‡
+‡
+‡
+‡
+Ï
+Ï
+Ï
+Ï
+Ú
+Ú
+Ú
+Ú
+100 200 300 150
+0.10
+0.12
+0.14
+0.16
+Path Length
+Mutual Information
+Montreal2
+40 80 160 320
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+Path Length
+Mutual Information
+Ê
+Ê
+Ê
+Ê
+‡
+‡
+‡
+‡
+Ï
+Ï
+Ï
+Ï
+Ú
+Ú
+Ú
+Ú
+100 200 300 150
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+Path Length
+Mutual Information
+40 80 160 320
+0.0
+0.1
+0.2
+0.3
+0.4
+0.5
+Path Length
+Mutual Information
+Ê
+Ê
+Ê
+Ê
+‡
+‡
+‡
+‡
+Ï
+Ï Ï
+Ï
+Ú
+Ú
+Ú Ú
+100 200 300 150
+0.05
+0.10
+0.15
+0.20
+0.25
+0.30
+Path Length
+Mutual Information
+StochasticCoverage
+TopicPerplexity
+WordPerplexity
+Random Walk
+Fig. 4. Evaluation of the proposed exploration techniques. The plots show mutual information between the maps labeling produced using the topic model
+computed online during the exploration, with maps labeled by a human, and maps labeled by batch processing of the data.
+ROST was run with Dirichlet hyper-parameters  = 0:01
+and  = 0:1, and number of topics K = 5.
+VI. RESULTS AND DISCUSSION
+The results are both encouraging and surprising. As shown
+in Fig. 4, we see that topic perplexity based exploration
+(shown with blue squares) performs consistently better than
+all other weight functions, when compared against ground
+truth, or the batch results.
+For paths of length 80, which is close to the width of
+the maps, we see that mutual information between topic
+perplexity based exploration and ground truth is 1.51, 1.20
+and 1.05 times higher respectively for the three datasets,
+compared to the next best performing technique.
+For long path lengths (320 steps or more), stochastic cov-
+erage (shown with orange circles) based exploration matches
+the mean performance of topic perplexity exploration. This
+is expected because the maps are bounded, and as the path
+length increases, the stochastic coverage algorithm is able
+to stumble across different terrains, even without a guiding
+function.
+For short path lengths (40 steps or less), we do not see any
+statistical difference between the performance of different
+techniques.
+Marked with purple triangles, we see the results of explo-
+ration using Brownian random motion. Although this strategy
+has a probabilistic guarantee of asymptotically complete cov-
+erage, but it does so at a lower rate than stochastic coverage
+exploration startegy. A random walk in two dimensions is
+expected to travel a distance of
+p
+n from start, wheren is the
+number of steps. Hence it is highly likely that it never visits
+different terrains. The resulting topic models from these paths
+are hence unable to resolve between these unseen terrains.
+The performance of word perplexity exploration (shown
+with green diamonds) is surprisingly poor in most cases. We
+hypothesize that this poor performance is due to the algo-
+rithm getting pulled towards locations with terrain described
+by a more complex word distribution. This will cause the
+algorithm to stay in these complex terrains, and not explore
+as much as the other algorithms. In comparison, the topic
+perplexity exploration is not affected by the complexity of
+the distribution describing the topic, and is only attracted to
+topic rarity.
+VII. CONCLUSION
+We have presented a novel exploration technique that aims
+to learn a terrain model for the world by ﬁnding paths
+with high information content. The use of a realtime online
+topic modeling framework allows us to model incoming
+streams of low level observation data via the use of a latent
+variable representing the terrain. Given this online model,
+we measure the utility of the potential next steps in the path.
+We validated the effectiveness of the proposed exploration
+583
+technique over candidate techniques by computing mutual
+information between the terrain maps generated using the
+learned terrain model and hand labeled ground truth, on three
+different datasets.
+In our ongoing future work, we are in the process of im-
+plementing the proposed approach on Aqua[25] underwater
+robot and aerial vehicles. We expect the approach to be useful
+in studying delicate ecosystems by adaptively focusing data
+collection on regions with higher information content, which
+in physical world might relate to surprising phenomena.
+ACKNOWLEDGMENT
+This work was supported by the Natural Sciences and
+Engineering Research Council (NSERC) through the NSERC
+Canadian Field Robotics Network (NCFRN).
+REFERENCES
+[1] D. M. Blei, A. Y . Ng, and M. I. Jordan, “Latent dirichlet allocation,”
+The Journal of Machine Learning Research, vol. 3, pp. 993–1022,
+2003.
+[2] F. Bourgault, A. A. Makarenko, S. B. Williams, B. Grocholsky,
+and H. F. Durrant-Whyte, “Information based adaptive robotic
+exploration,” in Intelligent Robots and Systems, 2002. IEEE/RSJ In-
+ternational Conference on, 2002, pp. 540—-545. [Online]. Available:
+http://ieeexplore.ieee.org/xpls/abs all.jsp?arnumber=1041446
+[3] M. Lienou, H. Maitre, and M. Datcu, “Semantic Annotation of
+Satellite Images Using Latent Dirichlet Allocation,” Geoscience
+and Remote Sensing Letters, IEEE, vol. 7, no. 1, pp. 28–32,
+2010. [Online]. Available: http://ieeexplore.ieee.org/xpls/abs all.jsp?
+arnumber=5184874
+[4] Y . Girdhar, P. Giguere, and G. Dudek, “Autonomous adaptive
+exploration using realtime online spatiotemporal topic modeling,”
+The International Journal of Robotics Research, Nov. 2013. [Online].
+Available: http://ijr.sagepub.com/cgi/doi/10.1177/0278364913507325
+[5] B. Yamauchi, “A frontier-based approach for autonomous
+exploration,” in Proceedings 1997 IEEE International Symposium
+on Computational Intelligence in Robotics and Automation
+CIRA’97. ’Towards New Computational Principles for Robotics
+and Automation’. IEEE Comput. Soc. Press, 1997, pp. 146–
+151. [Online]. Available: http://ieeexplore.ieee.org/xpl/freeabs all.jsp?
+arnumber=613851
+[6] R. Grabowski, P. Khosla, and H. Choset, “Autonomous exploration
+via regions of interest,” in Proceedings 2003 IEEE/RSJ International
+Conference on Intelligent Robots and Systems (IROS 2003),
+vol. 2. IEEE, 2003, pp. 1691–1696. [Online]. Available: http:
+//ieeexplore.ieee.org/lpdocs/epic03/wrapper.htm?arnumber=1248887
+[7] R. Sim, G. Dudek, and N. Roy, “Online control policy optimization
+for minimizing map uncertainty during exploration,” in Robotics and
+Automation, 2004. Proceedings. ICRA’04. 2004 IEEE International
+Conference on, vol. 2. IEEE, 2004, pp. 1758–1763.
+[8] R. Sim and J. J. Little, “Autonomous vision-based robotic exploration
+and mapping using hybrid maps and particle ﬁlters,” Image and Vision
+Computing, vol. 27, no. 1, pp. 167–177, 2009.
+[9] T. Kollar and N. Roy, “Efﬁcient Optimization of Information-Theoretic
+Exploration in SLAM.” in AAAI, vol. 8, 2008, pp. 1369–1375.
+[10] F. Amigoni and V . Caglioti, “An information-based exploration strat-
+egy for environment mapping with mobile robots,” Robotics and
+Autonomous Systems, vol. 58, no. 5, pp. 684–699, 2010.
+[11] C. Stachniss, G. Grisetti, and W. Burgard, “Information Gain-
+based Exploration Using Rao-Blackwellized Particle Filters.”
+Robotics: Science and Systems, vol. 2, 2005. [Online].
+Available: http://pdf.aminer.org/000/685/672/information gain based
+exploration using rao blackwellized particle ﬁlters.pdf
+[12] J. Binney, A. Krause, and G. S. Sukhatme, “Optimizing waypoints for
+monitoring spatiotemporal phenomena,” The International Journal of
+Robotics Research, vol. 32, no. 8, pp. 873–888, Jul. 2013. [Online].
+Available: http://ijr.sagepub.com/cgi/doi/10.1177/0278364913488427
+[13] A. Bender, S. B. Williams, and O. Pizarro, “Autonomous Exploration
+of Large-Scale Benthic Environments,” in IEEE International Confer-
+ence on Robotics and Automation (ICRA), 2013, pp. 390–396.
+[14] J. Das, F. Py, T. Maughan, T. O’Reilly, M. Messie, J. Ryan,
+G. S. Sukhatme, and K. Rajan, “Coordinated sampling of dynamic
+oceanographic features with underwater vehicles and drifters,” The
+International Journal of Robotics Research, vol. 31, no. 5, pp.
+626–646, Apr. 2012. [Online]. Available: http://ijr.sagepub.com/cgi/
+doi/10.1177/0278364912440736
+[15] G. a. Hollinger, B. Englot, F. S. Hover, U. Mitra, and G. S.
+Sukhatme, “Active planning for underwater inspection and the
+beneﬁt of adaptivity,” The International Journal of Robotics
+Research, vol. 32, no. 1, pp. 3–18, Nov. 2012. [Online]. Available:
+http://ijr.sagepub.com/cgi/doi/10.1177/0278364912467485
+[16] R. N. Smith, M. Schwager, S. L. Smith, B. H. Jones, D. Rus, and G. S.
+Sukhatme, “Persistent Ocean Monitoring with Underwater Gliders:
+Adapting Sampling Resolution,” Journal of Field Robotics, vol. 28,
+no. 5, pp. 714–741, 2011.
+[17] D. R. Thompson, D. S. Wettergreen, and F. J. C. Peralta,
+“Autonomous science during large-scale robotic survey,” Journal
+of Field Robotics, vol. 28, no. 4, pp. 542–564, Jul. 2011.
+[Online]. Available: http://onlinelibrary.wiley.com/doi/10.1002/rob.
+20391/fullhttp://doi.wiley.com/10.1002/rob.20391
+[18] T. Hofmann, “Unsupervised Learning by Probabilistic Latent Semantic
+Analysis,” Machine Learning, vol. 42, no. 1, pp. 177–196, 2001.
+[19] X. Wang and E. Grimson, “Spatial Latent Dirichlet Allocation,”
+in Advances in Neural Information Processing Systems, vol. 20,
+2007, pp. 1577–1584. [Online]. Available: http://people.csail.mit.edu/
+xgwang/papers/STLDA.pdf
+[20] E. Rublee, V . Rabaud, K. Konolige, and G. Bradski, “ORB : an efﬁ-
+cient alternative to SIFT or SURF,” in IEEE International Conference
+on Computer Vision (ICCV), 2011, pp. 2564—-2571.
+[21] J. Sivic and A. Zisserman, “Video Google: Efﬁcient Visual Search of
+Videos,” in Toward Category-Level Object Recognition, ser. Lecture
+Notes in Computer Science, J. Ponce, M. Hebert, C. Schmid, and
+A. Zisserman, Eds. Springer Berlin / Heidelberg, 2006, vol. 4170, pp.
+127–144. [Online]. Available: http://dx.doi.org/10.1007/11957959 7
+[22] M. Varma and A. Zisserman, “A Statistical Approach to Texture
+Classiﬁcation from Single Images,” International Journal of Computer
+Vision, vol. 62, no. 1/2, pp. 61–81, Apr. 2005. [Online]. Available:
+http://link.springer.com/10.1023/B:VISI.0000046589.39864.ee
+[23] T. L. Grifﬁths and M. Steyvers, “Finding scientiﬁc topics,” Proceed-
+ings of the National Academy of Sciences of the United States of
+America, vol. 101, no. Suppl 1, pp. 5228–5235, 2004.
+[24] K. R. Canini, L. Shi, and T. L. Grifﬁths, “Online Inference of Topics
+with Latent Dirichlet Allocation,” Proceedings of the International
+Conference on Artiﬁcial Intelligence and Statistics, vol. 5, no. 1999,
+pp. 65–72, 2009.
+[25] G. Dudek and J.-P. Lobos, “Towards Navigation Summaries:
+Automated Production of a Synopsis of a Robot Trajectories,”
+2009 Canadian Conference on Computer and Robot Vision, pp.
+93–100, May 2009. [Online]. Available: http://ieeexplore.ieee.org/
+lpdocs/epic03/wrapper.htm?arnumber=5230533
+584

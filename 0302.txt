@@ -1,0 +1,1069 @@
+Dynamically Feasible Task-Constrained Motion Planning
+with Moving Obstacles
+Massimo Cefalo, Giuseppe Oriolo
+Abstract—We present a randomized algorithm for planning
+dynamicallyfeasiblemotionsofrobotssubjecttogeometrictask
+constraints in the presence of moving obstacles. The proposed
+method builds upon our previous results on task-constrained
+motion planning with moving obstacles. With respect to our
+previous formulation, the inclusion of bounds on the available
+actuator torques leads to the adoption of an acceleration-level
+motion generation scheme. Therefore, the new planner must
+operate in a task-constrained state space extended with time.
+The generated trajectories are collision-free, obey velocity and
+torque bounds, and satisfy the task constraint with arbitrary
+accuracy. The effectiveness of the proposed approach is shown
+by results on various scenarios involving a 7-dof manipulator.
+I. INTRODUCTION
+Basic motion planning considers a robot moving among ﬁxed
+obstacles. The extension to the case of moving obstacles
+is relevant in practice, due to the increasing shift from
+industrial to service applications of robotics. However, even
+for known obstacle motions, this extension proves to be very
+challenging, starting already with the most elementary case
+of a single-body robot with unbounded velocity [1].
+Early attempts to solve motion planning problems with
+moving obstacles were based on extensions of combinatorial
+or sampling-based methods, see, e.g., [2], [3], [4]. A common
+device was the extension of the planning space from the
+simple conﬁguration (or state) space to a conﬁguration-
+time (state-time) space. Another approach was based on the
+so-called velocity obstacle technique, see [5], [6], [7]. All
+these methods, however, cannot be used in high-dimensional
+conﬁguration spaces due to their computational complexity.
+A fallout of considering moving obstacles is that the
+available actuator torques must be taken into account. In fact,
+even in kinematically feasible plan, some collision avoidance
+maneuvers may prove beyond the dynamic possibilities of the
+robot. Neither does slowing down the plan work in general,
+because in the presence of moving obstacles collisions may
+appear. In [8], where the expression kinodynamic planning
+was coined, the planning problem was solved for a point
+mass robot subject to acceleration constraints. The sampling-
+based algorithm proposed in [9] for the case of moving
+obstacles considers both kinematic and dynamic constraints.
+None of the above methods allows task constraints, which
+however arise in many practical applications. For instance,
+The authors are with the Dipartimento di Ingegneria Informatica, Au-
+tomatica e Gestionale, Sapienza Universit` a di Roma, Via Ariosto 25,
+00185 Rome, Italy. E-mail: fcefalo,oriolog@diag.uniroma1.it. This work
+is supported by the EU FP7 ICT-287513 SAPHARI project.
+manipulators used in industrial processes are frequently re-
+quired to follow speciﬁc end-effector paths or trajectories for
+welding, drawing, cutting or assembling. Another example
+is a service robot that must maintain visual tracking of a
+target, or carry an object (such as a tray) with a certain
+orientation. Task-Constrained Motion Planning (henceforth
+TCMP) has therefore been recently acknowledged as an
+important extension of the basic motion planning problem.
+Since task constraints restrict the set of feasible conﬁgura-
+tions to a lower-dimensional submanifold, random sampling
+of the conﬁguration space is not effective. To solve this
+problem, a common approach is to use a standard random-
+ized search algorithm (such as PRM [10] or RRT [11]) and
+then project the samples on the admissible submanifold;
+projection can be realized via randomized gradient descent,
+tangent space sampling or retraction, e.g., see [12]. A method
+in this class that allows torque limits is [13]. A different ap-
+proach was presented in [14], where we introduced a control-
+based method for TCMP which avoids altogether the need
+for projection. The proposed algorithm guarantees continued
+satisfaction of the task constraints with a precision that can
+be arbitrarily improved without increase in complexity.
+These previous works on TCMP deal only with ﬁxed
+obstacles. In [15] we proposed an extension of our control-
+based planner to the case of moving obstacles. The method
+is purely kinematic and may handle velocity lints. Here, we
+develop that approach to account for the presence of bounds
+on the available actuator torques. Although this may seem as
+a relatively direct extension, it actually requires some radical
+changes. In particular, in the proposed approach the motion
+generation scheme is translated to the acceleration level, and
+the robot dynamic model is used within the planning phase.
+Accordingly, the search space is obtained by adding the time
+dimension to the state (as opposed to conﬁguration) space.
+Throughout the paper, the obstacles are assumed to move
+along trajectories that are known in advance. While this is
+certainly a simpliﬁcation, there are plenty of applications
+in which such an assumption is acceptable, ranging from
+industrial workcells to digital animation. In any case, our
+investigation may be seen as a ﬁrst step towards the solution
+of more challenging problems characterized by a reduced
+level of predictability of the obstacle motion.
+The paper is organized as follows. In Section II we
+formulate the problem. Section III discusses the geometric
+structure of the search space. The proposed algorithm is
+described in Section IV, and validated in Section V. Possible
+future developments are hinted at in the concluding section.
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 2045
+II. PROBLEM FORMULATION
+The robot moves in a workspaceW (a subset of IR
+3
+) that
+contains moving obstacles. Denote byq the n
+q
+-dimensional
+conﬁguration vector and byC the conﬁguration space. Let
+R(q)  W be the volume occupied by the robot at
+conﬁguration q, andO(t)W be the obstacle region at
+timet. Throughout the paper, it is assumed thatO(t)W is
+known for allt; i.e., the obstacle motion is fully predictable.
+The robot dynamics is expressed in the Lagrangian form:
+B(q) q +n(q; _ q) =;
+where B(q) is the inertia matrix, n(q; _ q) collects velocity
+and gravitational terms, and  are the generalized forces
+(simply called torques below) provided by the actuators. We
+assume that the robot is subject to joint range limits, to
+maximum boundsj _ qj q
+M
+on the generalized velocities,
+and to maximum bounds jj  
+M
+on the torques. A
+trajectory inC satisfying all these bounds is called feasible.
+The robot task is described by an n
+y
+-dimensional vector
+y, which takes values in the task spaceY. The value ofy is
+related to that ofq by a forward kinematic mapy =f(q),
+whose differential version is _ y =J(q) _ q, withJ = @f=@q
+the n
+y
+n
+q
+task Jacobian. We assume n
+q
+> n
+y
+, i.e., the
+robot is redundant with respect to tasky.
+Suppose now that a desired path y
+d
+(s)2Y is assigned
+to the task coordinates, where s 2 [s
+i
+;s
+f
+] is a path
+parameter. The considered problem (Dynamically Feasible
+Task-Constrained Motion Planning with Moving Obstacles,
+or DF TCMP MO) consists in ﬁnding a feasible trajectory
+in conﬁguration space such that the assigned task path
+is executed and collisions with obstacles are avoided. In
+our approach, such trajectory is actually the result of two
+components, i.e., a conﬁguration space path and a time
+history along the path. In formal terms:
+In formal terms, a solution to the DF TCMP MO problem
+consists of a path q(s)2C, s2 [s
+i
+;s
+f
+], and a continuous
+time history s(t) : [0;T ]7! [s
+i
+;s
+f
+], such that :
+1. s(0) =s
+i
+and s(T ) =s
+f
+;
+% task starts aty
+d
+(s
+i
+) and ends aty
+d
+(s
+f
+);
+2. for all t2 [0;T ], it isy(t) =f(q(s(t))) =y
+d
+(s(t));
+% task is always on the assigned path
+3. q(0) =q
+i
+, _ q(0) = _ q
+i
+, _ q(T ) = _ q
+f
+% assigned initial conﬁguration is matched
+% assigned initial and ﬁnal velocities are matched
+4. for all t2 [0;T ], it isj _ q(t)j _ q
+M
+andj(t)j
+M
+;
+% velocity and torque bounds are satisﬁed
+5. for all t2 [0;T ], it isR(q(s(t)))\O(t) =;;
+% collisions with moving obstacles are avoided
+The generalized velocities and accelerations associated to
+a particular solution, which are both involved in condition 4,
+are easily computed as
+_ q(t) =q
+0
+(s) _ s(t)
+and
+ q(t) =q
+00
+(s) _ s
+2
+(t) +q
+0
+(s) s(t); (1)
+having used the notation ()
+0
+=d()=ds.
+t
+s
+k
+s
+k+1
+L(s )
+k L(     ) s
+k+1
+task path
+t
+2
+(q, q, t  )
+1
+(q, q, t  )
+Fig. 1. S
+task
+is a foliation: each leafL(s) is the set of points(q; _ q;t)2S
+such that q and _ q are consistent with the task path constraint for a certain
+value of s, while t may assume any value.
+Note that while the initial conﬁguration q
+i
+is given or
+preliminarily computed by inverse kinematics, the ﬁnal con-
+ﬁguration q(s
+f
+) =q(T ) and the duration T of the motion
+are not assigned, and will be generated by the planner.
+We emphasize that the time history s(t) is not required to
+be monotonic: over time, s may increase or decrease, giving
+respectively a forward motion or a backward motion along
+the assigned task path. This possibility can be exploited to
+avoid moving obstacles while complying with the task.
+III. SEARCH SPACE
+Deﬁne the robot state space asX =CT
+q
+C, where T
+q
+C
+denotes the tangent space ofC atq. Due to the presence of
+moving obstacles, a robot state (q; _ q) may be in collision at
+a certain time instant and free at another. Therefore, we must
+include time into the picture. This leads to deﬁning the state-
+time space (STS for brevity) asS =X[0;1), the occupied
+STS asS
+occ
+=f(q; _ q;t)2S :R(q(t))\O(t)6=;g, and
+the free STS asS
+free
+=SnS
+occ
+.
+Similarly to moving obstacles, also the task path constraint
+reduces the admissible region of STS. In particular, deﬁne
+the task-constrained STS as the set of points of the state-time
+space whose state (generalized coordinates and velocities) is
+consistent with the assigned task path. In formula:
+S
+task
+= f(q; _ q;t)2S :f(q) =y
+d
+(s);J(q) _ q =y
+0
+d
+(s) _ s;
+for some s2 [s
+i
+;s
+f
+]; _ s2 ( 1;1)g:
+InS
+task
+, t is immaterial; i.e., for any point inS
+task
+, there
+exist inﬁnite other points with the same state and different
+time instant t2 [0;1). From a geometric viewpoint,S
+task
+is a manifold with boundary which foliates:
+S
+task
+=[
+s2[si;s
+f
+]
+L(s)
+with each leafL(s) associated to a value of s2 [s
+i
+;s
+f
+]:
+L(s) =f(q; _ q;t)2S :f(q) =y
+d
+(s);J(q) _ q =y
+0
+d
+(s) _ sg:
+Figure 1 illustrates the structure ofS
+task
+.
+The existence of a solution to the planning problem
+depends on the interplay between the task path and the
+2046
+obstacles’ motion, and in particular on the connectedness
+of the search spaceS
+task
+\S
+free
+. However, even a candidate
+solution contained in such space may still turn out to be
+unfeasible when velocity and torque limits are considered.
+IV. PROPOSED PLANNER
+Our planner builds a tree in the search spaceS
+task
+\S
+free
+.
+The search is biased by N samples of the assigned task
+path, denoted byy
+k
+=y
+d
+(s
+k
+), corresponding to a predeﬁned
+sequencefs
+1
+=s
+i
+;:::;s
+k
+;:::;s
+N
+=s
+f
+g of values ofs. Let
+L
+k
+=L(s
+k
+) be the leaf associated toy
+k
+(see Figure 1).
+The root of the tree is the triplet (q
+i
+; _ q
+i
+; 0), consisting
+of the initial robot state and time instant. This will be the
+only vertex onL
+1
+. All the other vertexes lie on someL
+k
+,
+k = 2;:::;N; in principle, there will be several vertexes
+on each leaf. Each vertex is a triplet (q; _ q;t) representing a
+robot state and the time at which it was attained. An edge is a
+feasible subtrajectory joining two vertexes lying on adjacent
+leaves, produced by a suitable motion generation scheme.
+A. Motion Generation
+At the core of our proposed planner is a motion generation
+scheme that, starting from a generic vertex of the tree located
+on a certain leaf, produces a feasible subtrajectory that is
+contained inS
+task
+\S
+free
+and lands on either the next or the
+previous leaf. The state and time instant at which landing
+occurs generate a new vertex. Due to the presence of torque
+bounds, such scheme must operate at the acceleration level.
+Consider a generic vertex V = (q
+V
+; _ q
+V
+;t
+V
+) on leafL
+k
+.
+All vertexes onL
+k
+share the same value of s =s
+k
+, whereas
+the value of _ s = _ s
+V
+is different for each V , as a byproduct
+of the subtrajectory that generated that vertex. In view of (1),
+any  q may be generated by choosing separately q
+00
+(the
+geometric acceleration) and  s (the rate of change of _ s).
+In particular, we choose  s as
+ s =  s
+V
+; (2)
+with  s
+V
+a constant value chosen within a predeﬁned range
+[ c
+max
+;c
+max
+]. As a consequence, the proﬁle ofs(t) fromt
+V
+on will be quadratic. In particular, depending on the value of
+_ s
+V
+and the chosen  s
+V
+, we may obtain essentially four kinds
+of motions of s over t, and correspondingly of y(s) over
+y
+d
+(s): (1) a monotonic forward motion from s
+k
+to s
+k+1
+(2) a motion which moves initially backward from s
+k
+but
+then reverses its direction before s
+k 1
+and proceeds forward
+to reach s
+k+1
+(3) a monotonic backward motion from s
+k
+to s
+k 1
+(4) a motion which moves initially forward from
+s
+k
+but then reverses its direction before s
+k+1
+and proceeds
+backwards to reach s
+k 1
+.
+The geometric acceleration is chosen as
+q
+00
+V
+(s) =J
+y
+(y
+00
+d
+ J
+0
+q
+0
++K
+p
+e
+y
++K
+d
+e
+0
+y
+)+(I J
+y
+J)a
+V
+(3)
+whereJ
+y
+is the pseudoinverse of the task Jacobian,K
+p
+and
+K
+d
+are positive deﬁnite gain matrices,e
+y
+=y
+d
+ y is the
+task error, I J
+y
+J is the orthogonal projection matrix in
+the null space ofJ, anda
+V
+is an arbitrary n
+q
+-dimensional
+vector which produces internal motions without effect on the
+s
+k
+s
+k+1
+s
+k-1
+t
+s
+L 
+k
+L 
+k-1
+L 
+k+1
+faster
+slower
+same geometric motion
+partially different
+geometric motion
+same states
+different instants
+V
+Fig. 2. An illustration of motion generation within our planner. In this
+particular case, it is assumed that _ s
+k
+> 0. The two monotonic forward
+motions (blue) correspond to the same choice of a
+V
+(hence, of q
+00
+V
+)
+but different positive values of  s
+V
+. The non-monotonic motion (red) is
+generated by the same a
+V
+but now with a negative  s
+V
+. The geometric
+motion is the same of the forward case until the direction is reversed.
+task. Note thate
+0
+y
+=y
+0
+d
+ Jq
+0
+, where the + ( ) sign must
+be used in correspondence of increasing (decreasing) values
+of s, i.e., during a forward (backward) motion phase.
+Motion is then generated by integrating (2–3) from vertex
+V . In doing so, velocity and torque limits are continuously
+veriﬁed, together with avoidance of moving obstacles. If
+either of these is violated, motion generation is prematurely
+terminated. Otherwise, integration stops when the subtrajec-
+tory lands on an adjacent leaf toL
+k
+, be itL
+k+1
+orL
+k 1
+.
+Figure 2 illustrates some typical situations encountered
+when applying motion generation from a vertex onL
+k
+.
+B. Tree Expansion
+The planning tree is expanded using an RRT-like mechanism.
+At each iteration, a random task sample y
+rand
+= y
+k
+,
+with k 2 f1;:::;Ng, is extracted from the predeﬁned
+sequence, and an inverse solution q
+rand
+= f
+ 1
+(y
+rand
+) is
+computed. A random task-consistent generalized velocity
+_ q
+rand
+2 [  _ q
+M
+; _ q
+M
+] is chosen and attached toq
+rand
+. Finally,
+a time instant t
+rand
+is sampled from [0;t
+max
+], with t
+max
+the
+largest time instant associated to a vertex in the current tree.
+By construction, (q
+rand
+; _ q
+rand
+;t
+rand
+) is a sample ofS
+task
+.
+At this point, the tree is searched for the closest vertex to
+(q
+rand
+; _ q
+rand
+;t
+rand
+), according to a suitably deﬁned metric
+1
+Denote this vertex by (q
+near
+; _ q
+near
+;t
+near
+), and say it is
+located on a generic leafL
+k
+.
+Then, the tree is expanded from V = (q
+near
+; _ q
+near
+;t
+near
+)
+using the previous motion generation scheme with a ran-
+domly generated acceleration vector a
+V
+. As explained be-
+fore, as soon as one of the two adjacent leavesL
+k+1
+orL
+k 1
+is reached by a feasible, collision-free subtrajectory, a new
+vertex is placed at the landing point. As a byproduct of the
+integration procedure, we obtain the time instant associated
+to the new vertex. Whenever a subtrajectory is discarded due
+to constraint violation, a new tree expansion takes place.
+1
+In particular, a weighted sum is used to characterize distances in the
+state-time spaceS.
+2047
+t =0. 7 t =0. 9 t =1. 6 t =0 t =2. 7 t =2. 3
+Fig. 3. Dynamically feasible planning experiment on the ﬁrst scenario: sample frames from the solution.
+t =0. 6 t =1 t =1. 4 t =0 t =1. 9 t =1. 7
+Fig. 4. Purely kinematic planning experiment on the ﬁrst scenario: sample frames from the solution.
+V. PLANNING EXPERIMENTS
+Our planner was implemented on a 64-bit Intel Core i5-2320
+CPU running at 3 GHz using Kite, a software development
+kit for motion planning currently marketed by Siemens. In
+this section, we report results for three scenarios involving
+a 3-dimensional tip positioning task for a KUKA LWR-IV
+7-DOF manipulator; the degree of redundancy for this kind
+of task is 3 (the wrist roll is frozen as it does not contribute
+to tip positioning). Joint velocity and torque limits for this
+robot were taken from the ofﬁcial documentation. The paper
+video attachment shows clips of the generated motions.
+We used the same settings in all scenarios. In particular, a
+sequence of N = 11 equispaced samples are taken from the
+desired task path (including the endpoints, which correspond
+to s = 0 and s = 1). In the motion generation scheme,
+we use K
+p
+= K
+d
+= 400I, and the null space term is
+constrained to be in norm at most 10% of the range space
+term. Integration is performed using Euler method with step
+size s = 0:002. The only variable parameter was the upper
+bound forj sj; in particular, we used c
+max
+= 0:1 in the ﬁrst
+scenario, c
+max
+= 1 in the second and c
+max
+= 2 in the third.
+In the ﬁrst scenario, the manipulator is mounted on a
+table and must move its tip along a planar sinusoidal path,
+while avoiding collisions with the table and with spherical
+obstacles that move back and forth along line segments.
+Figure 3 shows a dynamically feasible solution computed
+by the proposed planner (DF TCMP MO). For comparison,
+Figure 4 shows the solution computed by the purely kine-
+matic planner TCMP MO proposed in [15], which does not
+consider torque bounds. Not surprisingly, the dynamically
+feasible plan is slightly slower, as shown by Figure 5,
+time
+DF_TCMP_MO
+time
+TCMP_MO
+s
+s
+0 0.5 1 1.5 2 2.5 3
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+0.9
+1
+0 0.5 1 1.5 2
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+0.9
+1
+Fig. 5. Planning experiments on the ﬁrst scenario: Time histories.
+?150
+?100
+?50
+0
+50
+100
+150
+time
+torque (Nm) ?100
+?80
+?60
+?40
+?20
+0
+20
+40
+60
+80
+100
+time
+torque (Nm)
+time
+torque (Nm)
+time
+torque (Nm)
+DF_TCMP_MO TCMP_MO
+0 0.5 1 1.5 2 2.5
+ 
+ 
+joint 1
+joint 2
+bounds
+0 0.5 1 1.5 2 2.5
+ 
+ 
+joint 3
+joint 4
+joint 5
+bounds
+0 0.2 0.4 0.6 0.8 1 1.2 1.4 1.6 1.8
+?150
+?100
+?50
+0
+50
+100
+150
+200
+250
+300
+350
+400
+ 
+ 
+joint 1
+joint 2
+bounds
+0
+0 0.2 0.4 0.6 0.8 1 1.2 1.4 1.6 1.8
+?150
+?100
+?50
+0
+50
+100
+150
+ 
+ 
+joint 3
+joint 4
+joint 5
+bounds
+Fig. 6. Planning experiment on the ﬁrst scenario: Required torques.
+which shows the time history along the solutions. However,
+the required torques with DF TCMP MO are always within
+the bounds, whereas the solution computed by TCMP MO
+exceeds the torque limits (see Figure 6).
+2048
+t =3. 9 t =4. 7 t =5 t =0 t =5 . 6 t =5. 2
+Fig. 7. Dynamically feasible planning experiment on the second scenario: sample frames from the solution.
+t =0. 7 t =1. 3 t =1. 8 t =0 t =2 . 3 t =2. 1
+Fig. 8. Purely kinematic planning experiment on the second scenario: sample frames from the solution.
+In the second scenario, the manipulator must move its tip
+along a planar elliptic path while avoiding collisions with
+other two identical manipulators that execute repetitive tasks.
+Figures 7 and 8 respectively show a dynamically feasible
+and a purely kinematic solution found for this scenario.
+The corresponding time histories and torque proﬁles are
+reported in Figures 9 and 10. Once again, the dynamically
+feasible solution is slower but the torque requirements of
+the purely kinematic solution, which includes a very fast
+backward/forward movement, cannot be met.
+In the third scenario, the manipulator must move its tip
+along a circular path while avoiding a ball that goes back
+and forth along the same path. Due to the particular motion
+of the ball, any solution must include a backward/forward
+movement to avoid a collision (see the video attachment). In
+fact, the solution computed by the DF TCMP MO planner
+and shown in Figure 11 contains two motion reversals, as
+conﬁrmed by the associated time history (Figure 12). The
+torque proﬁles are again feasible, see Figure 13.
+Table I collects some details (execution time, number of
+nodes, etc) about the dynamically feasible solutions found for
+the three scenarios by the DF TCMP MO planner. See also
+http://www.diag.uniroma1.it/labrob/research/TCMP_MO.html.
+VI. CONCLUSIONS
+We have presented a randomized algorithm for planning
+dynamically feasible motions of robots subject to geometric
+task constraints in the presence of moving obstacles. The
+proposed method builds upon our previous results on task-
+constrained motion planning with moving obstacles. With
+respect to our previous formulation, the inclusion of bounds
+on the available actuator torques leads to the adoption
+of an acceleration-level motion generation scheme. As a
+consequence, the new planner operates in a task-constrained
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+0.9
+1
+time
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+0.9
+1
+time
+0 1 2 3 4 5 6 0 0.5 1 1.5 2 2.5
+DF_TCMP_MO TCMP_MO
+s
+s
+Fig. 9. Planning experiments on the second scenario: Time histories.
+time
+torque (Nm)
+time
+torque (Nm)
+time
+torque (Nm)
+time
+torque (Nm)
+0 1 2 3 4 5
+?150
+?100
+?50
+0
+50
+100
+150
+ 
+ 
+0 1 2 3 4 5
+?100
+?80
+?60
+?40
+?20
+0
+20
+40
+60
+80
+100
+ 
+ 
+0 0.5 1 1.5 2
+?800
+?600
+?400
+?200
+0
+200
+400
+600
+ 
+ 
+0 0.5 1 1.5 2
+?150
+?100
+?50
+0
+50
+100
+ 
+ 
+DF_TCMP_MO TCMP_MO
+joint 1
+joint 2
+bounds
+joint 1
+joint 2
+bounds
+joint 3
+joint 4
+joint 5
+bounds
+joint 3
+joint 4
+joint 5
+bounds
+Fig. 10. Planning experiment on the second scenario: Required torques.
+state space extended with time. The generated trajectories are
+collision-free, obey velocity and torque bounds, and satisfy
+the task constraint with arbitrary accuracy. The effectiveness
+of the proposed planner has been shown in three scenarios
+of different complexity, all involving a 7-dof manipulator.
+We are currently working to extend the proposed approach
+to the case of underactuated robots. The challenge of un-
+2049
+t =3 . 2 t =3 . 9 t =4. 3 t =2. 8 t =4. 6 t =4. 4
+t =0 . 6 t =0 . 9 t =1. 4 t =0 t =2. 3 t =1. 8
+Fig. 11. Dynamically feasible planning experiment on the third scenario: sample frames from the solution.
+0 1 2 3 4 5
+time
+s
+DF_TCMP_MO
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+0.9
+1
+Fig. 12. Planning experiment on the third scenario: Time history.
+time
+torque (Nm)
+time
+torque (Nm)
+0 0.5 1 1.5 2 2. 5 3 3. 5 4 4. 5
+?100
+?80
+?60
+?40
+?20
+0
+20
+40
+60
+80
+100
+ 
+ 
+0 0.5 1 1. 5 2 2.5 3 3.5 4 4.5
+?150
+?100
+?50
+0
+50
+100
+150
+ 
+ 
+DF_TCMP_MO
+joint 1
+joint 2
+bounds
+joint 3
+joint 4
+joint 5
+bounds
+Fig. 13. Planning experiment on the third scenario: Required torques.
+deractuation, which is naturally present in many advanced
+robotic mechanisms (e.g., robotic hands, humanoids, UA Vs),
+is obviously that arbitrary generalized accelerations cannot
+be produced. Other current work is aimed at relaxing the
+assumption of fully known obstacle motion, by developing an
+on-line version of the proposed planner that uses predictions
+computed on the basis of sensory information.
+REFERENCES
+[1] J. Reif and M. Sharir, “Motion planning in the presence of moving
+obstacles,” J. of the ACM, vol. 41, no. 4, pp. 764–790, 1994.
+TABLE I
+exp exec time vertexes coll checks duration mean task error
+scenario 1 510 s 766 274345 2.71 s 5.8 mm
+scenario 2 417 s 425 100312 5.63 s 6.4 mm
+scenario 3 437 s 985 299497 4.63 s 5.4 mm
+[2] K. Kant and S. W. Zucker, “Toward efﬁcient trajectory planning: The
+path-velocity decomposition,” Int. J. of Robotics Research, vol. 5,
+no. 3, pp. 72–89, 1986.
+[3] M. Erdmann and T. Lozano-Perez, “On multiple moving objects,”
+Algorithmica, vol. 2, no. 4, pp. 477–521, 1987.
+[4] T. Fraichard, “Dynamic trajectory planning with dynamic constraints:
+A ‘state-time space’ approach,” in 1993 IEEE/RSJ Int. Conf. on
+Intelligent Robots and Systems, 1993, pp. 1393–1400.
+[5] P. Fiorini and Z. Shiller, “Time optimal trajectory planning in dynamic
+environments,” in 1996 IEEE Int. Conf. on Robotics and Automation,
+Minneapolis, MN, 1996, pp. 1553–1558.
+[6] ——, “Motion planning in dynamic environments using velocity
+obstacles,” Int. J. of Robotics Research, vol. 17, pp. 760–772, 1998.
+[7] Z. Shiller, F. Large, and S. Sekhavat, “Motion planning in dynamic
+environments: Obstacles moving along arbitrary trajectories,” in 2001
+IEEE Int. Conf. on Robotics and Automation, Seoul, Korea, 2001, pp.
+3716–3721.
+[8] B. Donald, P. Xavier, J. Canny, and J. Reif, “Kinodynamic motion
+planning,” J. of the ACM, vol. 40, no. 5, pp. 1048–1066, 1993.
+[9] D. Hsu, R. Kindel, J. Latombe, and S. Rock, “Randomized kinody-
+namic motion planning with moving obstacles,” Int. J. of Robotics
+Research, vol. 21, no. 3, pp. 233–255, 2002.
+[10] L. Kavraki, P. Svestka, J. C. Latombe, and M. H. Overmars, “Prob-
+abilistic roadmaps for path planning high-dimensional conﬁguration
+spacess,” IEEE Trans. on Robotics and Automation, vol. 12, no. 4, pp.
+566–580, 1996.
+[11] S. LaValle, “Rapidly-exploring random trees: A new tool for path
+planning,” Tech. Rep., Computer Science Dept., Iowa State University,
+1998.
+[12] M. Stilman, “Global manipulation planning in robot joint space with
+task constraints,” IEEE Trans. on Robotics, vol. 26, no. 3, pp. 576–584,
+2010.
+[13] D. Berenson, S. Srinivasa, D. Ferguson, and J. Kuffner, “Manipulation
+planning on constraint manifolds,” in 2009 IEEE Int. Conf. on Robotics
+and Automation, Kobe, Japan, 2009, pp. 625–632.
+[14] G. Oriolo and M. Vendittelli, “A control-based approach to task-
+constrained motion planning,” in 2009 IEEE/RSJ Int. Conf. on In-
+telligent Robots and Systems, St. Louis, MO, 2009, pp. 297–302.
+[15] M. Cefalo, G. Oriolo, and M. Vendittelli, “Task-constrained motion
+planning with moving obstacles,” in 2013 IEEE/RSJ Int. Conf. on
+Intelligent Robots and Systems, Tokyo, Japan, 2013, pp. 5758–5763.
+2050

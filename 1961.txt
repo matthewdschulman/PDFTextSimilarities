@@ -1,0 +1,952 @@
+A Real-Time Inertial Motion Blur Metric: Application to Frame
+Triggering Based Motion Blur Minimization*
+Mehmet Mutlu
+1
+, Afsar Saranli
+2
+and Uluc Saranli
+3
+Abstract— Mobile robots suffer from sensory data corrup-
+tion due to body oscillations and disturbances. In particular,
+information loss on images captured with onboard cameras
+can be very high, and such loss may become irreversible or
+computationally costly to undo. In this paper, we propose a
+novel method to minimize average motion blur captured by
+such mobile visual sensors. To this end, we derive a motion
+blur metric (MMBM) that can be computed in real-time by
+using only inertial sensor measurements and validate it through
+comparisons with optic ﬂow computations. The applicability
+of MMBM is illustrated through a motion blur minimizing
+system implemented on the SensoRHex hexapod robot by
+externally triggering an onboard camera based on MMBM
+values computed in real-time while the robot is walking straight
+on a ﬂat surface. The resulting motion blur is compared to
+motion blur levels obtained with a regular, ﬁxed frame-rate
+image acquisition schedule by both qualitative inspection and
+using a blind blur metric on captured images. MMBM based
+motion blur minimization system not only reduces average
+motion blur, but also avoids frames with extreme motion blur
+before an image gets corrupted by appropriately delaying the
+triggering of frame acquisition.
+I. INTRODUCTION
+All mobile robots, with legged morphologies in partic-
+ular, exhibit unpredictable body oscillations due to their
+own structure and disturbances from their environment. For
+dynamically dextrous legged robots such as RHex platform
+instances [1], these body oscillations result from the robot’s
+own locomotory behaviors and are hence unavoidable.
+These undesirable motion disturbances can degrade the
+performance of sensors mounted on the robot. The perfor-
+mance of spatial optic sensors such as cameras are partic-
+ularly susceptible to ego motion, with angular disturbances
+having particularly signiﬁcant effects on the quality of cap-
+tured frames. The most signiﬁcant distortion for metrological
+images is the motion blur. Even though motion blur itself
+can be used for useful tasks such as computing the motion,
+velocity and orientation of a camera or objects [2], [3], or
+identifying whether an image is manipulated [4], it is usually
+undesirable for applications requiring precise features to be
+extracted from images. It is known that motion blur nega-
+tively affects many vision and image processing algorithms,
+*This work is supported by TUBITAK under the project code 110E120
+1
+Mehmet Mutlu is with the Department of Electrical and Electronics
+Engineering, Middle East Technical University, 06800 Ankara, Turkey
+mehmet.mutlu@ieee.org
+2
+Afsar Saranli is with the Department of Electrical and Electronics
+Engineering, Middle East Technical University, 06800 Ankara, Turkey
+afsars@metu.edu.tr
+3
+Uluc Saranli is with the Computer Engineering Department,
+Middle East Technical University, 06800 Ankara, Turkey
+saranli@ceng.metu.edu.tr
+particularly those requiring feature extraction and tracking
+[5]. In [6], for example, a bipedal robot is occasinally forced
+to stop so that frames without motion blur can be obtained
+and features can be precisely located.
+Fortunately, motion disturbances within certain applica-
+tions may exhibit properties that can be exploited. For exam-
+ple, dynamic legged robots performing stable locomotion on
+ﬂat surfaces exhibit quasi-periodic body oscillations arising
+from limit cycles associated with their behavioral primitives.
+In fact, many land-based mobile robots are likely to exhibit
+such quasi-periodic trajectories in cross-sections of their state
+space such as their body orientation and angular velocities.
+In this paper, our goal is to reduce motion blur from
+images captured by a camera mounted on a dynamic robotic
+base by using a system to compute expected motion blur
+prior to capturing a frame. We use angular velocity mea-
+surements to predict average motion blur, and attempt to
+minimize its corruptive effects thereby increasing the per-
+formance of computer vision algorithms that require feature
+extraction. An important criteria is that such detection and
+measurement pre-processing should be computationally inex-
+pensive to be implemented in real-time with minimal delay.
+Clearly, the exact amount of motion blur on the camera
+image plane depends on the camera motion during the
+exposure period. Even though external object motion also
+contributes to motion blur, our focus in this paper is on
+dominant ego motion that corrupts the entire frame with
+motion blur. Our hypothesis is that the predictability of
+quasi-periodic body oscillations of a legged robot can be
+exploited to avoid exposure periods where excessive motion
+blur is expected to corrupt the image. Even by incorporating
+a simple avoidance strategy on the timings of frame capture,
+motion blur can be reduced on the average and excessive
+motion blur can be avoided. On favorable surfaces where
+body oscillations become more predictable, the beneﬁts can
+be increased by signal prediction approaches.
+The ﬁrst step in applying such a technique for improving
+motion blur performance for a video stream is to have
+a motion blur metric that can be computed in real-time.
+Consequently, a primary contribution of our paper is the
+derivation of an average motion blur metric, which we call
+the Motion based Motion Blur Metric (MMBM), based on
+inertial motion measurements obtained through a gyro.
+The paper is organized as follows: Section II begins by
+presenting relevant literature for our study, followed by Sec-
+tion III where our new motion blur metric based on angular
+velocity measurements, MMBM, is presented. Section IV
+provides the validation of the MMBM, followed by Section
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 671
+V where MMBM is further approximated to satisfy real-
+time considerations. Finally, an experimental application of
+MMBM is presented in Section VI on our the SensoRHex
+robot platform to minimize motion blur during walking. Our
+experimental results are presented in Section VII.
+II. BACKGROUND ON MOTION BLUR
+REDUCTION/REMOVAL
+There are both hardware and software methods to com-
+pensate for motion blur. Hardware methods are widely used
+by camera manufacturers. High end commercial cameras use
+lens or sensor motion techniques for image stabilization.
+Another commonly used hardware solution is mounting
+the camera on top of a stabilization platform. Gimballed
+platforms, Stewart platforms and their variants are com-
+monly used for line-of-sight stabilization [7], [8]. Such
+platforms are complex, costly and often require complex
+control algorithms. Moreover, robust pose estimation is a
+challenging problem for highly dynamic robots due to inertial
+measurement drift [9]. It may be difﬁcult to use Stabilization
+platforms on small scale robotic platforms due to their size,
+weight and effects on robot dynamics. Moving the camera
+can also be used to modify Power Spectral Function to in-
+crease performance of motion deblurring with deconvolution
+[10].
+Software based motion blur removal techniques primarily
+focus on individual frames only after an image is captured
+with motion blur [11]. The downside of single frame software
+methods is that the deconvolution operation is ill-deﬁned
+since some information is permanently lost due to the nature
+of motion blur. Deconvolution techniques are usually com-
+putationally costly as well and may be difﬁcult to implement
+in real-time applications [12].
+Inertial and visual sensors act as competent pairs [13],
+with inertial sensors used to obtain extra information on
+motion. The Point Spread Function (PSF), whose knowledge
+is necessary for deblurring, can be estimated with inertial
+measurements [14] or with a complementary camera [15] and
+deconvolution is applied for deblurring as a better alternative
+to blind deconvolution.
+Camera shutter control is also used in certain applications
+to compensate for motion blur. The simplest solution is
+limiting exposure time, but the image Signal to Noise Ratio
+decreases due to the reduced amount of light integration.
+Special lighting is usually required for this approach to be
+successful. More complex methods also exist. Light integra-
+tion pattern can be manipulated to minimize deconvolution
+noise [16]. Fusion of frames exposed at different durations on
+the same scene can also be used to reduce motion blur [17].
+However, the computational complexity is a considerable
+burden of these approaches especially when they run on low-
+power onboard CPUs of a mobile robot.
+In the present study, we focus on deriving a novel real-
+time metric using three-axis gyroscope measurements to
+predict motion blur that would result from the rotational
+motion of the camera. This metric is then used in a simple
+approach to reduce average motion blur while capturing a
+video sequence.
+III. MOTION BASED MOTION BLUR METRIC (MMBM)
+DERIVATION
+Motion blur caused by rotational camera motion can be
+derived when this motion is known. Exact formulation of
+motion blur requires the integration of light falling upon an
+image pixel over the frame exposure time [18]. Fig. 1 illus-
+trates the timing of two successively captured frames whose
+exposure times can be identiﬁed as t
+e1
+and t
+e2
+. The aim of
+MMBM is to approximate camera rotation based average
+motion blur that will result from exposure during t
+e1
+by
+using inertial measurements collected at the time instantt
+i1
+.
+Deriving the exact motion blur with MMBM is impossible
+since it requires knowledge of future. Unless absolute camera
+motion is controlled or future camera motion can be precisely
+estimated with a motion model, this is impossible. However,
+MMBM can still give reasonable results in many applications
+since computation and trigger delay t
+d1
+and exposure time
+t
+e1
+can be sufﬁciently small that robot dynamics would
+restrict radical changes in rotational velocity. Furthermore,
+many causes of impulsive rotational velocity changes, such
+as leg touchdown instants of a legged robot, can be avoided
+by modeling them as a function of input and robot states and
+predicting their occurrences.
+t
+i1
+t
+t1
+t
+i2
+t
+t2
+t
+e1
+t
+e2
+t
+d1
+t
+d2
+t
+f1
+t
+f2
+t
+o1,2
+t
+f0
+... ...
+Fig. 1: Timing diagram of MMBM based camera triggering.
+MMBM uses 3D rotational velocities of the camera mea-
+sured with a gyro and approximately predicts optic ﬂow
+at time instant t
+i1
+. Since the effect of rotational motion
+on motion blur is more pronounced compared to that of
+translational motion for reasonable scene distances, MMBM
+is expected to be widely applicable.
+A. Notation
+Fig. 2 illustrates world (X,Y ,Z) and image (U,V) coor-
+dinate frames; a point on the real world (x,y,z) and its
+projection on image plane (u,v); as well as the rotational
+velocities w
+x
+, w
+y
+and w
+z
+of the camera.
+B. Camera Model
+A basic pinhole camera model is used for modeling the
+camera. In vector form, this can be written as,
+
+u
+v
+
+=f
+
+x
+z
+y
+z
+
+: (1)
+The associated inverse camera model is given by
+2
+4
+x
+y
+z
+3
+5
+=
+2
+4
+z
+u
+f
+z
+v
+f
+z
+3
+5
+: (2)
+672
+Y
+X
+Z
+U
+V
+wz
+wx
+wy
+(x,y,z)
+(u,v)
+f
+Fig. 2: Illustration of frames and deﬁnitions used in the
+derivation of the MMBM.
+Our formulation assumes that the camera is pre-calibrated
+and leaves out intrinsic camera parameters such as distortion
+to keep the MMBM derivation as simple as possible.
+C. Velocity Relation between World and Image Coordinates
+The relation between a real world point and its correspond-
+ing projection on the image plane before and after rotational
+(R) and translational (T) camera motion is detailed in [19]. A
+spatially varying motion blur model that uses time-varying R
+and T obtained from inertial measurements during exposure
+time is proposed by [15]. Instead of using R, MMBM makes
+use of a world point’s projected velocity on image sensor by
+using camera rotational velocities. The time derivative of the
+camera model is used to yield
+d
+dt
+
+u
+v
+
+=f
+
+_ xz x_ z
+z
+2
+_ yz y_ z
+z
+2
+
+=
+
+f
+z
+0  
+fx
+z
+2
+0
+f
+z
+ 
+fy
+z
+2
+
+2
+4
+_ x
+_ y
+_ z
+3
+5
+: (3)
+A ﬁxed point in world coordinates with the camera rotating
+on the origin is analogous to the point itself rotating around
+a ﬁxed camera in the same frame of reference. The velocity
+of a point when rotated with respect to an arbitrary vector, w,
+passing through the origin of the point’s frame of reference
+is deﬁned as
+_
+P =W P (4)
+2
+4
+_ x
+_ y
+_ z
+3
+5
+=
+2
+4
+0  w
+z
+w
+y
+w
+z
+0  w
+x
+ w
+y
+w
+x
+0
+3
+5
+2
+4
+x
+y
+z
+3
+5
+: (5)
+D. The Deﬁnition of the MMBM
+Obtaining the averaged optic ﬂow requires the integration
+of instantaneous image plane optic ﬂow vector magnitudes
+caused by camera rotation at time instant t
+i1
+. This leads to
+the deﬁnition of our MMBM as
+ :=
+1
+uv
+Z
+umax;vmax
+umin;vmin
+p
+_ u
+2
++ _ v
+2
+du;v (6)
+where u and v are deﬁned as (u
+max
+ u
+min
+) and (v
+max
+ 
+v
+min
+) respectively.
+Inserting (3), (5) and (2) respectively into instantaneous
+optic ﬂow vector in (6) to be able to explicitly evaluate the
+integral, we have
+
+_ u
+_ v
+
+=
+
+f
+z
+0  
+u
+z
+0
+f
+z
+ 
+v
+z
+
+2
+4
+0  w
+z
+w
+y
+w
+z
+0  w
+x
+ w
+y
+w
+x
+0
+3
+5
+2
+4
+z
+u
+f
+z
+v
+f
+z
+3
+5
+: (7)
+The expression of ( _ u
+2
++ _ v
+2
+) then becomes
+_ u
+2
++ _ v
+2
+=
+w
+2
+y
+f
+2
+u
+4
++
+w
+2
+x
+f
+2
+v
+4
++
+w
+2
+x
++w
+2
+y
+f
+2
+u
+2
+v
+2
+  2
+w
+x
+w
+y
+f
+2
+u
+3
+v  2
+w
+x
+w
+y
+f
+2
+uv
+3
++ (2w
+2
+y
++w
+2
+z
+)u
+2
++ (2w
+2
+x
++w
+2
+z
+)v
+2
+  4w
+x
+w
+y
+uv  2w
+x
+w
+z
+fu  2w
+y
+w
+z
+fv
++ (w
+2
+x
++w
+2
+y
+)f
+2
+:
+(8)
+This expression can be used to compute (6) either numeri-
+cally, or through the approximation proposed in Section V.
+IV. VALIDATION OF THE MMBM
+MMBM calculates the derivative of optic ﬂow at t
+i1
+. The
+assumption of constant velocity motion from t
+i1
+to the end
+of t
+e1
+is required for the accuracy of MMBM. Under the
+assumption of constant camera rotational velocity, MMBM is
+proportional to the average of optic ﬂow vector magnitudes.
+In order to validate our metric, a hardware setup consisting
+of a camera, a 3D ﬁber-optic gyro and a PC was built.
+Camera and gyro axes were matched with a ﬁxture, but no
+calibration was done to obtain further alignment information.
+Using handheld hardware, time synchronized image frames
+and gyro data samples were collected. The method proposed
+by [20] was used to ﬁnd the optic ﬂow between all successive
+frames on the collected images. Two of the successive images
+from the data set are shown in Fig. 3.
+(a) (b)
+Fig. 3: Two successive images from the sequence recorded
+to validate the MMBM.
+For example, color coded optic ﬂow ﬁeld between Fig. 3(a)
+and Fig. 3(b) is shown in Fig. 4(b). Direction and intensity
+of optic ﬂow vectors can be visualized with the help of the
+color map in Fig. 4(a).
+We ﬁrst compute the average magnitude of optic ﬂow
+(AMOF) for each consecutive image frame. AMOFs are
+then compared with MMBM values calculated from gyro
+data only. Fig. 1 can be used to be clear on the timing of
+comparison. Optic ﬂow algorithms assume that the exposure
+times of frames (t
+e1
+&t
+e2
+) are inﬁnitesimal. Flow vectors give
+velocities of world points projected on to the image plane
+673
+from the beginning to the end of t
+o1;2
+. Therefore, MMBM
+calculated with gyro data taken in the mid point of t
+o1;2
+is scaled and compared to AMOF. The relative scales of
+MMBM and AMOF are actually different since they are
+two different quantities. The main objective of validation
+is comparing the time behavior two waveforms since both
+give an idea about the magnitude of motion blur under
+aforementioned assumptions.
+(a) (b)
+Fig. 4: Optic ﬂow ﬁeld from images in Fig. 3: (a) The actual
+optic ﬂow ﬁeld, (b) optic ﬂow color and direction map.
+Comparison of MMBM and AMOF with the ﬁrst data set
+is illustrated in Fig. 5. The ﬁrst data set was collected with
+the camera rotating around the yaw axis and rotations on
+other axes negligibly small. Note that data sets also include
+a small amount of translation movement since they were
+collected with handheld hardware. Since the target is at a
+reasonable distance, the projection of translational movement
+onto the image plane was assumed to be negligible. Our re-
+sults show that MMBM and AMOF waveforms have closely
+matching behavior. Extremum points on both waveforms are
+very close to each other. Note, also, that the sampling rate
+of the gyro (approx. 600Hz) and the camera (approx. 12fps)
+are very different. This is the reason why the MMBM plot
+seems to be continuous and AMOF is not. Red dots on the
+AMOF plot correspond to mid points of time durationst
+o1;2
+and AMOF data can only be calculated on the red dots, with
+the rest being a piecewise linear interpolation in between.
+0 1 2 3 4 5 6 7 8
+0
+50
+100
+150
+Time (s)
+AMOF (pixel) & MMBM
+ 
+ 
+MMBM
+AMOF
+Fig. 5: Comparison of scaled MMBM and AMOF during
+yaw axis camera rotations.
+On the second data set, the camera was subjected to
+a complex rotational motion with rotation with respect to
+each axis changed continuously and arbitrarily in time. It
+can be observed that discrepancies in Fig. 6 are more
+pronounced. The main reason for this is the slight increase
+in the frequency of rotations. Camera data starts to suffer
+from low sampling rate and the resulting aliasing. Moreover,
+Optic ﬂow algorithms are affected from motion blur and
+hence AMOF deteriorates as a result. It is also useful
+to remind that, the current comparison is done with the
+assumption of constant velocity rotations. The second data
+set is hence at the limit of validity for comparing MMBM
+and AMOF. However, the general form of the waveforms are
+still consistent with each other.
+0 1 2 3 4 5 6 7 8
+0
+20
+40
+60
+80
+Time (s)
+AMOF (pixel) & MMBM
+ 
+ 
+MMBM
+AMOF
+Fig. 6: Comparison of scaled MMBM and AMOF during
+arbitrary camera rotations.
+V. REAL TIME EVALUATION OF MMBM
+MMBM was evaluated numerically in Section IV since
+the analytic evaluation of the integral was not possible.
+Numeric integration is usually computationally costly and
+cannot be implemented in real-time applications. Conse-
+quently, MMBM was approximated with a Riemann sum to
+meet real time requirements.
+Instead of evaluating the MMBM deﬁnition of (6) over
+the whole image plane, it was approximated with Riemann
+sum using square areas whose values are evaluated only at
+middle points shown in Fig. 7. The ﬁnal MMBM calculation
+hence reduces to
+
+
+=
+1
+n
+n
+X
+i=1
+q
+_ u
+i
+2
++ _ v
+i
+2
+dA: (9)
+where _ u
+2
++ _ v
+2
+is given by Eq. (8) and dA is the region
+whose value is approximated with the exact value of a single,
+mid point. All summation regions are square and uniformly
+sampled from the image plane. Note that multiplication of
+dA in (9) can also be ignored since all regions have the same
+area and only the waveform of the MMBM is important. This
+approximation is reasonable since all image plane motion is
+the result of a single camera ego motion and therefore exhibit
+signiﬁcant spatial smoothness.
+Numerical evaluation and Riemann sum approximation of
+MMBM gives almost the same function form except small
+integration errors. The percentage error between numerical
+evaluation and Riemann sum approximation, 100  (  
+
+
+)=, is shown in Fig. 8, with the small percentage errors
+justifying our choice of the number of samples used for the
+approximation.
+VI. APPLICATION OF MMBM: EXTERNAL CAMERA
+SHUTTER TRIGGERING TO MINIMIZE MOTION BLUR
+Our motion blur prediction and minimization system was
+implemented on the SensoRHex hexapod. The system con-
+674
+U
+V
+(-240,-160)(-80,-160) (80,-160) (240,-160)
+(-240,0) (-80,0) (80,0) (240,0)
+(-240,160) (-80,160) (80,160) (240,160)
+Fig. 7: Areas (dA) and value evaluation points used for
+Riemann sum approximation.
+0 1 2 3 4 5 6 7 8
+0
+1
+2
+3
+4
+5
+Time (s)
+100*(? ? ?*)/?
+Fig. 8: Percentage error between the numeric evaluation and
+the Riemann sum approximation of MMBM ().
+sists of a Fizoptika optic gyro, a PointGrey camera, a PIC
+based microcontroller board and a 500MHz Pentium class
+PC-104 CPU. Connections between hardware components
+are illustrated in Fig. 9.
+PC-104
+?Controller
+Board
+RS232
+Camera
+Digital GPIO
+IEEE1394
+3D Gyro
+RS232
+Fig. 9: Hardware structure of motion blur reduction system
+implemented on the SensoRHex hexapod.
+All hardware components are located on SensoRHex.
+The gyro gives rotational velocities in each axis at 600Hz.
+MMBM is calculated for each gyro reading by a PC-104
+CPU unit in real-time. Fig. 10 illustrates MMBM calculated
+during the normal walking mode of SensoRHex. The robot
+walks on a ﬂat concrete surface. High MMBM values corre-
+spond to time instances where motion blur would be high if
+an image acquisition was triggered at that moment. Fig. 10
+spans a duration slightly longer than two steps of SensoRHex
+and three leg touch down instances can be observed as the
+highest MMBM values on the plot. The quasi periodicity of
+body oscillations can also be observed. Exploiting such quasi
+periodicity, the camera can be triggered only when MMBM
+is below a certain threshold.
+The camera was conﬁgured to work in its external trigger-
+ing mode with the exposure time ﬁxed to 70ms. Trigger sig-
+nals were given by the PC and directed to the microcontroller
+board over a serial port. The microcontroller then generated
+21.5 22 22.5 23 23.5 24 24.5
+0
+10
+20
+30
+40
+Time (s)
+MMBM
+Fig. 10: MMBM while SensoRHex is walking straight on a
+ﬂat concrete surface.
+signals to trigger the camera. Finally, captured frames were
+transferred to the PC over the IEEE1394 interface.
+VII. EXPERIMENTAL RESULTS
+SensoRHex was equipped with our proposed motion blur
+minimization setup. Two data sets were collected while Sen-
+soRHex was walking straight on a ﬂat surface and pointing
+to a checkerboard pattern as shown in Fig. 11. The ﬁrst data
+set incorporates frames captured at a ﬁxed rate of 5fps and
+the second one uses our motion blur minimization system
+to determine capture timings. The camera was setup to have
+the same exposure time, 70ms, for both. Our motion blur
+minimization system waits at least 200ms between two suc-
+cessive frames to ensure a fair comparison with the 5fps ﬁxed
+frame rate set. Once 200ms passes, the PC starts to calculate
+MMBM for each gyro reading. The trigger command is
+applied only if MMBM is below certain threshold.
+(a) (b)
+Fig. 11: Motion blur minimizing system implementation on
+SensoRHex. (a) Experiment area, (b) robot’s point of view.
+TABLE I: JNBM averages over frames captured during
+straight walk of SensoRHex on ﬂat surface
+Image Capture Method JNBM average
+Fixed Frame Rate @5fps 0.3564
+MMBM Based Motion Blur Minimized Capture 0.4908
+In order to quantitatively evaluate improvements on mo-
+tion blur, checkerboard patterns were cropped from each
+frame and cropped images were evaluated with Just No-
+ticeable Blur Metric (JNBM) [21]. However, blur amount
+detection within a single frame is an ill-deﬁned problem and
+isolated JNBM results may not totally agree with human
+visual inspection, JNBM gives consistent results on the
+675
+average. JNBM for both data sets are presented in Table I.
+JNBM gives higher results for sharper images. Subjective
+inspection of frames also agree with the average JNBM
+results. In particular the most blurred frames are clearly
+avoided with our proposed system. Fig. 12(a) and Fig. 12(b)
+show hand-picked extremely blurred frame examples from
+both data sets.
+(a) (b)
+Fig. 12: Examples of hand-picked excessively blurred frames
+from SensoRHex walking: (a) Image from ﬁxed frame rate
+capture (b) Image from external triggering with MMBM.
+VIII. CONCLUSIONS
+In this work, a new metric, MMBM, to evaluate camera
+rotation based average motion blur of an image was pre-
+sented. MMBM is evaluated by using only gyro data in real-
+time. Finally, MMBM was used to minimize motion blur
+of captured images from an onboard camera mounted on
+the SensoRHex hexapod robot by externally triggering the
+camera only when MMBM dips below a certain threshold.
+Average motion blur of captured images is hence decreased
+and, more importantly, extremely blurred images are avoided.
+As a consequence, computer vision algorithms such as lo-
+calization can run more efﬁciently.
+In the present paper, a camera was externally triggered,
+but, a software trigger such as polling a image frame over
+data transmission line could have been applied if external
+triggering was not available. Another approach could have
+been using a ﬁxed frame rate image acquisition and deciding
+whether or not to use an image after capturing it and before
+applying any computer vision algorithms on it.
+MMBM can be used in many robotics applications that
+suffer from motion blur, especially, legged robots in partic-
+ular. Quasi-periodicity of a legged robot’s body oscillations
+can be exploited to pick up the best instants to capture a
+frame. Further improvements can be achieved by incorporat-
+ing the motion model of a robot. Unfortunately, SensoRHex
+currently does not have any such models, but, optimal shutter
+triggering can be obtained with robots having a motion
+model. Even though a robot does not have any motion model,
+motion blur detection performance can be further increased
+by integrating signal prediction methods on MMBM.
+Signiﬁcant amount of motion blur has been avoided before
+it corrupts an image by using our method. Rest of the
+motion blur can be deblurred using methods available in the
+literature. For instance gyro data used to calculate MMBM
+can also be used to construct PSF for deconvolution based
+motion blur removal.
+ACKNOWLEDGMENT
+This work was partially supported by TUBITAK project
+110E120.
+REFERENCES
+[1] U. Saranli, M. Buehler, and D. E. Koditschek, “Rhex: A simple and
+highly mobile hexapod robot,” The International Journal of Robotics
+Research, vol. 20, no. 7, pp. 616–631, 2001.
+[2] S. Dai and Y . Wu, “Motion from blur,” in Computer Vision and Pattern
+Recognition, 2008. CVPR 2008. IEEE Conference on, 2008, pp. 1–8.
+[3] H.-Y . Lin, “Vehicle speed detection and identiﬁcation from a single
+motion blurred image,” in Application of Computer Vision, 2005.
+WACV/MOTIONS ’05 Volume 1. Seventh IEEE Workshops on, vol. 1,
+2005, pp. 461–467.
+[4] J. Hu, Y . Li, S. Niu, and X. Meng, “Exposing digital image forgeries
+by detecting inconsistencies in principal point,” in Computer Science
+and Service System (CSSS), 2011 International Conference on, 2011,
+pp. 404–407.
+[5] A. Pretto, E. Menegatti, M. Bennewitz, W. Burgard, and E. Pagello,
+“A visual odometry framework robust to motion blur,” in Robotics
+and Automation, 2009. ICRA ’09. IEEE International Conference on,
+2009, pp. 2250–2257.
+[6] S. Osswald, A. Hornung, and M. Bennewitz, “Learning reliable and
+efﬁcient navigation with a humanoid,” in Robotics and Automation
+(ICRA), 2010 IEEE International Conference on, 2010, pp. 2375–
+2380.
+[7] J. M. Hilkert, “Inertially stabilized platform technology concepts and
+principles,” Control Systems, IEEE, vol. 28, no. 1, pp. 26–46, 2008.
+[8] E. Akgul, M. Mutlu, A. Saranli, and Y . Yazicioglu, “A comparative
+evaluation of adaptive and non-adaptive sliding mode, lqr amp; pid
+control for platform stabilization,” in Control Applications (CCA),
+2012 IEEE International Conference on, 2012, pp. 1547–1552.
+[9] M. Smith, A. Boxerbaum, G. Peterson, and R. Quinn, “Electronic im-
+age stabilization using optical ﬂow with inertial fusion,” in Intelligent
+Robots and Systems (IROS), 2010 IEEE/RSJ International Conference
+on, 2010, pp. 1146–1153.
+[10] A. Levin, P. Sand, T. S. Cho, F. Durand, and W. T. Freeman, “Motion-
+invariant photography,” ACM Trans. Graph., vol. 27, no. 3, pp. 71:1–
+71:9, Aug. 2008.
+[11] M. Poulose, “Literature survey on image deblurring techniques,” Inter-
+national Journal of Computer Applications Technology and Research,
+vol. 2, no. 3, pp. 286 – 288, 2013.
+[12] S. Schuon and K. Diepold, “Comparison of motion de-blur algorithms
+and real world deployment,” Acta Astronautica, vol. 64, no. 1112, pp.
+1050 – 1065, 2009.
+[13] P. Corke, J. Lobo, and J. Dias, “An introduction to inertial and visual
+sensing,” The International Journal of Robotics Research, vol. 26,
+no. 6, pp. 519–535, 2007.
+[14] N. Joshi, S. B. Kang, C. L. Zitnick, and R. Szeliski, “Image deblurring
+using inertial measurement sensors,” ACM Trans. Graph., vol. 29,
+no. 4, pp. 30:1–30:9, July 2010.
+[15] S. Nayar and M. Ben-Ezra, “Motion-based motion deblurring,” Pattern
+Analysis and Machine Intelligence, IEEE Transactions on, vol. 26,
+no. 6, pp. 689–698, 2004.
+[16] A. Agrawal, M. Gupta, A. Veeraraghavan, and S. Narasimhan, “Op-
+timal coded sampling for temporal super-resolution,” in Computer
+Vision and Pattern Recognition (CVPR), 2010 IEEE Conference on,
+2010, pp. 599–606.
+[17] M. Tico, N. Gelfand, and K. Pulli, “Motion-blur-free exposure fusion,”
+in Image Processing (ICIP), 2010 17th IEEE International Conference
+on, 2010, pp. 3321–3324.
+[18] P. Favaro and S. Soatto, 3-D Shape Estimation and Image Restoration:
+Exploiting Defocus and Motion-Blur. Secaucus, NJ, USA: Springer-
+Verlag New York, Inc., 2006.
+[19] A. Basu and K. Ravi, “Active camera calibration using pan, tilt and
+roll,” Systems, Man, and Cybernetics, Part B: Cybernetics, IEEE
+Transactions on, vol. 27, no. 3, pp. 559–566, 1997.
+[20] D. Sun, S. Roth, and M. Black, “Secrets of optical ﬂow estimation and
+their principles,” in Computer Vision and Pattern Recognition (CVPR),
+2010 IEEE Conference on, 2010, pp. 2432–2439.
+[21] R. Ferzli and L. Karam, “A no-reference objective image sharpness
+metric based on the notion of just noticeable blur (jnb),” Image
+Processing, IEEE Transactions on, vol. 18, no. 4, pp. 717–728, 2009.
+676

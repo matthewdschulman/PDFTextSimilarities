@@ -1,0 +1,1827 @@
+Real-Time Planning with Primitives for
+Dynamic Walking over Uneven Terrain
+Ian R. Manchester and Jack Umenberger
+Abstract— We present an algorithm for receding-horizon
+motion planning using a ﬁnite family of motion primitives
+for underactuated dynamic walking over uneven terrain. The
+motion primitives are deﬁned as virtual holonomic constraints,
+and the special structure of underactuated mechanical systems
+operating subject to virtual constraints is used to construct
+closed-form solutions and a special binary search tree that
+dramatically speed up motion planning. We propose a greedy
+depth-ﬁrst search and discuss improvement using energy-based
+heuristics. The resulting algorithm can plan several footsteps
+ahead in a fraction of a second for both the compass-gait walker
+and a planar 7-Degree-of-freedom/ﬁve-link walker.
+I. INTRODUCTION
+Passive dynamic walkers are an inspiring topic of research
+because of the way in which a physical mechanism –
+an arrangement of masses, joints, springs, etc – can cre-
+ate remarkably life-like walking motions without actuation
+or deliberate motion planning [1]. Underactuated dynamic
+walkers – a.k.a. limit cycle walkers – add minimal actuation
+but retain many of the same properties [2].
+Despite their aesthetic appeal, the practical utility of
+dynamic walkers is severely limited by two facts: ﬁrstly,
+the motions are usually limited to periodic walking on ﬂat
+ground or down a shallow slope, and secondly, these motions
+typically have extremely small regions of attraction.
+A number active control techniques have been developed
+to improve the stability of periodic walking motions, e.g.,
+virtual constraints [3], [4], [5], controlled Lagrangians [6],
+and transverse linearization [7]. Feedback control with a
+periodic target gait can also achieve impressive results on
+uneven terrain, as evidenced by the famous BigDog robot
+and its siblings [8]. In [9] the virtual constraints methodology
+was expanded to include “reﬂex” motions when unexpected
+terrain variations are detected, and [10] analysed stability of
+walking on stochastically generated terrain. Nevertheless, it
+is clear that for large terrain variations, some kind of motion
+planning based on the terrain ahead of the robot will be
+beneﬁcial. Indeed, numerical results on the compass gait
+walker in [11] suggest that even being able to plan a few
+steps ahead can help signiﬁcantly.
+In this paper, we assume the robot control system has a
+task breakdown of the form in Figure 1. In real time, the
+robot must sense the terrain ahead, continuously re-plan a
+feasible motion over several footsteps, perhaps a few times
+This work was supported by the Australian Research Council.
+The authors are with the Australian Centre for Field Robotics
+(ACFR), Department of Aerospace, Mechanical and Mechatronic
+Engineering, University of Sydney, NSW, 2006, Australia.
+ian.manchester@sydney.edu.au
+Motion
+Planning
+Terrain
+Perception
+Motion
+Control
+Robot State Sensing
+Fig. 1. Possible organization of perception and control of a walking robot.
+In this paper we consider the problem of motion planning.
+per second, and use active control to stabilize this motion
+with a sampling frequency between 100Hz and 1kHz. In
+[12] it was shown that the transverse linearization can be
+used for active control of such motions using a receding
+horizon (model predictive control) approach. The purpose of
+the present paper is to address the motion planning problem:
+that is, given knowledge of the terrain ahead and the dynamic
+state of the robot, rapidly produce a feasible walking motion.
+Many of the classic algorithms for robot motion planning
+focus on ﬁnding collision-free paths in conﬁguration space
+[13], [14], since a fully actuated industrial robot can track
+any continuous conﬁguration space path, and the dynamics
+only affect the timing with which it is tracked. Planning
+for Asimo-like walking robots usually supplements these
+algorithms with an extra constraint to keep the centre of
+pressure – the “zero moment point” – inside the convex hull
+of foot contact points, so the robot remains fully actuated
+(see, e.g., [15]).
+Underactuated robots have differential constraints that
+typically render most conﬁguration-space paths infeasible.
+The most direct approach to motion planning is to pose it as
+an optimization problem over state and control trajectories,
+and apply the methods of nonlinear programming. Unfortu-
+nately, walking robot motion planning problems are typically
+high-dimensional, nonsmooth, and nonconvex. Signiﬁcant
+progress has been made recently on this front, see, e.g.,
+[16], [17], however with current algorithms it can still take
+several minutes to compute a motion on a multi-core desktop
+computer.
+The use of primitives converts an inﬁnite-dimensional
+optimization over states and inputs to the combinatorial
+problem of selecting a ﬁnite sequence from a ﬁxed library
+of primitives. Complete search over the tree of possible se-
+quences obviously has computational complexity that grows
+exponentially in the sequence length, so the principle aim in
+algorithm development is to reduce the search via heuristics.
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 4639
+A breakthrough technique was the RRT, which aims to
+expand the tree in the direction of randomly sampled states
+[18], [14], though for highly dynamic systems this can
+be difﬁcult. In [19] motions of a helicopter were planned
+by augmenting the RRT special primitives and a lower
+bound on the cost-to-go function. In [20], bounding motions
+over rough terrain were planned for the LittleDog robot
+using an RRT with reachability-guided sampling of action
+primitives. Again, the planning times on a multi-core desktop
+were several minutes, because evaluation of each primitive
+required numerically solving a high-dimensional nonlinear
+differential equation.
+In this paper, we suggest that using virtual constraints
+as primitives offers three principle advantages for motion
+planning: (i) they correspond to conﬁguration paths, and can
+therefore inherit much of the research on planning collision
+free paths for fully actuated robots; (ii) a partial closed-
+form solution of the hybrid zero dynamics greatly reduces
+the computational effort in checking dynamic feasibility
+of paths and computing total mechanical energy; (iii) the
+afﬁne structure of the solution allows intelligent ordering
+of primitives greatly reducing the number of primitives that
+must be checked for dynamic feasibility.
+We propose a “greedy” best-ﬁrst-search algorithm and
+discuss improvements based on an energy heuristic. These
+algorithms are evaluated via simulation on the compass-gait
+biped and a seven degree-of-freedom/four actuator biped [21]
+which is modelled on the Rabbit robot of CNRS [22].
+II. UNDERACTUATED WALKING ROBOTS
+In this paper we focus on saggital-plane models of under-
+actuated walking robots, however the methods we propose
+could be extended to three-dimensional models using the
+reduction method in [23] and to some other classes of system
+such as brachiating robots.
+We consider robots modelled with the methods of classical
+mechanics. The conﬁguration is a set ofn coordinatesq2Q,
+an n-dimensional smooth manifold (possibly with a bound-
+ary) that speciﬁes the set of feasible geometric arrangements
+of the robot. The state of the system is (q; _ q) 2 TQ,
+where TQ is the tangent bundle ofQ. If a robot has an
+n-dimensional conﬁguration manifold, its state space is 2n-
+dimensional.
+We will make the common assumption [5] that the biped
+robot has a stance leg which does not slip during continuous
+phases and can be considered “pinned”. Hence we will
+consider q to be made up of the remaining links, which we
+assume form an open chain. At impact, the other leg – the
+swing leg – becomes the new stance leg, and vice-versa.
+The continuous dynamics are derived via a Lagrangian of
+the form L(q; _ q) :=
+1
+2
+_ q
+T
+M(q) _ q V (q), where V (q) gives
+potential energy, and M(q) is a symmetric positive-deﬁnite
+mass/inertia matrix. The Euler-Lagrange equation:
+d
+dt
+@L(q; _ q)
+@ _ q
+=
+@L(q; _ q)
+@q
++B(q)u; (1)
+results in a differential equation of the form [13]
+M(q(t)) q(t) +C(q(t); _ q(t)) _ q(t) +G(q(t)) =B(q)u; (2)
+where u is a vector signal of actuator forces and torques,
+C(q; _ q) consists of Coriolis and centrifugal terms, and G(q)
+is the gradient of the potential energy ﬁeld. For this paper,
+we assume that friction and disturbance forces are negligible
+or can be counteracted by feedback control.
+A model of a walking robot typically also employs an
+impact map: a discrete mapping that represents sudden
+changes of velocities that occur during collisions, e.g. when
+the swing leg touches down to the walking surface and
+becomes the new stance leg. In this paper, we assume that
+collisions are purely inelastic and the impact map has the
+the following form [24]:
+q(t
++
+) =Rq(t
+ 
+); (3)
+_ q(t
++
+) =R(q(t
+ 
+)) _ q(t
+ 
+); (4)
+which occurs when q(t
+ 
+)2S, a switching surface in con-
+ﬁguration space. For the systems we consider the matrix R
+represents simply a relabelling of coordinates, e.g. redeﬁning
+the stance leg as the swing leg and vice-versa. Note also that
+the mapping for _ q(t
++
+) is linear with respect to _ q(t
+ 
+). For
+simplicity, in this paper we restrict consideration to models
+with a single impact per footstep, but extension to systems
+with any ﬁnite number of impacts per footstep (e.g. due to
+knee locking) is straightforward.
+As mentioned in the introduction, for fully actuated robots,
+i.e. those for which rankB(q) = n for all q 2Q, every
+conﬁguration path is dynamically feasible, and a common
+strategy in motion planning for fully actuated robots is to
+ﬁrst plan a collision-free path through conﬁguration space,
+and then plan or control a dynamically feasible time param-
+eterization [14].
+Unfortunately this is not generally possible for underactu-
+ated systems: ifB(q) has fewer thann linearly independent
+entries, then there exists collision-free trajectories q
+?
+() that
+are infeasible. The special case of underactuation degree one
+systems, i.e. those that have n  1 independent actuators,
+presents very useful extra structure and includes several
+practically important systems, including several common
+models for walking robots. In particular, under some mild
+assumptions, a trajectory q
+?
+: [0;S]!Q is quasi-feasible
+in the following sense: it is possible to control the system
+so that for all t, q(t) = q
+?
+() for some , however the
+dynamics of  cannot be directly controlled, but are ﬁxed
+by the so-called zero dynamics. Therefore, when planning
+a path through conﬁguration space one must also take into
+account the zero dynamics.
+III. PROBLEM STATEMENT
+The receding-horizon planning-with-primitives problem
+consists of two parts: (i) construction of a rich library of
+useful motion primitives, and (ii) an algorithm for choosing
+a primitive sequence in real time. It is assumed that the
+algorithm has as inputs the state of the robotq; _ q, as well as
+a height-map of the terrain ahead.
+4640
+For the particular problems we consider, the robot is a pla-
+nar walker and the terrain data is a one-dimensional height-
+map over a ﬁnite interval, i.e. a functionh : [x
+1
+;x
+2
+]!R. In
+practice, this may come from fused measurements of a laser
+scanner or image sensors. We do not address the problem
+of terrain sensing in this paper, however it is a well-studied
+problem over the last few decades, see, e.g., [25], [26], [27].
+Formally, a set of primitives can be modelled as a ﬁnite
+alphabetP. Then a k-step motion-planning algorithm is a
+function TQH!P
+k
+, whereH is a suitable function
+space for height maps. In a receding horizon architecture, the
+ﬁrst primitive in the sequence is sent to the motion control
+module to be regulated, and then the process repeats.
+IV. VIRTUAL HOLONOMIC CONSTRAINTS AS MOTION
+PRIMITIVES
+The use of virtual constraints for periodic dynamic walk-
+ing was introduced in [3] and further studied in [4], [5], [12],
+[9]. The idea is that a single generalized coordinate, denoted
+ is chosen as a “phase variable” and all other generalized
+coordinates are synchronized to functions of . This is
+reminiscent of a 19th-century mechanical horse, in which
+a single motor drives many joints through clever mechanical
+linkages to create the illusion of a natural walking motion.
+The difference is that virtual constraints are enforced by
+feedback control rather than physical linkages.
+Let us assume that  is monotonically increasing over an
+interval [
+0
+;
+f
+] during the planned trajectory, then one can
+construct functions 
+i
+() for the generalized coordinates so
+that the planned motion satisﬁes:
+q
+i
+(t) =
+i
+((t)); i = 1; 2;:::;n: (5)
+The above condition is referred to as a virtual constraint.
+If the constraints are perfectly regulated, then clearly the
+following velocity relations also hold:
+_ q
+i
+(t) =
+@
+i
+((t))
+@
+_
+; i = 1; 2;:::;n: (6)
+We deﬁne the vector function  : [
+0
+;
+f
+] ! Q as
+() = [
+1
+();
+2
+();:::;
+n
+()]
+T
+, and use the notation
+
+0
+() =
+h
+@1()
+@
+;
+@2()
+@
+;:::;
+@n()
+@
+i
+T
+and similarly for
+second derivatives 
+00
+().
+In general,  can always be chosen as path length along
+a trajectory. However, for several common classes of robot
+it is convenient to take  as the unactuated coordinate, e.g.
+the ankle angle in the compass gait walker. In that case,
+we can choose a parameterization with q
+i
+, i = 1;:::;n  1
+the directly actuated coordinates and q
+n
+= the unactuated
+coordinate. In general, on the target trajectory q; provide
+excessive coordinates for the system, so this representation
+can always be achieved by local change of coordinates and
+dropping one of the elements of q.
+The 2n  2 conditions given in (5) and (6) constrain
+the 2n-dimensional state space of the system to a two-
+dimensional “zero dynamics” manifold parameterized by
+;
+_
+. It is straightforward to show that the zero dynamics
+have the following form during continuous phases [28]
+()
+
+(t) +()
+_
+
+2
++() = 0; (7)
+where
+() =B
+?
+(())M(())
+0
+(); (8)
+() =B
+?
+(())[M(())
+00
+() +C((); 
+0
+())
+0
+()];
+() =B
+?
+(())G(()); (9)
+where B
+?
+(q) is a row vector satisfying B
+?
+(q)B(q) = 0.
+In [4] conditions were derived for periodic cycles that
+ensure that the impact does not shift the system off the
+virtual constraint manifold. That is, if q
+ 
+= (
+ 
+) and
+q
+ 
+= 
+0
+(
+ 
+)
+_
+
+ 
+then the output of the impact map (3),
+(4) satisﬁes q
+ 
+= (
+ 
+) and q
+ 
+= 
+0
+(
+ 
+)
+_
+
+ 
+. This is
+referred to as invariance of the hybrid zero dynamics. It is
+straightforward to extend this to the non-periodic case, see
+[12].
+Assuming the hybrid zero dynamics are invariant, the
+impact dynamics reduce to a map of the following form for
+;
+_
+.
+
++
+=;
+_
+
++
+=
+_
+
+ 
+; (10)
+imposed when  = 
+f
+. Note since we assume impact
+conditions are deﬁned by conﬁgurations alone,
++
+is a ﬁxed
+value for each virtual constraint.
+A. Partial Closed-Form Solutions for Velocity and Energy
+A useful property of virtual constraints is the fact that a
+partial closed-form solution of the reduced dynamics (7) can
+be computed off-line. The solution is partial in the sense that
+we do not obtain solutions of(t);
+_
+(t) as functions of time,
+but instead we obtain an expression for
+_
+ as a function of.
+This property has been used before for stabilizing control
+design [28], [12], and searching for periodic cycles for
+passive walkers [29]. The special structure we take advantage
+of is that
+_
+ only enters (7) as a squared term. Indeed, the
+chain rule gives
+d
+dt
+_
+(t)
+2
+= 2
+_
+(t)
+
+(t): Since  is monotonic,
+it can be used as a new independent variable, i.e. the time t
+can be written as a function of , giving
+d
+d
+_
+(t())
+2
+=
+d
+dt
+_
+(t())
+2
+dt
+d
+= 2
+
+(t()):
+For virtually constrained systems, this can be combined with
+(7) to give
+d
+d
+_
+()
+2
+= 2
+()
+()
+_
+()
+2
+  2
+()
+()
+: (11)
+Let us assume for the moment that()6= 0 for2 [
+0
+;
+f
+],
+we will return to this assumption in the next subsection.
+Since (11) is a linear -varying differential equation, it can
+be solved over any interval by numerical quadrature, to give
+an expression of the form:
+_
+()
+2
+=  (;
+0
+)
+_
+
+2
+0
++ 	(;
+0
+); (12)
+4641
+where the scalar functions  ; 	 can be precomputed for
+particular intervals [
+0
+;]. This implies that on-line compu-
+tation of
+_
+()
+2
+from
+_
+(
+0
+)
+2
+requires only a single scalar
+multiplication and a single scalar addition.
+Since the impact map for
+_
+ given in (10) is linear in
+_
+,
+it is clear that the impact map for
+_
+
+2
+is also linear in
+_
+
+2
+.
+Since compositions of afﬁne functions remain afﬁne, this in
+turn implies that a similar (afﬁne) formular holds for
+_
+
+2
+post-
+impact, and even after several impacts.
+For the class of systems we consider, the total mechanical
+energy of the system is given by
+H(q; _ q) = _ q
+T
+M(q) _ q +V (q):
+When the system is operating under virtual constraints, this
+reduces to
+
+H(;
+_
+) := 
+0
+()
+T
+M(())
+0
+()
+| {z }
+()
+_
+
+2
++V (())
+| {z }
+()
+;
+which is, for any ﬁxed , an afﬁne function of
+_
+
+2
+.
+Thus, the total energy at any given throughout the multi-
+step trajectory can also be obtained in closed form as an
+afﬁne function of the initial
+_
+
+2
+. That is,
+H(;
+_
+) = () (;
+0
+)
+_
+
+2
+0
++ ()	(;
+0
+) + (): (13)
+To summarise, the critical fact is that knowing the current
+_
+
+0
+, and assuming that the virtual constraints will be perfectly
+regulated, the values of
+_
+
+2
+can be computed for any future
+value of. Note that for the planned motion to be completed,
+it is necessary that
+_
+> 0 for all, we return to this in Section
+IV-C.
+B. Instantaneous Controllability
+Computation of the partial closed-form solution is simpli-
+ﬁed if ()6= 0; 8 2 [
+0
+;
+f
+]. For just this subsection, let
+us deﬁning generalized momentum asp :=
+@L(q; _ q)
+@ _ q
+=M(q) _ q
+and note that the equations of motion satisfy _ p =f(q;p) +
+B(q)u where f(q;p) is the “natural” ﬂow of the system,
+given by @H(p;q)=@q, where H(p;q) is the Hamiltonian.
+A motion satisfying the virtual constraints has _ q = 
+0
+()
+_
+,
+and therefore a momentum p = M(())
+0
+()
+_
+. Now the
+condition B
+?
+(())M(())
+0
+() = 0 implies that the
+direction in which force cannot be applied is orthogonal to
+the momentum at that point. This can be considered a lack
+of local instantaneous controllability, i.e. the possibility of
+adjusting momentum transversally to the constraint surface.
+This is a stronger notion than stabilizability, and is not
+strictly necessary, but it simpliﬁes calculations and control
+design. A closely related condition was studied in [21]
+regarding invertability of coupling matrix in partial feedback
+linearization. A less conservative condition could be based
+on the region-of-stability analysis in [30].
+C. Critical Points and Motion Completion
+Many algorithms for planning motions of fully actuated
+robots decompose into two stages: planning a collision-free
+path q
+?
+(s);s2 [0;S], and then planning or realizing a dy-
+namically feasible time parameterizations
+?
+: [0;T ]! [0;S],
+giving the feasible trajectory q
+?
+(s
+?
+(t)). For underactuation
+degree one systems and virtual constraints, the situation is
+similar but with one key difference: the virtual constraint
+represents a collision-free path inQ, but given a particular
+virtual constraint and initial condition;
+_
+, the time evolution
+of the system is then ﬁxed by (7).
+This is analogous to a bead sliding (without friction)
+along a curved wire of ﬁnite length: the path through three-
+dimensional space is ﬁxed, but depending on the initial
+velocity the bead may complete the path, or it may stop
+at some point and slide back along its path, either returning
+to its start point or oscillating in a potential well. In the
+case of an underactuated walking robot controlled by virtual
+constraints, if the initial velocity is too low, the robot will
+not complete the footstep, but will fall backwards (see, e.g.,
+the phase portrait Figure 6 in [12]).
+Given that the continuous-phase reduced dynamics satisfy
+(7), if (
+c
+) = 0 for some 
+c
+, then  =
+c
+;
+_
+ =
+
+ = 0, is a
+feasible equilibrium solution. For typical virtual constraints
+corresponding to walking motions, () will have a single
+sign change over the interval [
+0
+;
+f
+], at a point correspond
+to the peak potential energy of the system. We assume this
+to be the case and denote the critical value 
+c
+.
+If
+_
+
+2
+(
+c
+) > 0, then robot has positive forward motion
+at the point of peak potential energy, and the constraint is
+dynamically feasible. If
+_
+
+2
+(
+c
+) = 0 then the robot approaches
+this critical point along a heteroclinic orbit towards the
+balance equilibrium. If
+_
+
+2
+(
+c
+) < 0 there is no real solution
+for  and this corresponds to the robot not having enough
+velocity to pass the critical point, and falling backwards.
+D. An Ordering for Sets of Virtual Constraints
+The fact that the partial closed form solutions for
+_
+
+2
+is
+afﬁne in
+_
+
+2
+0
+allows us to construct an ordering of virtual
+constraints, by which the search for an appropriate virtual
+constraint is logarithmic in the number of virtual constraint
+primitives in the library rather than linear.
+Suppose there is a particular target velocity a that should
+be met as closely as possible by
+_
+ at the critical point 
+c
+.
+Now, consider that the relation
+_
+
+2
+(
+c
+) =  
+p
+(
+c
+;
+0
+)
+_
+
+2
+0
++ 	
+p
+(
+c
+;
+0
+)a
+2
+implies
+_
+
+2
+0
+
+a
+2
+  	
+p
+()
+ 
+p
+()
+;
+and likewise for . We introduce an ordering of motion
+primitives
+a
+, deﬁned like so: given two virtual constraints
+p and q, with the same q
+i
+and q
+f
+, then p
+a
+q if
+a
+2
+  	
+p
+()
+ 
+p
+()
+
+a
+2
+  	
+q
+()
+ 
+q
+()
+:
+Now, consider the following problem: for a known initial
+velocity 
+0
+, ﬁnd the virtual constraint p for which 
+c
+is as
+close as possible to a. From the above it is clear that if a
+large numberP of primitives are stored in the order deﬁned
+by
+a
+, then a simple binary search can be used to ﬁnd the
+4642
+best primitive in O(logP ) time, as opposed to O(P ) time
+for checking each primitive individually.
+Similar orderings could be constructed based on total
+energy, which is also afﬁne in
+_
+
+2
+0
+, though we defer discussion
+on that for a later work.
+V. OFFLINE CONSTRUCTION OF A PRIMITIVE LIBRARY
+In this section we describe how a library of motion
+primitives can be structured so as to enable real-time on-
+line evaluation and selection.
+A. Discretization of Impact Conﬁgurations
+A motion primitive p is deﬁned as a conﬁguration path
+from immediately after one impact to immediately before
+the next. This path is parameterized by  2 [
+0
+;
+f
+], and
+given by the virtual constraint 
+p
+: [
+0
+;
+f
+] ! Q, with
+
+p
+(
+0
+) being the initial conﬁguration and 
+p
+(
+f
+) being the
+ﬁnal conﬁguration. Note that for different primitives, the
+numerical values of 
+0
+and 
+f
+may be different.
+We suppose a ﬁnite library of impact conﬁgurations has
+been constructed, denoted by
+~
+Q. For every primitive p,
+both 
+p
+(
+0
+) and 
+p
+(
+f
+) must be elements of
+~
+Q. Since
+each element of
+~
+Q corresponds to an impact conﬁguration,
+each has a particular step length x
+f
+and step height y
+f
+,
+corresponding to the relative positions of the back (previous
+stance) and front (next stance) feet. For the compass-gait
+walker, the full conﬁguration is completely determined by
+x
+f
+andy
+f
+, but for robots with more degrees of freedom this
+will not be the case
+We construct a ﬁnite set X
+f
+containing n
+x
+individual
+values of x
+f
+, similarly Y
+f
+contains n
+y
+individual values of
+y
+f
+, and a set Q
+o
+containing n
+q
+individual conﬁgurations of
+other joints, when present. Thus the cardinality of the set of
+impact conﬁgurations isj
+~
+Qj =n
+x
+n
+y
+n
+q
+.
+B. The Library of Motion Primitives
+A motion primitive connects one element in
+~
+Q to another.
+During the continuous phase, there is the opportunity to
+increase or decrease total energy in the system, as well as
+plan motions that have different trade-off between energy ef-
+ﬁciency and collision avoidance, e.g. different bending of the
+swing-leg knee, if present. For each pair 
+p
+(
+0
+); 
+p
+(
+f
+)2
+~
+Q
+~
+Q, we construct aren
+p
+different smooth paths 
+p
+();2
+(
+0
+;
+f
+). Each should of course be kinematically feasible for
+the robot (e.g. free of self-collisions or over-extensions of
+joints).
+We build the library of primitives in a hierarchical struc-
+ture that will aid rapid search on-line. At the root are
+thej
+~
+Qj initial conﬁgurations 
+p
+(
+0
+) 2
+~
+Q. For each such
+conﬁguration there are n
+x
+step lengths x
+f
+. For each pair
+(
+p
+(
+0
+);x
+f
+) there are n
+y
+step heights y
+f
+.
+Now, for each triple (
+p
+(
+0
+);x
+f
+;y
+f
+) there are n
+q
+n
+p
+virtual constraints that start with conﬁguration 
+p
+(
+0
+) and
+take a step of length x
+f
+and height y
+f
+. We construct a
+balanced binary search tree of the n
+q
+n
+p
+virtual constraints
+using the ordering in Section IV-D. The elements of the tree
+are pointers to a data structure containing information about
+the virtual constraint primitive, detailed in the next section.
+We denote this tree by BST(
+p
+(
+0
+);x
+f
+;y
+f
+). The function
+TREE-SEARCH(T;a
+2
+) returns the primitive from the tree
+T with
+_
+
+2
+(
+c
+) as small as possible subject to
+_
+
+2
+(
+c
+)a
+2
+.
+C. Data Stored For Each Primitive
+For each motion primitive p, we store the afﬁne
+functions for evaluation of
+_
+
+2
+given
+_
+
+2
+0
+at the criti-
+cal point ( (
+c
+;
+0
+); 	(
+c
+;
+0
+)), immediately before im-
+pact ( (
+f
+;
+0
+); 	(
+f
+;
+0
+)), and immediately post-impact
+( (
+p
+;
+0
+); 	(
+p
+;
+0
+)).
+For the idealized case of planar bipedal walking over un-
+even terrain, in which the “world” consists only of the robot
+and the ground terrain, the problem of collision checking is
+quite simple. For each virtual constraint p there exists an
+envelope function  q
+p
+: [x
+i
+;x
+f
+]!R such that every physical
+point on the robot (x;y) satisﬁes y   q
+p
+(x). For typical
+walking robots and motions,  q
+p
+(x) will be the arc swept out
+by the lowest point on the swing leg.
+VI. THE MOTION PLANNING ALGORITHMS
+The purpose of the on-line algorithm is to ﬁnd a feasible
+sequence of virtual constraints. The algorithms we propose
+can be understood as iteratively searching through a decision
+tree, in which nodes correspond to robot impact states (con-
+ﬁgurations and velocities), and edges correspond to virtual
+constraint primitives linking them. The root node is the
+robot’s current state, and the “depth” in the tree corresponds
+to the number of footsteps ahead being planned.
+If the library contains l feasible primitives for each step,
+and there are k footsteps to be planned, then an exhaustive
+search must evaluate l
+k
+possibilities. The objective is to
+greatly reduce the number of paths through the tree that are
+evaluated. The algorithms we suggest use a form of “best
+ﬁrst search”, but they differ by how “best” is evaluated: either
+trying to simply attain a particular critical velocity
+_
+(
+c
+)a
+or using heuristics based on predicted energy requirements.
+A. Real-Time Selection and Evaluation of Primitives
+Unless the environment is purpose made (e.g. in a factory),
+it is unlikely that the terrain exactly matches the quantized
+heights chosen. In this paper, we introduce a generic function
+QUANTIZE:R!fY
+f
+;;g that maps a height value from a
+terrain map to the closest element of Y
+f
+or return a null
+value ; if there is no element of Y
+f
+sufﬁciently close.
+We assume that errors between the exact terrain and the
+quantization introduced in motion planning can be tolerated
+by the feedback control mechanism.
+The ﬁrst constraint on dynamic feasibility is that the robot
+has enough kinetic energy to complete the step. Since the
+planned motion assumes  to be monotonically increasing,
+this corresponds to the constraint that
+_
+> 0 for the duration
+of the motion. That is, the robot does not stop part way
+through and fall backwards. This can be enforced by ensuring
+_
+
+2
+(
+c
+)> 0.
+We assume a perfectly inelastic collision, i.e. no bouncing
+or slipping when the swing foot becomes the stance foot.
+4643
+Current
+State x
+x:p
+c
+x:p
+b
+1
+x:p
+b
+:p
+i
+x:p
+b
+:p
+h
+2
+x:p
+b
+:p
+g
+3
+x:p
+a
+4
+x:p
+a
+:p
+f
+5
+x:p
+a
+:p
+e
+6
+x:p
+a
+:p
+e
+:p
+l
+x:p
+a
+:p
+e
+:p
+k
+7
+x:p
+a
+:p
+e
+:p
+j
+x:p
+a
+:p
+d
+Fig. 2. Illustration of a hypothetical motion primitive tree, for planning
+three footsteps ahead with three primitives available at each node. Green
+and red mark nodes that are ruled feasible and infeasible, respectively,
+while white nodes are never evaluated. The numbers on the right show the
+sequence which primitives are evaluated. See discussion in Section VI-B.
+Many real materials exhibit velocity-dependent coefﬁcients
+of restitution [31], so to ensure there is no slipping or
+bouncing it may be necessary to impose a bound on velocity
+at impact: j
+_
+j < b when q 2 S. This can obviously be
+converted into the bound
+_
+
+2
+(
+f
+)<b
+2
+.
+The virtual constraintp is then feasible if  q
+p
+(x)h(x) for
+all x2 [x
+i
+;x
+f
+]. Since these functions are one-dimensional,
+checking this on sufﬁciently ﬁne gridding of [x
+i
+;x
+f
+] will
+generally be acceptable and very fast to compute.
+B. Best-First Search
+A full listing is given in Algorithm 1. Here we explain the
+reasoning behind the algorithm by way of a hypothetical tree
+shown in Figure 2. We refer to algorithm line x by (Lx).
+At initialisation, q; _ q and h(x) are given, and k = 3 is
+the number of footsteps to plan. At the ﬁrst call of ADD-
+NODE (L1), motion primitives p
+a
+;p
+b
+;p
+c
+are available. For
+a particular step length x
+f
+, the TREE-SEARCH function
+returnsp
+b
+(L11), and is found to have feasible ﬁnal velocity
+and be free of collisions (L15-17). It’s post-impact value of
+_
+
+2
+(
+c
+) is recorded as v
+c
+(L18).
+This is repeated for each step length (L14-25). By con-
+struction, all primitives have v
+c
+ a
+2
+, so the primitive
+with the smallest v
+c
+is selected (L28), its post-impact state
+is computed (L32-33), and ADD-NODE is called with the
+footstep count decremented (L35).
+On this second call of ADD-NODE, the TREE-SEARCH
+returns p
+h
+, which is found to be infeasible (L15-17), so v
+c
+,
+representing
+_
+
+2
+(
+c
+) is set to1. The algorithm next tries the
+successor of p
+h
+, which is p
+g
+(L22). This is also found to
+be infeasible, and exhausts the list of possibilities (L42), so
+ADD-NODE returns failure.
+At this point, program ﬂow returns to (L36) for the ﬁrst
+call of ADD-NODE with a fail status. Hence the successor
+to p
+b
+is chosen, which is p
+a
+, which is found to be feasible.
+Supposing TREE-SEARCH returnsp
+e
+followed byp
+k
+, each
+of which is feasible, and each of which corresponds to a call
+Algorithm 1 BEST-FIRST-SEARCH(q; _ q;h();k)
+1: [p, status] ADD-NODE(q; _ q;h(x);k)
+2: if status = success then
+3: MotionControl p
+4: return success
+5: else
+6: return fail
+7: end if
+8: function ADD-NODE(q; _ q;h(x))
+9: for all x
+f
+2X
+f
+do
+10: y
+f
+ QUANTIZE(h(x
+f
+))
+11: p(x
+f
+) TREE-SEARCH(BST(q;x
+f
+;y
+f
+);a
+2
+)
+12: end for
+13: while true do
+14: for all x
+f
+2X
+f
+do
+15: v
+0
+ (
+0
+p(x
+f
+)
+(
+0
+) _ q)
+2
+16: v
+f
+  
+p(x
+f
+)
+(
+f
+)v
+0
++ 	
+p(x
+f
+)
+(
+f
+)
+17: if v
+f
+b
+2
+AND q
+p(x
+f
+)
+>h(x) then
+18: v
+c
+(x
+f
+)  
+p(x
+f
+)
+(
+c
+)v
+0
++ 	
+p(x
+f
+)
+(
+c
+)
+19: else
+20: v
+c
+(x
+f
+) 1
+21: if p(x
+f
+):successor6=? then
+22: p(x
+f
+) p(x
+f
+):successor
+23: end if
+24: end if
+25: end for
+26: v
+?
+= min
+x
+f
+2X
+f
+(v
+c
+(x
+f
+))
+27: if v
+?
+6=1 then
+28: x
+?
+= arg min
+x
+f
+2X
+f
+(v
+c
+(x
+f
+))
+29: if k = 1 then
+30: return [p(x
+?
+), success]
+31: end if
+32: q
++
+ R
+p(x
+?
+)
+(
+f
+)
+33: _ q
++
+ 
+0
+p(x
+?
+)
+p
+ 
+p(x
+?
+)
+(
+p
+)v
+0
++ 	
+p(x
+?
+)
+(
+p
+)
+34: k k  1
+35: [p,status] ADD-NODE(q
++
+; _ q
++
+;h(x);k)
+36: if status = success then
+37: return [p(x
+?
+), success]
+38: else
+39: p(x
+?
+) =p(x
+?
+):successor
+40: end if
+41: end if
+42: if8x
+f
+2X
+f
+;p(x
+f
+).successor =? then
+43: return fail
+44: end if
+45: end while
+46: end function
+4644
+0 1 2 3 4 5 6
+0
+0.2
+0.4
+0.6
+0.8
+1
+1.2
+Fig. 3. A step-up trajectory of the Compass Gait walker.
+of ADD-NODE with k decremented, then k has reduced to
+1 and the algorithm returns success (L30).
+The algorithm has now found a feasible three-step se-
+quence of primitives, so this success status propagates back
+up the tree (L37) so the primitive p
+a
+is sent to the motion
+control system (L3).
+C. Improvement via Energy Heuristics
+The obvious disadvantage of the myopic best-ﬁrst algo-
+rithm is the inability to select the motion primitives best
+suited to changes in forthcoming terrain, particularly devi-
+ations in altitude. An improved strategy involves looking
+ahead a ﬁnite distance to estimate the largest change in
+altitude over this range, leading to a corresponding estimate
+of the predicted change in gravitational potential energy
+of the robot. This is a reasonable approximation of the
+additional energy that we must accumulate (or dissipate)
+if we are to maintain the current kinetic energy. Motion
+primitives that minimize the difference between this required
+change in energy and the post-impact change in energy
+(resulting from the footstep) are deemed to be more suitable
+for the terrain. We constructed a similar algorithm – details
+omitted due to space restrictions – making use of orderings
+of primitives in terms of the afﬁne solution of total energy
+(13).
+VII. SIMULATION RESULTS
+This section contains results of simulations using the
+proposed algorithms to plan motions over uneven terrain
+for two frequently-studied models of walking robots: the
+compass gait walker, and a ﬁve-link walker. The dynamical
+models for both were taken from [5]. The matlab code for
+our algorithms and simulations on these models can be found
+at the author’s website [32].
+The compass-gait walker is a simple two-degree-of-
+freedom planar biped consisting of two straight, rigid legs
+which meet at a revolute joint, called the hip, where a single
+actuator can apply a torque. In practice, such a robot is ﬁtted
+with retractable pointed feet to overcome the problem of
+“toe-scufﬁng” due to the absence of knee joints; in this study,
+foot retractions are not modeled as their mass is considered
+negligible.
+In the Figure 3 we show a simple step-up trajectory
+performed with a ﬁve-step lookahead. We can see that the
+walker swings its leg high in the lead up to the step, which
+puts the centre of mass further in front of the pivot point and
+adds energy. Figure 4 shows the kinetic and potential energy
+of the walker for both algorithms for this terrain. We can see
+that with both algorithms there is a build-up of kinetic energy
+0 1 2 3 4 5 6
+0.1
+0.15
+0.2
+0.25
+0.3
+0.35
+0.4
+0.45
+0.5
+0.55
+0.6
+Kinetic Energy (J)
+ 
+ 
+0 1 2 3 4 5 6
+4.6
+4.65
+4.7
+4.75
+4.8
+4.85
+4.9
+4.95
+5
+5.05
+5.1
+Gravitational Potential Energy (J)
+Stance Foot Position (m)
+E
+K
+ ? Best First
+E
+K
+ ? Energy Heuristic
+E
+G
+ ? Best First
+E
+G
+ ? Energy Heuristic
+Fig. 4. Kinetic and potential energy changes with best-ﬁrst search and the
+energy heuristic for the step-up trajectory in Figure 3.
+0 1 2 3 4 5 6
+?0.2
+0
+0.2
+0.4
+0.6
+0.8
+1
+1.2
+Fig. 5. A trajectory of the Compass Gait walker over more varied terrain.
+before the step-up, which then transfers to potential energy.
+However, with the energy heuristic the build-up begins earlier
+and more accurately approaches the required energy. The
+build-up from the greedy best-ﬁrst search occurs simply
+because otherwise the trajectories would be infeasible.
+In Figure 5 we show another slightly more difﬁcult terrain,
+with several steps up and down, and a gap. We can again
+see the walker kicks its leg forward to build up energy for
+the steps up, and keeps it low for the steps down.
+For this simulation, there were 24 possible virtual con-
+straints for each step, and a ﬁve-step lookahead. This implies
+the total search tree has 24
+5
+– about 8 million – possible
+trajectories for each plan. Figure 6 shows the beneﬁt of the
+energy heuristic in terms of computation time. It depicts the
+number of nodes evaluated, i.e. the number of times the
+ADD-NODE function in Algorithm 1 was run. The worst
+case scenario is that it is run 8 million times, the best
+case scenario is that it chooses nodes perfectly, so it is run
+ﬁve times (one for each footstep). As we can see, for the
+more difﬁcult terrain the best-ﬁrst search evaluated several
+hundred possible nodes, whereas the energy heuristic algo-
+rithm always evaluated less than ten. Since each evaluation
+requires only a small number of arithmetic operations, both
+algorithms could easily be run in real time on a low-power
+microcontroller.
+We also applied the algorithm to the more complex 7
+degree-of-freedom/5-link walker from [21], modeled on the
+Rabbit robot [22]. Each leg consists of two rigid links
+connected by a knee joint, while an additional rigid link -
+the torso - also extends from the hip joint. The joint between
+each femur and the torso is actuated, as are both knees, so an
+independent control torque can be applied to each of these
+4645
+0 2 4 6 8 10 12 14 16
+10
+0
+10
+1
+10
+2
+10
+3
+Step Number
+Number of Attempts
+ 
+ 
+Best First
+Energy Heuristic
+Fig. 6. Number of nodes evaluated to plan the trajectory in Figure 5, for
+best-ﬁrst search and the energy heuristic.
+0 1 2 3 4 5 6
+0
+0.5
+1
+1.5
+2
+2.5
+Fig. 7. A trajectory of the ﬁve-link walker over uneven terrain.
+four joints.
+In Figure 7 we show the walker negotiating quite difﬁcult
+terrain, with large steps up and down and a gap to step across.
+Notice that the walker leans its torso forwards for the early
+steps to increase energy for the steps up, and leans it back
+to slow down for the steps down.
+REFERENCES
+[1] T. McGeer, “Passive dynamic walking,” The International Journal of
+Robotics Research, vol. 9, no. 2, pp. 62–82, 1990.
+[2] S. Collins, A. Ruina, R. Tedrake, and M. Wisse, “Efﬁcient bipedal
+robots based on passive-dynamic walkers,” Science, vol. 307, no. 5712,
+pp. 1082–1085, 2005.
+[3] J. W. Grizzle, G. Abba, and F. Plestan, “Asymptotically stable walking
+for biped robots: Analysis via systems with impulse effects,” IEEE
+Transactions on Automatic Control, vol. 46, no. 1, pp. 51–64, 2001.
+[4] E. R. Westervelt, J. W. Grizzle, and D. E. Koditschek, “Hybrid zero
+dynamics of planar biped walkers,” IEEE Transactions on Automatic
+Control, vol. 48, no. 1, pp. 42–56, 2003.
+[5] E. R. Westervelt, J. W. Grizzle, C. Chevallereau, J. H. Choi, and
+B. Morris, Feedback control of dynamic bipedal robot locomotion.
+CRC press Boca Raton, 2007.
+[6] M. W. Spong and F. Bullo, “Controlled symmetries and passive
+walking,” IEEE Transactions on Automatic Control, vol. 50, no. 7,
+pp. 1025–1031, 2005.
+[7] L. Freidovich, A. Shiriaev, and I. R. Manchester, “Stability analysis
+and control design for an underactuated walking robot via computation
+of a transverse linearization,” in Proc. 17th IFAC World Congress,
+Seoul, Korea, 2008, pp. 10–166.
+[8] M. Raibert, K. Blankespoor, G. Nelson, R. Playter, et al., “Bigdog,
+the rough-terrain quadruped robot,” in Proceedings of the 17th World
+Congress, 2008, pp. 10 823–10 825.
+[9] H. W. Park, A. Ramezani, and J. W. Grizzle, “A ﬁnite-state machine for
+accommodating unexpected large ground-height variations in bipedal
+robot walking,” IEEE Transactions on Robotics, vol. 29, no. 2, pp.
+331–345, 2013.
+[10] K. Byl and R. Tedrake, “Metastable walking machines,” The Interna-
+tional Journal of Robotics Research, vol. 28, no. 8, pp. 1040–1064,
+2009.
+[11] ——, “Approximate optimal control of the compass gait on rough ter-
+rain,” in IEEE International Conference on Robotics and Automation
+(ICRA), 2008.
+[12] I. R. Manchester, U. Mettin, F. Iida, and R. Tedrake, “Stable dynamic
+walking over uneven terrain,” The International Journal of Robotics
+Research, vol. 30, no. 3, pp. 265–279, 2011.
+[13] M. W. Spong and M. Vidyasagar, Robot dynamics and control. Wiley.
+com, 2008.
+[14] S. M. LaValle, Planning Algorithms. Cambridge university press,
+2006.
+[15] J. Chestnutt, M. Lau, G. Cheung, J. Kuffner, J. Hodgins, and
+T. Kanade, “Footstep planning for the Honda ASIMO humanoid,” in
+IEEE International Conference on Robotics and Automation (ICRA),
+2005.
+[16] T. Erez and E. Todorov, “Trajectory optimization for domains with
+contacts using inverse dynamics,” in IEEE/RSJ International Confer-
+ence on Intelligent Robots and Systems (IROS), 2012.
+[17] M. Posa and R. Tedrake, “Direct trajectory optimization of rigid body
+dynamical systems through contact,” in Algorithmic Foundations of
+Robotics X. Springer, 2013, pp. 527–542.
+[18] S. M. LaValle and J. J. Kuffner, “Randomized kinodynamic planning,”
+The International Journal of Robotics Research, vol. 20, no. 5, pp.
+378–400, 2001.
+[19] E. Frazzoli, M. A. Dahleh, and E. Feron, “Real-time motion planning
+for agile autonomous vehicles,” Journal of Guidance, Control, and
+Dynamics, vol. 25, no. 1, pp. 116–129, 2002.
+[20] A. Shkolnik, M. Levashov, I. R. Manchester, and R. Tedrake, “Bound-
+ing on rough terrain with the LittleDog robot,” The International
+Journal of Robotics Research, vol. 30, no. 2, pp. 192–215, 2011.
+[21] F. Plestan, J. W. Grizzle, E. R. Westervelt, and G. Abba, “Stable
+walking of a 7-DOF biped robot,” IEEE Transactions on Robotics
+and Automation, vol. 19, no. 4, pp. 653–668, 2003.
+[22] C. Chevallereau, A. Gabriel, Y . Aoustin, F. Plestan, E. Westervelt,
+C. C. De Wit, J. Grizzle, et al., “Rabbit: A testbed for advanced control
+theory,” IEEE Control Systems Magazine, vol. 23, no. 5, pp. 57–79,
+2003.
+[23] R. D. Gregg, A. K. Tilton, S. Candido, T. Bretl, and M. W. Spong,
+“Control and planning of 3-d dynamic walking with asymptotically
+stable gait primitives,” IEEE Transactions on Robotics, vol. 28, no. 6,
+pp. 1415–1423, 2012.
+[24] Y . Hurmuzlu and D. B. Marghitu, “Rigid body collisions of planar
+kinematic chains with multiple contact points,” The International
+Journal of Robotics Research, vol. 13, no. 1, pp. 82–92, 1994.
+[25] E. Krotkov and R. Hoffman, “Terrain mapping for a walking planetary
+rover,” IEEE Transactions on Robotics and Automation, vol. 10, no. 6,
+pp. 728–739, 1994.
+[26] R. Triebel, P. Pfaff, and W. Burgard, “Multi-level surface maps for
+outdoor terrain mapping and loop closing,” in IEEE/RSJ International
+Conference on Intelligent Robots and Systems (IROS), 2006.
+[27] S. Vasudevan, F. Ramos, E. Nettleton, and H. Durrant-Whyte,
+“Gaussian process modeling of large-scale terrain,” Journal of Field
+Robotics, vol. 26, no. 10, pp. 812–840, 2009.
+[28] A. Shiriaev, J. W. Perram, and C. Canudas-de-Wit, “Constructive
+tool for orbital stabilization of underactuated nonlinear systems: Vir-
+tual constraints approach,” IEEE Transactions on Automatic Control,
+vol. 50, no. 8, pp. 1164–1176, 2005.
+[29] L. B. Freidovich, U. Mettin, A. S. Shiriaev, and M. W. Spong, “A
+passive 2-DOF walker: hunting for gaits using virtual holonomic
+constraints,” IEEE Transactions on Robotics, vol. 25, no. 5, pp. 1202–
+1208, 2009.
+[30] I. R. Manchester, “Transverse dynamics and regions of stability for
+nonlinear hybrid limit cycles,” in Proceedings of the IFAC World
+Congress, Milan, Italy, 2011.
+[31] D. E. Stewart, “Rigid-body dynamics with friction and impact,” SIAM
+review, vol. 42, no. 1, pp. 3–39, 2000.
+[32] (2013, Sept.) MATLAB code for planning dynamic walking. [Online].
+Available: http://www-personal.acfr.usyd.edu.au
+/ian/doku.php?id=wiki:software
+4646

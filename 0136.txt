@@ -1,0 +1,1879 @@
+Performance Analysis of Stochastic Behavior Trees
+Michele Colledanchise, Alejandro Marzinotto and Petter
+¨
+Ogren
+Abstract— This paper presents a mathematical framework
+for performance analysis of Behavior Trees (BTs). BTs are
+a recent alternative to Finite State Machines (FSMs), for
+doing modular task switching in robot control architectures.
+By encoding the switching logic in a tree structure, instead of
+distributing it in the states of a FSM, modularity and reusability
+are improved.
+In this paper, we compute performance measures, such
+as success/failure probabilities and execution times, for plans
+encoded and executed by BTs. To do this, we ﬁrst introduce
+Stochastic Behavior Trees (SBT), where we assume that the
+probabilistic performance measures of the basic action con-
+trollers are given. We then show how Discrete Time Markov
+Chains (DTMC) can be used to aggregate these measures from
+one level of the tree to the next. The recursive structure of the
+tree then enables us to step by step propagate such estimates
+from the leaves (basic action controllers) to the root (complete
+task execution). Finally, we verify our analytical results using
+massive Monte Carlo simulations, and provide an illustrative
+example of the results for a complex robotic task.
+I. INTRODUCTION
+Behavior Trees (BTs) were developed within the computer
+gaming industry [1], [2] as a more modular and ﬂexible
+alternative to Finite State Machines (FSMs). Their recursive
+structure and usability have made them very popular in
+industry, which in turn has created a growing amount of
+attention in academia [3]–[9]. The main advantage of BTs
+as compared to FSMs can be seen by the following pro-
+gramming language analogy. In FSMs, the state transitions
+are encoded in the states themselves, and switching from one
+state to the other leaves no memory of where the transition
+was made from. This is very general and ﬂexible, but actually
+very similar to the now obsolete GOTO statement, that was
+an important part of many early programming languages,
+e.g., BASIC. In BTs the equivalents of state transitions are
+governed by function calls and return values being passed
+up and down the tree structure. This is also ﬂexible, but
+more similar to the calls of FUNCTIONS that has replaced
+GOTO in almost all modern programming languages. Thus,
+BTs exhibit many of the advantages in terms of readability,
+modularity and reusability that was gained when going from
+GOTO to FUNCTION calls in the 1980s.
+BTs were ﬁrst described in [1], [2], [10], as powerful tools
+to provide intelligent behaviors for non-player characters
+in high proﬁle computer games, such as the HALO series.
+The authors are with the Computer Vision and Active Perception
+Lab., Centre for Autonomous Systems, School of Computer Science
+and Communication, Royal Institute of Technology (KTH), SE-100
+44 Stockholm, Sweden. e-mail: fmiccoljalmcjpetterg@kth.se
+This work has been supported by the Swedish Research Council and
+the European Union FP7 project Reconﬁg (FP7-ICT-600825). The authors
+gratefully acknowledge the support.
+Land Fuel Up Do Maintenance Take Off
+Reliability Based
+Land Fuel Up Take Off
+Efﬁciency Based
+1
+Fig. 1. Difference between a plan that optimizes expected success rate
+(top) and one that optimizes expected time to completion (bottom).
+Later work proposed ways of combining BTs with machine
+learning techniques [3], [4], and making them more ﬂexible
+in terms of parameter passing [5]. The advantage of BTs
+as compared to FSMs was also the reason for extending
+the JADE agent Behavior Model with BTs in [6], and the
+beneﬁts of using BTs to control complex multi mission
+Unmanned Aircraft Vehicle (UA Vs) was described in [7].
+The modularity and structure of BTs enabled a step towards
+the formal veriﬁcation of mission plans in [9]. Finally, in
+[8], BTs were used to perform autonomous robotic grasping.
+In particular, it was shown how BTs enabled the easy
+composition of primitive actions into complex and robust
+manipulation programs.
+In this paper, we estimate performance measures such as
+success/failure probabilities and execution times, for plans
+that are encoded and executed using BTs. Imagine we have
+an airborne micro UA V that needs to land, refuel and then
+take off again to do some important surveillance. While
+landed, some sensor maintenance can be done to improve
+the sensor performance, but it can also be skipped, to reduce
+the time on ground. Thus, the two options are the trivial
+sequential plans depicted in Fig. 1, one maximizing success
+rate, and the other minimizing time to completion. Assuming
+we are given the performance of the individual actions, e.g.,
+Do Maintenance, we show how to compute overall estimates
+for arbitrary BT compositions, including both sequences such
+as the one in Fig. 1 and so-called Selectors providing fall
+back functionality such as the one in Fig. 2 below.
+The analysis is done by deﬁning Stochastic Behavior Trees
+(SBTs) and describing the interaction of a BT node with
+its children in terms of a Discrete Time Markov Chain
+(DTMC). This enables us to propagate performance estimates
+from one level in the tree to the next. Applying the scheme
+in a recursive fashion then makes it possible to compute
+the properties of an arbitrarily complex BT composition of
+actions.
+The contribution of this paper is that we provide estimates
+of how reliable (in terms of success probability) and efﬁcient
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 3265
+(in terms of time to success) a BT-composition of primitive
+actions is. To the best of our knowledge, such a probabilistic
+analysis of BTs has not been done before.
+The outline of this paper is as follows. In Section II we
+review details on BTs and DTMCs. Then, in Section III we
+state the main problem of this paper. A theoretic analysis
+of the problem is given in Section IV and a numerical
+veriﬁcation of the results is presented in Section V, together
+with an illustrative example. Finally, the paper is concluded
+in Section VI.
+II. BACKGROUND: BTS AND DTMCS
+In this section we give a brief review of BTs and DTMCs.
+The later is used to analyze the performance of the former.
+A. Behavior Trees
+Here, we give the reader a brief overview of BTs, while
+a more detailed description can be found in [7].
+A BT is a directed rooted tree in which the nodes are
+classiﬁed as root, control ﬂow nodes, or execution nodes.
+For each pair of connected nodes we call the outgoing node
+parent and the incoming node child. The root has no parents
+and exactly one child, the control ﬂow nodes have one parent
+and at least one child, and the execution nodes have one
+parent and no children. Graphically, the children of a control
+ﬂow node are placed below it, ordered from its left to its
+right, as shown in Figures 2-4.
+The execution of a BT starts from the root which sends
+ticks
+1
+with a certain frequency to its child. When a given
+node in the BT receives a tick from its parent, its execution
+is allowed and it returns to the parent a status running if its
+execution has not ﬁnished yet, success if it has achieved its
+goal, or failure otherwise.
+There are four types of control ﬂow nodes (selector, se-
+quence, parallel, and decorator) and two execution nodes
+(action and condition). Their execution is explained below.
+Selector: When the selector node receives a tick from
+its parent, it ticks its children in succession, returning success
+(running) as soon as it ﬁnds a child that returns success (run-
+ning). It returns failure only if all the children return failure.
+The purpose of the selector node is to robustly carry out a
+task that can be performed using several different approaches
+(e.g. an object manipulation that can be performed using
+either a single-hand or a multiple-hand approach) by trying
+each of them until one that succeeds is found. The selector
+node is graphically represented by a box with a “?”, as in
+Fig. 2.
+?
+Child 1 Child 2    ChildN
+1
+Fig. 2. Graphical representation of a selector node with N children.
+1
+A tick is a signal that enables the execution of a child
+Sequence: When the sequence node receives a tick from
+its parent it ticks its children in succession, returning failure
+(running) as soon as if ﬁnds a child that returns failure
+(running). It returns success only if all the children return
+success. The purpose of the sequence node is to carry out
+the tasks that are deﬁned by a strict sequence of sub-tasks,
+in which all have to succeed to achieve a desired goal (e.g. a
+mobile robot that has to collect an object, move to a desired
+position and then unload the collected object). The sequence
+node is graphically represented by a box with a “!”, as in
+Fig. 3.
+!
+Child 1 Child 2  ChildN
+1
+Fig. 3. Graphical representation of a sequence node with N children.
+Parallel: When the parallel node receives a tick from its
+parent, it ticks its children in parallel and returns success if
+a given number of children return success, it returns failure
+if the remaining running children are not enough to reach
+the given number, even if they are all going to succeed,
+and it returns running otherwise. The purpose of the parallel
+node is to model those tasks separable in dependent sub-tasks
+performing similar actions (e.g. a fault diagnosis system that
+has to monitor in parallel several hardware). The parallel
+node is graphically represented by a box with two “!”, as
+in Fig. 4.
+
+Child 1 Child 2    ChildN
+1
+Fig. 4. Graphical representation of a parallel node with N children.
+Decorator: The decorator is a special node that has only
+one child and it changes its child outcome according to an
+arbitrarily policy deﬁned by the user (e.g. it returns failure if
+the child returns running after a given time). The decorator
+is graphically represented in Fig. 5(a).
+Action: When the action node receives a tick from
+its parent it returns success if the action is completed and
+failure if the action cannot be completed. Otherwise it returns
+running. The action node is represented in Fig. 5(b)
+Condition: The condition node veriﬁes if a condition is
+satisﬁed or not, returning success or failure accordingly. The
+ Policy
+Child
+1
+(a) Decorator node.
+The label describes the
+user deﬁned policy.
+Action
+1
+(b) Action node. The
+label describes the ac-
+tion performed
+Condition
+1
+(c) Condition node.
+The label describes the
+condition veriﬁed
+Fig. 5. Graphical representation of a decorator, action, and condition node.
+3266
+condition node never returns running. The condition node is
+represented in Fig. 5(c)
+Root: The root node is the node that generates ticks. It
+is graphically represented as a white box labeled with “?”
+B. Discrete Time Markov Chains
+s
+1
+s
+2
+s
+3
+s
+4
+p
+13
+p
+12
+p
+21
+p
+14
+p
+34
+p
+21
+1
+1
+Fig. 6. Example of a Markov chain with 4 states and 6 transitions.
+Markov theory [11] deals with memory-less processes.
+If a plan is given by a sequence of actions that changes
+the system’s state disregarding its history, a Discrete Time
+Markov Chain (DTMC) is suitable to model a plan execution.
+A DTMC is given by a collection of states S =
+fs
+1
+;s
+2
+;:::;s
+d
+g. The process modeled by the DTMC moves
+from a states
+i
+to a states
+j
+at time stepk with the probability
+p
+ij
+(k).
+Deﬁnition 1: The one-step transition matrix P(k) is a
+jSjjSj matrix in which the entries are the transition
+probabilities p
+ij
+(k).
+Let (k) = (
+1
+(k);:::;
+jSj
+(k)), where 
+i
+(k) is the proba-
+bility of being in state i at time k, then the Markov process
+can be described as a discrete time system with the following
+time evolution:
+(k+1) =P
+>
+(k)(k) (1)
+Deﬁnition 2: The mean sojourn timeT
+i
+is the mean time
+spent by the DTMC in a given state s
+i
+.
+If a states
+i
+in a MC has no outgoing arcs to any other state
+(i.e. withp
+ii
+= 1) it is called absorbing, otherwise it is called
+transient. The sojourn time is computed for transient states
+only, the time spent in a absorbing state is trivially inﬁnity.
+In Fig. 6 the state s
+4
+is an absorbing state.
+Deﬁnition 3: The mean time to absorbtion (MTTA) is the
+mean time needed to reach any absorbing state starting from
+the initial state.
+To compute a closed form expression of the MTTA, we
+reorder the states such that the initial state comes ﬁrst, and
+all the absorbing states come last. LetS
+A
+2S be the set of
+absorbing states
+P
+>
+(k) =
+
+T(k) 0
+R(k) I
+
+(2)
+whereT is a(jSj jS
+A
+j)(jSj jS
+A
+j) matrix describing the
+one-step transition from a transient state to another, R is a
+jS
+A
+j(jSj jS
+A
+j) matrix describing the one-step transition
+from a transient state to an absorbing state, the matrices 0
+and I express the characteristic of the absorbing states, in
+particular they have no transitions to any other state. The
+MTTA is the computed as
+MTTA =
+X
+i
+g
+1;i
+T
+i
+(3)
+whereT
+i
+is the mean sojourn time and g
+1;i
+is the i-th entry
+of the ﬁrst column of the matrix G deﬁned as follows:
+G =
+1
+Y
+k=1
+T(k); (4)
+where T(k) is given by Equation (2). We consider only
+the ﬁrst column since our calculation concerns the initial
+state. The series (4) converges according to the main theorem
+of [12] since p
+ij
+(k)2 [0;1]8i;j;k.
+Inﬁnitesimal generators matrix: The inﬁnitesimal gen-
+erator matrix Q describes the continuous time behavior of a
+Markov process, its entries are deﬁned as follows:
+q
+i;j
+=
+8
+>
+<
+>
+:
+1
+Tj
+p
+j;i
+if i6=j
+ 
+X
+k6=i
+q
+i;k
+otherwise
+(5)
+The continuous time behavior of the Markov process is
+described by the following ordinary differential equation,
+known as the Cauchy problem:
+(
+_ (t) =Q(t)(t)
+(0) =
+0
+(6)
+where the initial probability vector 
+0
+is assumed to be
+known a priori.
+III. PROBLEM FORMULATION
+In this section, we ﬁrst make some deﬁnitions and as-
+sumptions, then state the main problem of this paper, and
+ﬁnally illustrate it with an example. We begin with a formal
+deﬁnition of the BTs, ﬁrst introduced in Section II.
+Deﬁnition 4: A BT is a rooted tree deﬁned as a two-tuple,
+BT = (V;E) where:
+ V =A[C[N[ a ﬁnite set of nodes, composed by
+execution nodes (actionsA and conditionsC) control
+ﬂow nodesN (e.g. selectors or sequences) and a root
+. The nodes are numbered,VN.
+ EVV is a ﬁnite set of edges.
+As noted above, we are interested in describing the execution
+properties of a BT in terms of succees and fail probabilities,
+and time to success and failure respectively. In order to facil-
+itate such an analysis, we make the following assumptions.
+Assumption 1: For each actionA in the BT, the following
+holds:
+ It ﬁrst returns running, for an amount of time that might
+be zero or non-zero, then consistently returns either
+success or failure for the rest of the execution of its
+parent node
+2
+.
+ The probability to succeed at any given time p
+s
+(t) and
+the probability to fail at any given timep
+f
+(t) are known
+a priori.
+ The time to succeed and the time to fail are random
+variables with exponential distribution with rate  and
+ known a priori.
+2
+The execution of the parent node starts when it receives a tick and
+ﬁnishes when it returns either success/failure to its parent.
+3267
+?
+Search on
+the Table
+Search in
+the Drawer
+1
+(a)
+?
+Search on
+the Table
+Search in
+the Drawer
+1
+(b)
+Fig. 7. BT modeling of two plan options. In (a), the robot searches on the
+table ﬁrst, and in the drawer only if the table search fails. In (b), the table
+is searched only if nothing is found in the drawer.
+Assumption 2: For each conditionC in the BT, the fol-
+lowing holds
+ It consistently returns the same value (success or failure)
+throughout the execution of its parent node.
+ The probability to succeed at any given time p
+s
+(t) and
+the probability to fail at any given timep
+f
+(t) are known
+a priori.
+We are now ready to deﬁne a SBT.
+Deﬁnition 5: A Stochastic Behavior Tree (SBT) is a BT
+satisfying Assumptions 1 and 2.
+Given a SBT, we want to use the probabilistic descriptions
+of its actions and conditions, p
+s
+(t), p
+f
+(t),  and , to
+recursively compute analogous descriptions for every sub-
+trees and ﬁnally the whole tree. Formally the problem is as
+follows:
+Problem 1: Given a SBT as deﬁned above. Compute the
+probabilistic measures p
+s
+(t), p
+f
+(t),  and  for each sub-
+tree, and ultimately the root of the SBT.
+To illustrate the problem and SBTs we take a look at the
+following example.
+Example 1: Imagine a robot that is to search for a set
+of keys on a table and in a drawer. The robot knows that
+the keys are often located in the drawer, so that location
+is more likely than the table. However, searching the table
+takes less time, since the drawer must be opened ﬁrst. Two
+possible plans are conceivable: searching the table ﬁrst, and
+then the drawer, as in Fig. 7(a), or the other way around as
+in Fig. 7(b). These two plans can be formulated as SBTs and
+analyzed through the scope of Problem 1, using the results
+of Section IV below. Depending on the user requirements in
+terms of available time or desired reliability at a given time,
+etc. the proper plan/SBT can be chosen.
+Remark 1: Note that Assumption 1 corresponds to the
+return status of the search actions behaving in a reasonable
+way, e.g., not switching between success and failure.
+To address Problem 1 for SBTs that are more complex
+than the one in Example 1, we need to preform the following
+analysis.
+IV. PROPOSED APPROACH
+In this section we ﬁrst transform Problem 1 into a DTMC
+problem (see Section II above) and then compute the desired
+probabilistic measures of it using the proposed approach.
+A. Transforming a SBT into a DTMC
+The ﬁrst step of our approach is to deﬁne, for each control
+ﬂow node in V, a vector representation of the children’s
+outcomes and a description of its execution policy, then we
+map the execution into a DTMC with a direct representation
+of the one-step transition matrix, and ﬁnally we compute the
+probability of success or failure over time for each node and
+its success/failure rates.
+The modularity of BTs comes from the recursive tree
+structure, any BT can be inserted as sub-tree (child of a
+ﬂow control node) in another BT. This modularity allows us
+to do the analysis in a recursive fashion, beginning ﬁrst with
+those sub-trees that have only execution nodes as children
+(i.e. only actions and conditions as children, which have
+known probabilistic parameters given Assumptions 1 and 2)
+and then using the newly derived parameters to recursively
+calculate the parameters of their parents node, all the way to
+the root.
+The children outcomes of a given ﬂow control node
+are collected in a vector state called the marking of the
+node, and the transitions between markings are deﬁned
+according to the execution policy of the node. Let m(k) =
+[m
+1
+(k);m
+2
+(k);:::;m
+N
+(k)] be a marking of a given BT
+node with N children at time step k with
+m
+i
+=
+8
+>
+<
+>
+:
+ 1 if child i has failed
+1 if child i has succeded
+0 otherwise
+(7)
+We deﬁne an event related to a BT node when one of its
+children returns either success or failure. Deﬁning e
+i
+(k) the
+vector associated to the event of the i-th running child, all
+zeros except the i-th entry which is equal to e
+i
+2f 1;1g:
+e
+i
+=
+(
+ 1 if child i returs failure
+1 if child i returns success.
+(8)
+An event is feasible only if the related children has been
+ticked (e.g. in a sequence node, a childi can not be ticked if
+the previous one has failed, in which case there is a feasible
+event associated to the child i), hence a transition between
+two markings exists if there is an associated feasible event.
+LetF(m(k)) be the set of feasible events at markingm(k),
+the marking sequence is given bym(k+1) =m(k)+e
+i
+(k)
+with e
+i
+2F(m(k)).
+The reachability graph (RG) of a BT node can now be
+computed starting from the initial markingm(0) =0, taking
+into account all the possible event combinations that satisfy
+the feasibility condition.
+Feasibility condition in the Selector node: An evente
+i
+(k)
+in a selector node is feasible if the corresponding child has
+not returned success or failure and the node has not returned
+success/failure yet:
+F(m(k)) =fe
+1
+(k) :m
+1
+(k) = 0;
+e
+i
+(k) :m
+i
+(k) = 0^m
+i 1
+(k) = 1g
+(9)
+Feasibility condition in the Sequence node: An event
+e
+i
+(k) in a sequence node is feasible if the corresponding
+child has not returned success or failure and the node has
+3268
+not returned success/failure yet:
+F(m(k)) =fe
+1
+(k) :m
+1
+(k) = 0;
+e
+i
+(k) :m
+i
+(k) = 0^m
+i 1
+(k) = 1g
+(10)
+Feasibility condition in the parallel node: An evente
+i
+(k)
+in a parallel node with N children, in which M of them
+have to succeed, is feasible if the corresponding child has
+not returned success or failure, if less thanM children have
+succeeded and if less than N M +1 have failed:
+F(m(k)) =fe
+i
+(k) :m
+i
+(k) = 0 ^
+X
+j:mj(k)>0
+j <M
+^
+X
+j:mj(k)<0
+j <N M +1g
+(11)
+Deﬁnition 6: A markingm
+i
+is reachable from a marking
+m
+j
+if there exists a sequence of feasible events  =
+[
+1
+;
+2
+;:::;
+g
+] such that m
+i
+(k+g) =m
+j
+(k)+
+P
+g
+h=1
+
+h
+.
+pf1 ps1
+pf2 ps2
+pf3 ps3
+psN 1
+pfN psN
+1
+1
+1
+1 1
+m0 [000  0]
+m1 [ 100  0] m2 [100  0]
+m3 [1  10  0] m4 [110  0]
+m5 [11  1  0]
+.
+.
+.
+ms 2 [111  0]
+ms 1 [111   1] ms [111  1]
+e1 =  1 e1 =1
+e2 =  1 e2 =1
+e3 =  1 e3 =1
+eN 1 =1
+eN =  1 eN =1
+1
+Fig. 8. Reachability graph of the sequence node (blue rectangles) withN
+children and its DTMC representation (cyan circles). When the node returns
+success/failure the related DTMC is in an absorbing state.
+pf1 ps1
+pf2 ps2
+pf3 ps3
+pfN 1
+pfN psN
+1
+1
+1
+1 1
+m0 [000  0]
+m1 [100  0] m2 [ 100  0]
+m3 [ 110  0] m4 [ 1  10  0]
+m5 [ 1  11  0]
+:
+:
+:
+ms 2 [ 1  1  1  0]
+ms 1 [ 1  1  1  1] ms [ 1  1  1   1]
+e1 =  1 e1 =1
+e2 =  1 e2 =1
+e3 =  1 e3 =1
+eN 1 =  1
+eN =  1 eN =1
+1
+Fig. 9. Reachability graph of the selector node (blue rectangles) with N
+children and its DTMC representation (cyan circles). When the node returns
+success/failure the related DTMC is in an absorbing state.
+B. Computing Properties of The DTMC
+The RG of a BT node comprises all the reachable mark-
+ings, the transitions between them describe events which
+have a certain success/failure probability. We can then map
+the node execution to a DTMC where the states are the
+markings in the RG and the one-step transition matrixP
+>
+(k)
+is given by the probability of jump between markings, with
+off diagonal entries deﬁned as follows:
+p
+i;j
+(k) =
+8
+>
+<
+>
+:
+p
+sj
+(k) if m
+j
+(k) m
+i
+(k) = 1^e
+i
+2F(m
+i
+(k))
+p
+fj
+(k) if m
+i
+(k) m
+j
+(k) = 1^e
+i
+2F(m
+i
+(k))
+0 otherwise:
+(12)
+and diagonal entries deﬁned as:
+p
+i;i
+(k) = 1 
+X
+j
+p
+i;j
+(k) (13)
+In Figs. 8 and 9 the mapping from RG to a DTCM related to
+a sequence node and a selector node are shown, we choose
+not to depict the mapping of a parallel node, due to its large
+amount of states and possible transition between them.
+Lemma 1: The mean sojourn time is:
+T
+i
+=
+X
+j:ej2F(mi)
+G
+(j)
+2;1
+
+j
++
+G
+(j)
+3;1
+
+j
+(14)
+where G
+(i)
+is the matrix deﬁne as follows:
+G
+(i)
+=
+2
+4
+1 0 0
+avg(p
+si
+(t)) 1 0
+avg(p
+fi
+(t)) 0 1
+3
+5
+(15)
+where avg() is the average function over time.
+Proof: The DTMC moves from a state to another with a given
+probability disregarding the time spent in such states. To take
+into account both probabilities and time rates, that inﬂuence
+the mean sojourn time, we describe the child execution with
+a DTMC where we model as absorbing those states in
+which a child returns either success or failure. This model
+is graphically represented in Fig. 10. Then the MTTA of
+t = 0
+Running
+1
+i
+Running
+1
+i
+Running
+ 
+Failed
+ 
+Succeeded
+pfi psi
+1 1
+1 1
+1
+Fig. 10. DTMC of a child’s execution. The label inside the state is the
+mean time spent in that state. The absorbing states are labeled as “ ”.
+the DTMC is the mean time elapsed before a child returns
+either success or failure and is equal to the mean sojourn
+time described above. The MTTA is computed as the sum
+of steady state probabilities of reaching an absorbing state
+multiplied by the average time spent on each path to it, since
+the probabilities could be time varying, we consider their
+average. The one step transition matrix between transient
+states is given by
+C
+(i)
+(t) =
+2
+4
+0 0 0
+p
+si
+(t) 0 0
+p
+fi
+(t) 0 0
+3
+5
+: (16)
+3269
+To retrieve the steady state probabilities we deﬁne the matrix
+G
+(i)
+as:
+G
+(i)
+, (I  avg(C
+(i)
+))
+ 1
+; (17)
+then (17) represents the mean probability of moving in a
+state, of a MC in Fig. 10, before being absorbed [12]. Hence
+its MTTA is computed as
+G
+(j)
+2;1
+j
++
+G
+(j)
+3;1
+j
+. The (i;j) entry of
+the matrix (17) gives the probability of moving from state j
+to state i in the DTMC, before an event occurs. Therefore,
+taking into account all the feasible events, the mean sojourn
+time of the state i is (14).
+C. Probability Distribution Over Time
+Given the inﬁnitesimal generator matrixQ(t), we compute
+the probability distribution over time of the node according
+to (6) with the initial condition 
+0
+= [10]
+>
+that represents
+the state in which none of the children have returned suc-
+cess/failure yet.
+1) Time To Fail and Time To Succeed: Since we are
+interested in differentiating between time to succeed/fail we
+make a computation similar to the MTTA made in Section II.
+To derive a closed form of the mean time to fail (MTTF)
+and mean time to succeed (MTTS) we rearrange the state
+space of the DTMC so that the initial state is ﬁrst, the other
+transient states are second, the failure states are second last
+and the success states are last:
+~
+P
+>
+(k) =
+2
+4
+T(k) 0 0
+R
+F
+(k) I 0
+R
+S
+(k) 0 I
+3
+5
+(18)
+whereT is a(jSj jS
+A
+j)(jSj jS
+A
+j) matrix describing the
+one-step transition from a transit state to another one,R
+F
+is
+ajS
+F
+jjS
+F
+j matrix describing the one-step transition from
+a transit state to a failure state, R
+S
+is ajS
+S
+jjS
+S
+j matrix
+describing the one-step transition from a transit state to a
+success state. We call this rearrangement canonization of the
+state space. MTTF and MTTS are meant to be calculated at
+steady state, hence we focus our attention on the probability
+of leaving a transition state:
+1
+Y
+k=1
+T(k),U: (19)
+Considering i as the initial transient state, the entries u
+ij
+is the mean number of visits of j starting from i above
+being absorbed, we have to distinguish the case in which
+the absorbing state is a failure state from the case in which
+it is a success state:
+U
+F
+(k),R
+F
+(k)U (20)
+U
+S
+(k),R
+S
+(k)U: (21)
+Equations (20) and (21) represent the mean number of
+visits before being absorbed in a failure or success state
+respectively. Now let A be a matrix with the ij-th entry
+deﬁned as exp(t
+ij
+) where t
+ij
+is the time needed to transit
+from a state j to a state i if they are neighbors in the
+DTMC, 0 otherwise. Since the state space is arranged by the
+canonization described above, the matrixA has the following
+form:
+A =
+2
+4
+A
+T
+(k) 0 0
+A
+F
+(k) 0 0
+A
+S
+(k) 0 0
+3
+5
+: (22)
+To derive MTTF (MTTS) we take into account the mean time
+needed to reach every single failure (success) state with its
+probability, normalized over the probability of reaching any
+failure (success) state, starting from the initial state. Hence
+we sum the probabilities of reaching a state starting from the
+initial one, taking into account only the ﬁrst column of the
+matrices.
+Due to the considerations above, the MTTF is computed as
+follows
+MTTF = avg
+ 
+P
+jS
+F
+j
+i=1
+u
+F
+i1
+(k)log(h
+F
+i1
+(k))
+P
+jS
+F
+j
+i=1
+u
+F
+i1
+(k)
+!
+(23)
+where:
+H
+F
+(k),A
+F
+(k)
+1
+Y
+k=1
+A
+T
+(k): (24)
+In a similar way, the MTTS is computed as follows:
+MTTS = avg
+ 
+P
+jS
+S
+j
+i=1
+u
+S
+i1
+(k)log(h
+S
+i1
+(k))
+P
+jS
+S
+j
+i=1
+u
+S
+i1
+(k)
+!
+(25)
+where:
+H
+S
+(k),A
+S
+(k)
+1
+Y
+k=1
+A
+T
+(k): (26)
+D. Main result
+We are now ready to state the solution to Problem 1.
+Proposition 1: Given a SBT, with known probabilistic
+parameters for actions and conditions, we can compute
+probabilistic measures for the rest of the tree as follows: For
+each node whose children have known probabilistic measures
+we compute the related DTMC. Now the probability of a
+node to return success p
+s
+(t) (failure p
+f
+(t)) is given by the
+sum of the probabilities of the DTMC of being in a success
+(failure) state. LetS
+S
+S
+A
+, andS
+F
+S
+A
+be the set of the
+success and failure states respectively of a DTMC related
+to a node, i.e. those states representing a marking in which
+the node returns success or failure, withS
+F
+[S
+S
+=S
+A
+and
+S
+F
+\S
+S
+=;.
+p
+s
+(t) =
+X
+i:si2S
+S
+
+i
+(t) (27)
+p
+f
+(t) =
+X
+i:si2S
+F
+
+i
+(t) (28)
+where(t) is the probability vector of the DTMC related to
+the node (i.e. the solution of (6)). Similarly to the MTTA,
+the MTTS (MTTF) for a node as we said before is given
+by a random variable with exponential distribution and rate
+given by the inverse of the MTTS (MTTF) since for such
+random variable the mean time is given by the inverse of the
+rate.
+ =MTTS
+ 1
+(29)
+ =MTTF
+ 1
+(30)
+3270
+0 ?
+?
+Action
+1
+Action
+2
+Action
+3
+1
+(a) BT of example.
+s1
+s5 s2
+s6 s3
+s7 s4
+pf1 ps1
+pf2 ps2
+pf3 ps3
+1
+1
+1 1
+m0 [000]
+m1 [100] m2 [ 100]
+m3 [ 110] m4 [ 1  10]
+m5 [ 1  11] ms 2 [ 1  1  1]
+1
+(b) Markov Chain.
+Fig. 11. BT and related MC modeling the plan of Example 2.
+Two examples, one small that is solved in detail, and a more
+complex one, see Section V, are now presented.
+Example 2: We will now show the computation of proba-
+bilistic parameters for an example SBT. Considering the tree
+showed in Fig. 11(a), its probabilistic parameters are given
+by evaluating the selector node, since it is the child of the
+root node. The given probabilistic parameters related to the
+i-th action are:
+ p
+fi
+probability of failure
+ p
+si
+probability of success
+ 
+i
+failure rate
+ 
+i
+success rate
+The DTMC related as shown in Fig. 11(b) has S =
+fs
+1
+;s
+2
+;s
+3
+;s
+4
+;s
+5
+;s
+6
+;s
+7
+g,S
+F
+=fs
+4
+g andS
+S
+=fs
+5
+;s
+6
+;s
+7
+g.
+According to Equation (14) the mean sojourn times are
+collected in the following vector
+T =
+h
+ps
+1
+1
++
+p
+f
+1
+1
+;
+ps
+2
+2
++
+p
+f
+2
+2
+;
+ps
+3
+3
++
+p
+f
+3
+3
+i
+(31)
+The inﬁnitesimal generator matrix is deﬁned, according
+to (5), as follows:
+Q =
+2
+6
+6
+6
+6
+6
+6
+6
+6
+6
+6
+6
+6
+4
+ 11
+ps
+1
+1+p
+f
+1
+1
+0 0 0 0 0 0
+11p
+f
+1
+ps
+1
+1+p
+f
+1
+1
+ 22
+ps
+2
+2+p
+f
+2
+2
+0 0 0 0 0
+0
+22p
+f
+2
+ps
+2
+2+p
+f
+2
+2
+ 33
+ps
+3
+3+p
+f
+3
+3
+0 0 0 0
+0 0
+33p
+f
+3
+ps
+3
+3+p
+f
+3
+3
+0 0 0 0
+11ps
+1
+ps
+1
+1+p
+f
+1
+1
+0 0 0 0 0 0
+0
+22ps
+2
+ps
+2
+2+p
+f
+2
+2
+0 0 0 0 0
+0 0
+33ps
+3
+ps
+3
+3+p
+f
+3
+3
+0 0 0 0
+3
+7
+7
+7
+7
+7
+7
+7
+7
+7
+7
+7
+7
+5
+:
+(32)
+The probability vector, according to (6), is given by:
+(t) =
+
+
+1
+(t) 
+2
+(t) 
+3
+(t) 
+4
+(t) 
+5
+(t) 
+6
+(t) 
+7
+(t)
+
+>
+(33)
+We can now derive closed form expression for MTTS
+and MTTF. Using the decomposition in (18), the matrices
+computed according Equations 21 and 20 are:
+U
+S
+=
+2
+4
+p
+s1
+0 0
+p
+f1
+p
+s2
+p
+s2
+0
+p
+f1
+p
+f2
+p
+s3
+p
+f2
+p
+s3
+p
+s3
+3
+5
+(34)
+U
+F
+=
+
+p
+f1
+p
+f2
+p
+f3
+p
+f2
+p
+f3
+p
+f3
+
+(35)
+Note that U
+S
+is a 33 matrix and U
+S
+is a 13 matrix
+since there are3 transition states,3 success state and1 failure
+state. For action i we deﬁne t
+fi
+=
+ 1
+i
+the time to fail and
+t
+si
+=
+ 1
+i
+the time to succeed. The non-zero entries of the
+matrix given by (22) are:
+a
+2;1
+=e
+t
+f
+1
+a
+3;2
+=e
+t
+f
+2
+a
+4;3
+=e
+t
+f
+3
+a
+5;1
+=e
+ts
+1
+a
+6;2
+=e
+ts
+2
+a
+7;3
+=e
+ts
+3
+(36)
+from which we derive (24) and (26) as:
+H
+S
+=
+2
+4
+e
+ts
+1
+0 0
+e
+t
+f
+1
+e
+ts
+2
+e
+ts
+2
+0
+e
+t
+f
+1
+e
+t
+f
+2
+e
+ts
+3
+e
+t
+f
+2
+e
+ts
+3
+e
+ts
+3
+3
+5
+(37)
+H
+F
+=
+
+e
+t
+f
+1
+e
+t
+f
+2
+e
+t
+f
+3
+e
+t
+f
+2
+e
+t
+f
+3
+e
+t
+f
+3
+
+(38)
+Using Equations (23) and (25) we obtain the MTTS and
+MTTF. Finally, the probabilistic parameters of the tree are
+expressed in a closed form according Equations (27)-(30):
+p
+s
+(t) = 
+5
+(t)+
+6
+(t)+
+7
+(t) (39)
+p
+f
+(t) = 
+4
+(t) (40)
+ =
+ps
+1
++p
+f
+1
+ps
+2
++p
+f
+1
+p
+f
+2
+ps
+3
+ps
+1
+ts
+1
++p
+f
+1
+ps
+2
+(t
+f
+1
++ts
+2
+)+p
+f
+1
+p
+f
+2
+ps
+3
+(t
+f
+1
++t
+f
+2
++ts
+3
+)
+(41)
+ =
+1
+t
+f
+1
++t
+f
+2
++t
+f
+3
+(42)
+V. NUMERICAL VERIFICATION AND COMPLEX EXAMPLE
+In this section we present a more complex example,
+extending Example 2 above. We use this example for two
+purposes, ﬁrst, to verify the correctness of the proposed
+approach using Monte Carlo simulations, and second, to
+illustrate how changes in the SBT lead to different perfor-
+mance metrics.
+Example 3: The task given to a two armed robot is to
+ﬁnd and collect objects which can be found either on the
+ﬂoor, in the drawers or in the closet. The time needed to
+search for a desired object on the ﬂoor is less than the time
+needed to search for it in the drawers, since the latter has to
+be reached and opened ﬁrst. On the other hand, the object
+is more likely to be in the drawers than on the ﬂoor, or in
+the closet. Moreover, the available policies for picking up
+objects are the one-hand and the two-hands grasps. The one-
+hand grasp most likely fails, but it takes less time to check
+if it has failed or not. Given these options, the task can be
+achieved in different ways, each of them corresponding to
+a different performance measure. The plan chosen for this
+example is modeled by the SBT shown in Fig. 12.
+?
+0
+!
+1
+?
+2
+?
+3
+?
+4
+?
+5 Obj.Pos.
+Retrieved
+Search on
+the Floor
+Search in
+the Drawers
+Search in
+the Closet
+Object
+Grasped
+One Hand
+Grasp
+Two Hands
+Grasp
+1
+Fig. 12. BT modeling the search and grasp plan. The leaf nodes are labeled
+with a text, and the control ﬂow nodes are labeled with a number, for easy
+reference.
+3271
+The correctness of the analytical estimates can be seen
+from Table II. We compare the analytical solution derived
+using our approach with numerical results given by a massive
+Monte Carlo simulation carried out using a BT implemen-
+tation in the Robot Operative System (ROS) [13] where
+actions and conditions are performed using ROS nodes with
+outcomes computed using theC++ random number generator
+with exponential distribution. The BT implementation in
+ROS was run approximately 80000 times to have enough
+samples to get numerical averages close to the true values.
+For each run we stored if the tree (and some sub-trees)
+succeeded or failed and how long it took, allowing us to
+estimate , , p
+s
+(t), p
+f
+(t) experimentally. The match is
+reported in Figs. 13-15 and in Table I. As can be seen, all
+estimates are within 0.0018 % of the analytical results.
+Measure Analytical Numerical Relative Error
+
+Root
+5:9039E 3 5:8958E 3 0.0012%
+
+Root
+4:4832E 3 4:4908E 3 0.0017%
+
+3
+6:2905E 3 6:2998E 3 0.0014%
+
+3
+2:6415E 3 2:6460E 3 0.0017%
+
+5
+9:6060E 2 9:5891E 2 0.0018%
+
+5
+4:8780E 2 4:8701E 2 0.0016%
+TABLE I. Table comparing numerical end experimental results of MTTF
+and MTTS.
+Label   ps(t) p
+f
+(t)
+Obj. Pos. Retrieved     p
+s5
+(t) p
+f5
+(t)
+Object Grasped     p
+s4
+(t) p
+f4
+(t)
+Search on the Floor 0:01 0:0167 0:3 0:7
+Search in the Drawer 0:01 0:01 0:8 0:2
+Search in the Closet 0:005 0:0056 0:2 0:8
+One Hand Grasp 0:1 20 0:1 0:9
+Two Hands Grasp 0:1 0:05 0:5 0:5
+TABLE II. Table collecting given parameters, the label of the control ﬂow
+nodes are reported in Fig. 12.
+0 500 1000 1500
+0
+0.2
+0.4
+0.6
+0.8
+1
+Probabilities of Root
+Time [s]
+ 
+ 
+Running
+Failed
+Succeeded
+Fig. 13. Probability distribution over time for the Root node of the BT
+in Fig. 12. Solid lines are the analytical results, markers are the numerical
+results
+0 50 100 150 200 250 300 350 400 450 500
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+Probabilities of Root
+Time [s]
+Fig. 14. Success/Failure probabilities in the case of searching on the ﬂoor
+ﬁrst (dashed) and searching on the drawer ﬁrst (solid).
+We now show how the order of the execution nodes affects
+the plan performance. The results of swapping the order of
+0 50 100 150 200
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+0.9
+1
+Probabilities of the node 5
+Time [s]
+ 
+ 
+Running
+Failed
+Succeeded
+(a)
+0 500 1000 1500
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+0.9
+1
+Probabilities of the node 3
+Time [s]
+ 
+ 
+Running
+Failed
+Succeeded
+(b)
+Fig. 15. Matches of probability distribution over time related to Node 5
+(a) and Node 3 (b)
+“Search on the Floor” and “Search in the Drawers” are shown
+in Fig. 14. As can be seen, the success probability after 100s
+is about 30% when starting with the drawers, and about 20%
+when starting with the ﬂoor. The asymptotic probabilities are
+the same since the change was only a swap of order. We
+ﬁnish this section by noting that estimates like these can be
+used to optimize the execution plan for a given task.
+VI. CONCLUSIONS
+In this paper, we presented an analytical formalism that
+allowed us to do performance analysis of BTs. We showed
+why such estimates are important, and veriﬁed the approach
+by providing numerical results from a Monte Carlo simula-
+tion that agreed with the closed form expressions.
+REFERENCES
+[1] A. Champandard, “Understanding Behavior Trees,” AiGameDev. com,
+vol. 6, 2007.
+[2] D. Isla, “Halo 3-building a Better Battle,” in Game Developers
+Conference, 2008.
+[3] C. Lim, R. Baumgarten, and S. Colton, “Evolving Behaviour Trees
+for the Commercial Game DEFCON,” Applications of Evolutionary
+Computation, pp. 100–110, 2010.
+[4] D. Perez, M. Nicolau, M. O’Neill, and A. Brabazon, “Evolving
+Behaviour Trees for the Mario AI Competition Using Grammatical
+Evolution,” Applications of Evolutionary Computation, 2011.
+[5] A. Shoulson, F. M. Garcia, M. Jones, R. Mead, and N. I. Badler,
+“Parameterizing Behavior Trees,” in Motion in Games. Springer,
+2011.
+[6] I. Bojic, T. Lipic, M. Kusek, and G. Jezic, “Extending the JADE
+Agent Behaviour Model with JBehaviourtrees Framework,” in Agent
+and Multi-Agent Systems: Technologies and Applications. Springer,
+2011, pp. 159–168.
+[7] P.
+¨
+Ogren, “Increasing Modularity of UA V Control Systems using
+Computer Game Behavior Trees,” in AIAA Guidance, Navigation and
+Control Conference, Minneapolis, MN, 2012.
+[8] J. A. D. Bagnell, F. Cavalcanti, L. Cui, T. Galluzzo, M. Hebert,
+M. Kazemi, M. Klingensmith, J. Libby, T. Y . Liu, N. Pollard,
+M. Pivtoraiko, J.-S. Valois, and R. Zhu, “An Integrated System
+for Autonomous Robotics Manipulation,” in IEEE/RSJ International
+Conference on Intelligent Robots and Systems, October 2012, pp.
+2955–2962.
+[9] A. Kl¨ okner, “Interfacing Behavior Trees with the World Using De-
+scription Logic,” in AIAA conference on Guidance, Navigation and
+Control, Boston, 2013.
+[10] D. Isla, “Handling Complexity in the Halo 2 AI,” in Game Developers
+Conference, 2005.
+[11] J. Norris, Markov Chains, ser. Cambridge Series in Statistical and
+Probabilistic Mathematics. Cambridge University Press, 1998, no.
+no. 2008.
+[12] L. Elsner and S. Friedland, “Norm Conditions for Convergence of
+Inﬁnite Products,” vol. 250, no. 0, 1997, pp. 133 – 142.
+[13] A. Marzinotto, M. Colledanchise, C. Smith, and P.
+¨
+Ogren, “Towards
+a Uniﬁed Behavior Trees Framework for Robot Control,” in Robotics
+and Automation (ICRA), 2014 IEEE International Conference on, June
+2014.
+3272

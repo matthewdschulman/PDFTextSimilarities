@@ -1,0 +1,1119 @@
+Formal Verication of a Collision-free Algorithm of Dual-arm Robot in
+HOL4
+Liming Li
+1
+,Zhiping Shi
+2
+, Yong Guan
+3
+, Chunna Zhao
+4
+, Jie Zhang
+5
+and Hongxing Wei
+6
+Abstract? Possessing two manipulators heightens the ability
+of dual-arm robots (DAR) to conduct complex tasks, while
+raising hazard that the two manipulators might collide with
+each other or with other objects. DARs are usually equipped
+with a collision-free motion planning algorithms (CFMPA) to
+prevent the two manipulators from colliding. The CFMPA
+searches the motion paths of robot manipulators, which are
+expected to be as short and smooth as possible under the
+premise of ensuring safety. It is important to ensure that
+the algorithm is correct and efcient. It is not enough to
+apply traditional test methods to determine whether DARs
+can work in safety-critical applications. In this paper, theorem
+proving technology is employed to analyze the correctness and
+efciency of a classical CFMPA. The CFMPA is outlined, and
+then formalized in high order logic with the theorem prover
+HOL4. An inconsistency in the range of motions of the robot
+manipulators in the algorithm is discovered. An improved
+algorithm is therefore proposed. Formal verication with HOL4
+proves the correctness and efciency of the proposed algorithm
+that has already run on a real DAR as well, in conformity with
+our expectation.
+I. INTRODUCTION
+As scope of application of robots grows, the issue of
+safety has become paramount. DARs can perform many
+kinds of work requiring dexterity. Such work is executed by
+dual manipulators. When a DAR is at work, there are two
+manipulators moving simultaneously in the working area.
+How to make the two manipulators cooperate with each other
+and avoid colliding becomes a key problem. So CFMPA has
+been proposed to address the problem. Now the new problem
+*This work was supported by the International S&T Cooperation Program
+of China (2010DFB10930, 2011DFG13000); the National Natural Science
+Foundation of China (60873006, 61070049, 61170304, 61104035); the Bei-
+jing Natural Science Foundation and S&R Key Program of BMEC(4122017,
+KZ201210028036); the Open Project Program of State Key Laboratory of
+Computer Architecture and the Open Project Program of Guangxi Key
+Laboratory of Trusted Software.
+1
+Liming Li is with the Beijing Key Laboratory of Electronic System
+Reliability Technology, Capital Normal University, 100048 Beijing, China
+liliminga@126.com
+2
+Zhiping Shi is corresponding author and with the Beijing Key Laboratory
+of Electronic System Reliability Technology, Capital Normal University,
+100048 Beijing, China shizhiping@gmail.com
+3
+Yong Guan is with the Beijing Key Laboratory of Electronic System
+Reliability Technology, Capital Normal University, 100048 Beijing, China
+guanyxxxy@263.net
+4
+Chunna Zhao is with the Beijing Key Laboratory of Electronic System
+Reliability Technology, Capital Normal University, 100048 Beijing, China
+chunnazhao@163.com
+5
+Jie Zhang is with College of Information Science & Technol-
+ogy, Beijing University of Chemical Technology, 100029 Beijing, China
+jzhang@mail.buct.edu.cn
+5
+Hongxing Wei is with the School of Mechanical Engineering
+and Automation, Beihang University,100083 Beijing, China
+weihongxing@buaa.edu.cn
+is to verify the correctness and the efciency performance of
+the CFMPA of dual arms robots.
+Generally, designers try to ensure correctness by sim-
+ulation and testing. The algorithm veried in this paper
+was simulated when it was designed [1]. These methods
+of verication are helpful and easy to use but not enough
+because they cannot satisfy the security requirements in
+relevant standards such as IEC 61508 [2]. Safety of algo-
+rithms is established by the safety requirements, and the
+conformance of the algorithm designs or implementations
+with these must be veried [7]. Formal methods are rec-
+ommended in some standards like IEC 61508 [2]. Formal
+verication provides the mathematically rigorous, machine-
+checked proof of the correctness of a program with respect
+to the safety requirements. There are two main methods
+of formal verication. One is model checking, which is
+widely used in many research institutes to verify the motion
+planning of robots. Jones et al. veried a receding horizon
+algorithm for informative path planning with temporal logic
+constraints [3]. Kress-Gazit et al. provided a framework to
+automatically generate a hybrid controller that guarantees
+that the robot can achieve its task when a robot model, a class
+of admissible environments, and a high-level task or behavior
+for the robot are provided [1]. Although model checking
+possesses a high degree of automation, it is restricted by
+the scale of the veried question and the expressive ability
+because the state space explosion is inevitable and some
+complex problem cannot be represented accurately. The other
+method of formal verication is theorem proving, which has
+a strong expressive ability to verify the correctness of a
+particular algorithm, especially in high order logic. Meikle
+proved Graham's scan algorithm in Isabelle's Hoare logic [5].
+Taubig veried the safety area algorithm of an autonomous
+robot in Isabelle/HOL [6]. To the best of our knowledge, this
+is the rst time that the collision-free algorithm of a DAR
+in HOL4 has been veried.
+From a theorem proving perspective, CFMPA algorithms
+are challenging, because they involve a lot of geometry
+modeling the behavior of robot manipulators so sophisti-
+cated mathematical domain model must be built in logic.
+Mathematically, geometry is concerned with the properties
+of subsets ofR
+2
+orR
+3
+. To capture these concepts formally,
+expressive forms of logic such as set theory or higher-order
+logic are required, as they allow us to formalize mathematics
+involving numbers, lists, sets, vectors, matrix, and functions.
+We use a general-purpose theorem prover built on higher-
+order logic, HOL4, as the verication tool for our robotics
+application.
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 1380
+HOL4 developed in Cambridge University is the latest
+version of the HOL interactive proof assistant for higher
+order logic. By the theorem prover, simple proof steps
+could be run automatically, and users can concentrate on
+the hard parts. The prover has mechanisms to allow for a
+high degree of condence of the correctness of proofs than
+paper-and-pencil proof methods do. Moreover the theorem
+proving method requires users to deeply understand designs
+or implementations and specications of systems. This is
+helpful to uncover hidden faults which are apt to be missed
+by tests and simulations. To describe the algorithm, we have
+developed required foundation theorem libraries including
+vector & matrix theories, function matrix theory, the Hoare
+logic, separate logic and the weakest pre-predicate theorems
+of Dijkstra in HOL4.
+This paper is structured as follows. In Section II, we
+sketch out the actual collision-free algorithm of a DAR. In
+Section III, the formal domain is modeled and our approach
+of specication and verication is given. In Section IV , a
+semantic inconsistency in the algorithm is discovered, and
+an improved method is provided and veried using a formal
+method.
+II. CFMPA FOR DARS
+A CFMPA for a DAR is a collision avoidance algorithm,
+which protects the two manipulators of the robot, allowing
+for simultaneous movement in a plane without collision. In
+this paper, a 2D horizontally articulated DAR (SCARATES
+robot) [1], which is shown in Fig 1, is chosen as an instance
+for the algorithm. The algorithm can also be applied to other
+types of DARs. Each of the manipulators has two joints.
+y
+x
+?R1
+?L2
+?R2
+O
+Start Position
+?L1
+L
+Start Position
+Goal Position
+Goal Position
+Fig. 1: The conguration structure of SCARATES
+In robotics, the positions and orientations of rigid objects
+are applied in a physical space are formulated as coordinate
+parameters of a conguration space (C-space) which is, in
+essence, a general space. The C-space of a rigid object in
+real life has six degrees of freedom (d.o.f), three of which
+describe the position of the rigid object, while the other three
+describe the object's orientation. A rigid object that has a
+specied position and orientation in physical space will be
+converted to a specied point in the conguration space. The
+C-space can be further divided into two subspaces: obstacle
+space and free space. Obstacle space refers to the parts of
+the C-space occupied by obstacles, and free space refers to
+the parts of the C-space not occupied by obstacles. The C-
+space is usually used for planning the motions of a rigid
+object among stationary obstacles. However, in our work,
+we adapt the method of C-space for collision-free motion
+planning of DARs. The two manipulators form each other's
+obstacle spaces in CFMPA.
+The coordinates of the C-space are the angles of two joints
+of the subordinate manipulator, and are noted as (q
+R1
+;q
+R2
+).
+Suppose that the range of the angle of the joints is limited to
+between 0 and 2p, and that the C-space of the subordinate
+manipulator is expressed as: C
+R
+=f(q
+R1
+;q
+R2
+)j0 q
+R1
+
+2p;0q
+R2
+ 2pg. The left manipulator is selected as the
+principal and the right as the subordinate. The limited rota-
+tional velocities of the four joints of the robot are w
+R1
+, w
+R2
+,
+w
+L1
+, w
+L2
+respectively. The principal manipulator moves by
+PTP from the start position (q
+SL1
+;q
+SL2
+) to the goal position
+(q
+GL1
+;q
+GL2
+). The performance period is computed by T
+f
+=
+MAX(jq
+GL1
+ q
+SL1
+j=w
+L1
+;jq
+GL2
+ q
+SL2
+j=w
+L2
+). This algorithm
+is aimed at planning a path for the subordinate manipulator
+in C-space. The overall algorithm is given in Algorithm 1.
+Algorithm 1. The original CFMPA
+Input:
+performance period T
+f
+;
+latency Dt; //time interval
+the start position (q
+SR1
+;q
+SR2
+) and the goal position
+(q
+GR1
+;q
+GR2
+) of the subordinate manipulator's two joints.
+Algorithm: For the sake of presenting its structure, we
+omit its details and abstract it as follow.
+step 1:N =
+T
+f
+Dt
+; //discrete T
+f
+to N segments
+step 2 : m=
+2p
+w
+R1
+Dt
+; n=
+2p
+w
+R2
+Dt
+;
+//discrete C-space to m*n parts
+step 3: //S
+LArm
+from (q
+L1
+ w
+L1
+Dt;q
+L2
+ w
+L2
+Dt) to
+(q
+L1
++w
+L1
+Dt;q
+L2
++w
+L2
+Dt) ;
+the maximum area moved by the left manipulator in Dt.
+S
+RArm
+from (q
+R1
+ w
+R1
+Dt;q
+R2
+ w
+R2
+Dt) to
+(q
+R1
++w
+R1
+Dt;q
+R2
++w
+R2
+Dt);
+the maximum area moved by the right manipulator in Dt.
+//build the database of collision state D
+R
+.
+builtDR;
+//Dene builtDR as follows.
+fFor all k=0 to N do
+For all i=0 to m do
+For all j=0 to n do
+if SLARM[k]\ SRARM[k][i][j]=F
+then P
+k;i;j
+=0 else P
+k;i;j
+=1;
+//P
+k;i;j
+is the weight of pint (k,i,j)
+g
+1381
+step 4: //Search a path L from the start position to the
+goal position in D
+R
+.
+searchoptpath(startp,goalp);
+//linear program a optimal path base on the minimum cost
+function J1
+J1(s)=
+N
+Œ
+k=1
+(jDij+jDjj)(the shortest movement distance)
+if there are multiple minimum J1s, base on the minimum
+cost function J2
+J2(s)=
+N
+Œ
+k=1
+(jDDij+jDDjj)(the smoothest movement)
+Output and guarantees. If the robot satises the assum-
+ptions described above and the input parameters are corr-
+ect, the algorithm guarantees the safety and correctness
+of the optimal path. This means that the two manipulators
+of the robot will always be able to move from the start
+point to the goal point without collisions. More precisely,
+no part of the manipulators will intersect.
+III. FORMAL MODELING AND VERIFICATION
+There are three components of our formalizing framework
+for the CFMPA for DAR: the position of the joints, the C-
+space obstacle boundary, and the structure of the algorithm.
+All three components can be manipulated in the HOL4
+theorem prover. We use the function matrix and vector theory
+to represent the position of the joints, and set theory to
+represent the C-space obstacle boundary. These two theories
+as a whole are referred to as domain theory. In addition, we
+use Hoare logic and the weakest pre-predicate of Dijkstra to
+represent the structure of the algorithm. Then, we verify the
+collision avoidance and function correctness in HOL4 in a
+straightforward manner, based on our formalizing framework
+in Fig.2.
+Position 
+of the 
+Joints
+Function 
+Matrix and 
+Vector Theory
+Structure 
+of the 
+Algorithm
+Hoare Logic
+Weakest Pre-
+predicate of 
+Dijkstra
+CFMPA for 
+DARs
+ C-Space 
+Obstacle 
+Boundary
+Domain 
+Theory
+Collision 
+Avoidance
+ Function 
+Correctness
+Set Theory
+Formalizing
+Verifying
+HOL4 Theorem Prover
+Fig. 2: Overview of the process of modeling and verifying
+This algorithm has two key properties: the safety and the
+functional correctness. The safety of the algorithm represents
+that the obstacle space of the principal manipulator and
+subordinate manipulator cannot be overlapped at any time.
+In the CFMPA, S
+LArm
+and S
+RArm
+denotes the obstacle space
+of the principal manipulator and the subordinate manipulator
+at the time of t respectively, while (q
+R1
+;q
+R2
+) characterizes
+the position of the subordinate manipulator. The functional
+correctness means that the algorithm can nd an optimal
+path, shortest and smoothest, if the safety property can be
+satised when the subordinate manipulator move from the
+starting position to the goal position and otherwise returns
+the failure message of the path searching. Meanwhile, we
+must ensure that the algorithm can be terminated.
+In order to formalize the obstacle space, we use the convex
+polygon model to describe the S
+LArm
+and S
+RArm
+so that we
+can employ intersection of the polygon to determine whether
+the obstacle space is overlapped or not.
+A. Convex Polygon Domain Modeling
+For the space on which the algorithm is based is a subset
+of R
+2
+, we can specify the point of the space in HOL4 as
+follows.
+val _=type_abbrev("Point",``:real[2]``);
+So, many denitions and theorems concerning basic ge-
+ometry can be directly transformed from textbook math to
+HOL4. For every pair of points among the set called a
+convex, every point on the line segment that joins them is
+also in the set. In HOL4:
+Denition 1: segment def:
+segment(x :Point y :Point) :=
+fz :Pointj9t :R: 0t 1^(z=tx+(t  1)y)g
+Its type is Point!Point!Point set.
+And the convex hull of a set Z is the smallest convex set
+containing Z:
+Denition 2: is convex def:
+is convex(Z :Point set) :=
+8x y :Point: x2Z^y2Z)segment x yZ
+Its type is Point set!bool.
+Denition 3: convex def:
+convex(X :Pointset) :=\fYjis convex Y^XYg
+Its type is Point set!Point set.
+Using these denitions, many simple theorems can be
+proven by just rewriting denitions.
+In general, Graham's Scan is used to compute the convex
+hull of a more complex set of points and the convex hull
+represents the area to be described. In the proof of this paper,
+the following two lemmas are used.
+Convex monotone lemma could be formalized as follows:
+Lemma 1: convex monotone:
+8X Y(:Point set):XY)convex Xconvex Y
+Convex union lemma could be formalized as follows:
+Lemma 2: convex union:
+8X Y(:Point set):(convex X[convex Y)convex (X[Y)
+The CFMPA only involves a problem of collision avoid-
+ance in 2D, so we only need to model the convex polygons.
+We useR
+2
+to represent the type of points, hence the point set
+is a function of R
+2
+!bool. But, in practice, the movement
+1382
+space of the arm robot is R
+3
+. We can easily extend the
+domain model from 2D to 3D, simply by using R
+3
+and
+R
+3
+! bool to respectively represent the point and point
+set. Meanwhile the model is a convex polyhedron. In our
+work, we extend the discussion to the model with the convex
+polyhedron and use the overlapping of sets to describe the
+collision of objects in 3D.
+B. Verifying the Algorithm with a Formal Method
+We verify the CFMPA applying Hoare logic. Hoare triples
+are written asfPgCfQg, whereP andQ are assertions andC
+is a program. In the CFMPA, a pair of collision-free optimal
+paths will be automatically generated when the start position,
+goal position and orientations of the two manipulators of
+the DAR are given. There are two main steps to planning a
+collision-free path: (1) conrm the database of the collision-
+free state D
+R
+; (2) search the optimal collision-free path from
+D
+R
+.
+The function of step 3 in the CFMPA is conrming the
+database of the collision-free state D
+R
+in Fig 3. Each of
+the states in D
+R
+in Fig.3 is determined by whether the
+obstacle spaces of the two manipulators are overlapping.
+Each manipulator is simplied as the merger of two simple
+convex polygons of its two joints, therefore the obstacle
+space of one manipulator is the merged polygon of other
+manipulator.
+k = 0ÉN-1
+j = 0Én-1
+i = 0Ém-1
+Fig. 3: The kth layer corresponds to the states of the all the
+positions at each time of Dt, which is nominated as D
+R;kDt
+.
+The state of the positions that correspond to light-colored
+grid is 0, while state of the rest is 1. The state database D
+R
+is constructed by all the layers D
+R;kDt
+at each time of Dt,
+which is D
+R
+=
+N 1
+S
+k=0
+D
+R;kDt
+.
+Consider the Hoare triple:
+Theorem 1:
+fTg
+BuiltDR
+f8(i j k) :N: k<N^i<m^ j<n)
+P
+i;j;k
+=((SLarm
+k
+\SRarm
+i;j;k
+)=F! 0j1)g
+where N is the determined natural numbers and m, and n
+are the numbers that indicate that the C-space is divided.
+(t!t
+1
+jt
+2
+) means that if t then t
+1
+else t
+2
+.
+Based on the Hoare rules, Theorem 1 can easily be proven.
+Therefore, Property 1 can also be proven.
+Property 1:
+8(i j k) :N: k<N^i<m^ j<n)
+(P
+i;j;k
+= 0)(SLarm
+k
+\SRarm
+i;j;k
+)=F)^
+(P
+i;j;k
+= 1)(SLarm
+k
+\SRarm
+i;j;k
+)<>F)
+This means that there is no collision when the state is 0.
+The function of step 4 of the algorithm is to search for
+the optimal collision-free path from D
+R
+. The path is the
+group of ordered coordinates that represent the position at
+each respective time. The path can be denoted by list type.
+In order to accurately describe step 5 in Hoare logic, we
+designed the following denitions.
+Whether a list is a path is dened as follows.
+Denition 4: is path def:
+is path(L :list;startp;goalp) :=
+(L
+0
+=startp)^(L
+LENGTH(L) 1
+=goalp)^
+8(i j k i
+0
+j
+0
+) :N:
+i<m^i
+0
+<m^ j<n^ j
+0
+<n^k<LENGTH(L))
+L
+k
+=(i; j)^L
+k+1
+=(i
+0
+; j
+0
+)
+)(i
+0
+=i_i
+0
+ i= 1_i i
+0
+= 1)^
+(j
+0
+= j_ j
+0
+  j = 1_ j  j
+0
+= 1)^
+(k<N)P
+k;i;j
+= 0)^(kN)P
+N 1;i;j
+= 0)
+The optimal path is the one with the smallest total distance
+of movement and the smoothest direction. J1 and J2 are the
+cost function in the algorithm.
+Denition 5: optpath def:
+optpath(startp;goalp) :=eLA:
+is path(LA)^
+(8L: is path(L))J1(LA)J1(L)^
+(J1(LA)=J1(L))J2(LA)J2(L)))
+where ex: t means that an x such that: t.
+Then, the Hoare triple of step 4 can be expressed as
+Theorem 2.
+Theorem 2:
+f8(i j k) :N: k<N^i<m^ j<n)
+P
+i;j;k
+=((SLarm
+k
+\SRarm
+i;j;k
+)=F! 0j1)g
+searchoptpath
+f8(i j k) :N L :list startp goalp:
+optpath<>Null)
+(i<m^ j<n^k<N)
+optpath(startp;goalp)=L^L
+k
+=(i; j))P
+k;i;j
+= 0)^
+(i<m^ j<n^Nk<LENGTH(L))
+optpath(startp;goalp)=L^L
+k
+=(i; j))P
+N 1;i;j
+= 0)g
+Based on the denition of is path def, the properties of
+path can be captured.
+Since the path must start from the starting position and
+end at the goal position, this property can be formalized as
+follows.
+Property 2:
+8L :list startp goalp:
+is path(L;startp;goalp))
+(L
+0
+=startp)^(L
+LENGTH(L) 1
+=goalp)
+In the path generated by the algorithm, each position of the
+path is remarked as state 0. This property can be formalized
+as follows.
+1383
+Property 3:
+8(i j k) :N L :list startp goalp:
+i<m^ j<n^k<N)
+is path(L;startp;goalp)^L
+k
+=(i; j))P
+k;i;j
+= 0
+If the principal manipulator reach the goal position while
+the subordinate manipulator do not reach the goal position
+yet, the obstacle space of the subordinate manipulator will
+remain unchanged. Thus, we only need to search in the state
+database of the last layer in Fig 3. Meanwhile, each position
+of the path is remarked as state 0. This property can be
+formalized as follows.
+Property 4:
+8(i j k) :N L :list startp goalp:
+i<m^ j<n^Nk<LENGTH(L))
+is path(L;startp;goalp)^L
+k
+=(i; j))P
+N 1;i;j
+= 0
+Property 3 and property 4 show that the state of every
+position in the path is 0.
+Therefore, we can prove that the optimal path from the
+start position to the goal position must be the path according
+to the denition of optpath def.
+Property 5:
+8startp goalp:
+is path(optpath(startp;goalp);startp;goalp)
+Therefore, the state of the position in the optimal path
+must be 0.
+Property 6:
+8(i j k) :N L :list startp goalp:
+i<m^ j<n^k<N)
+optpath(startp;goalp)=L^L
+k
+=(i; j))P
+k;i;j
+= 0
+Property 7:
+8(i j k) :N L :list startp goalp:
+i<m^ j<n^Nk<LENGTH(L))
+optpath(startp;goalp)=L^L
+k
+=(i; j))P
+N 1;i;j
+= 0
+Theorem 2 can be proven on the basis of the above
+theorems. It shows that all of the positions in the optimal
+path searched by step 4 fromD
+R
+are collision-free. Moreover,
+the result of the searching is the optimal path or a null list,
+and the null list shows that there is no path from the start
+position to the goal position.
+Therefore, we can verify the path generated by the CFMPA
+according to the above-mentioned properties. Based on the
+HOL4 theorem prover, the correctness of the properties
+has been proved. The proving process reveals that the path
+generated by the CFMPA could be collision-free and optimal
+if the control accuracy of the robot system is ensured.
+C. A Semantic Inconsistency
+Although the result of the proof demonstrates that the
+path generated by the CFMPA can avoid the collision of
+the manipulators, we nd from the proof that the theorem 2
+does not need such a strong premise, which will lead to an
+inefcient algorithm. The fundamental reason is that there
+exists a semantic inconsistency in the CFMPA.
+At the beginning of the algorithm, the path of the principal
+manipulator is already planned and its direction of movement
+is determined at each moment. However, when planning the
+path of the subordinate manipulator, the algorithm considers
+that each joint of the principal manipulator has two possible
+directions of rotation: the clockwise and counterclockwise.
+Therefore the domain that the principal manipulator will go
+through in the next Dt, noted as S
+LArm
+, is limited to that
+between the position (q
+L1
+ w
+L1
+Dt;q
+L2
+ w
+L2
+Dt) and (q
+L1
++
+w
+L1
+Dt;q
+L2
++w
+L2
+Dt).
+In fact, the rotation direction of the principal manipulator
+is known. That is to say, the area that the principal manipula-
+tor will sweep into in the nextDt, noted as S
+0
+LArm
+, is a part of
+S
+LArm
+. If the rotation directions of two joints of the principal
+manipulator are both clockwise, S
+0
+LArm
+is limited to between
+the position (q
+L1
+;q
+L2
+) and (q
+L1
++w
+L1
+Dt;q
+L2
++w
+L2
+Dt). This
+is an inconsistency relating to the range of movements of the
+principal manipulator in the nextDt. Such an inconsistency in
+the design of the algorithm has potential risks. Performance
+could be greatly reduced and security could be threatened.
+IV. VERIFYING THE MODIFIED ALGORITHM
+A. Modifying the Algorithm
+Firstly, according to the consistent requirement, we modify
+the original algorithm. At every interval, the rotation direc-
+tion of the principal manipulator can be read from its planned
+path. So S
+0
+LArm
+is computed within the ranges of domain.
+if q
+GL1
+>q
+SL1
+then
+fif q
+GL2
+>q
+SL2
+then
+S
+0
+LArm
+= f((q
+L1
+;q
+L2
+);(q
+L1
++w
+L1
+Dt;q
+L2
++w
+L2
+Dt))
+else S
+0
+LArm
+= f((q
+L1
+;q
+L2
+);(q
+L1
++w
+L1
+Dt;q
+L2
+ w
+L2
+Dt))g
+else
+fif q
+GL2
+>q
+SL2
+then
+S
+0
+LArm
+= f((q
+L1
+;q
+L2
+);(q
+L1
+ w
+L1
+Dt;q
+L2
++w
+L2
+Dt))
+else S
+0
+LArm
+= f((q
+L1
+;q
+L2
+);(q
+L1
+ w
+L1
+Dt;q
+L2
+ w
+L2
+Dt))g
+Secondly, we can get the new domainS
+0
+LArm
+, as the shadow
+shown in Fig 4(b). In this light, S
+0
+LArm
+is roughly equivalent
+to the half of the original domain S
+LArm
+, as the shadow is
+shown in Fig 4(a). Thus, the choices of the path are more
+exible than before when planning the path.
+?R2
+?R1
+y
+x
+?L1
+?L2
+O
+SL arm
+SR arm
+(a)before the modication
+?R2
+?R1
+y
+x
+?L1
+?L2
+O
+S'L arm
+SR arm
+(b)after the modication
+Fig. 4: the change of the obstacle space of the subordinate
+manipulator
+1384
+B. The Improvement of Performance
+Similar to the verication of the original algorithm, we
+use the Hoare triples to specify the modied algorithm.
+Theorem 3:
+fTg
+BuiltDR
+f8(i j k) :N: k<N^i<m^ j<n)
+P
+i;j;k
+=((SLarm
+0
+k
+\SRarm
+i;j;k
+)=F! 0j1)g
+Theorem 4:
+f8(i j k) :N: k<N^i<m^ j<n)
+P
+i;j;k
+=((SLarm
+0
+k
+\SRarm
+i;j;k
+)=F! 0j1)g
+searchoptpath
+f8(i j k) :N L :list startp goalp:
+optpath<>Null)
+(i<m^ j<n^k<N)
+optpath(startp;goalp)=L^L
+k
+=(i; j))P
+k;i;j
+= 0)^
+(i<m^ j<n^Nk<LENGTH(L))
+optpath(startp;goalp)=L^L
+k
+=(i; j))P
+N 1;i;j
+= 0)g
+The proving of these two theorems shows that the safety
+and functional correctness of the modied algorithm is
+guaranteed.
+Base on the analysis of the Section IV .A, S
+0
+LArm
+S
+LArm
+can be obtained. So the following property can be deduced.
+Property 8:
+(8(i j k) :N: k<N^i<m^ j<n)
+P
+k;i;j
+=((SLarm
+k
+\SRarm
+k;i;j
+)=F! 0j1)))
+(8(i j k) :N: k<N^i<m^ j<n)
+P
+k;i;j
+=((SLarm
+0
+k
+\SRarm
+k;i;j
+)=F! 0j1))
+Based on the precondition strength rule in Hoare logic,
+Theorem 2 can be proven more easily.
+Pre-strength rule:
+j P
+0
+)P j fPgCfQg
+j fP
+0
+gCfQg
+Theorem 2 and 4 show the precondition of the modied
+algorithm is weaker than the original. This means that the
+modied algorithm can have higher efciency. This conclu-
+sion is drawn as follows. With the modied algorithm, there
+are more states the weights of which are 0 in the database
+D
+0
+R
+, so the optimal path is searched more easily; moreover
+the cost of the manipulator's path is lower.
+The improved algorithm has been tested in our experimen-
+tal platform. The experiment shows that it is more efcient
+than the previous algorithm. In addition, the improved al-
+gorithm succeeds in searching especially in the conditions
+where the previous one fails.
+V. CONCLUSIONS
+We presented a formal method to verify the CFMPA
+of a DAR. A semantic inconsistency in the algorithm was
+discovered. In addition, we present a modied algorithm
+with the improvement of searching efciency and planning
+success. That the modied algorithm is collision-free and is
+more efcient, was veried using in HOL4.
+In conclusion, we believe that formally proving the
+collision-free algorithm in a theorem prover like HOL4 adds
+condence in its correctness and we believe that this should
+become an important stage in the process of developing such
+algorithms. Despite the difculty of proving these algorithms
+at present, we believe that the task will become easier as li-
+braries of useful theories are built and a better understanding
+of the eld is gained. Our work demonstrates how successful
+Hoare logic can be for formalizing collision-free algorithms.
+Not only does Hoare logic allow the formal specications to
+resemble the algorithm, but it forces one to think carefully
+about algorithms. Formalizing the properties of the algorithm
+makes it easier to obtain a better understanding of it and
+reveals situations that might have gone undetected. In this
+algorithm, an inconspicuous inconsistency was revealed.
+ACKNOWLEDGMENT
+First and foremost we thank Prof. Shengzhen Jin for the
+guidance and encouragement that he gave us. We also thank
+Prof. Jindong Tan and Prof. Xiaoyu Song for their many
+good suggestions.
+REFERENCES
+[1] F. Ding, W. Han ,and X. Zhao, On Collision-Free Motion Planning of
+a Dual-Arm Robot, Mechanical Science and Technology 21.6 (Nov.
+No 2002): 930-933
+[2] S. Brown, Overview of IEC 61508, Design of electri-
+cal/electronic/programmable electronic safety-related systems,
+Computing & Control Engineering Journal 11.1 (2000): 6-12.
+[3] A. Jones , M. Schwager ,and C. Belta, Technical Report: A Receding
+Horizon Algorithm for Informative Path Planning with Temporal Logic
+Constraints, arXiv preprint arXiv:1301.7482(2013).
+[4] H. Kress-Gazit, G. E. Fainekos , and G. J. Pappas, Temporal-logic-
+based Reactive Mission and Motion Planning, IEEE Transactions on
+Robotics, 25.6(2009): 1370-1381.
+[5] L. I. Meikle and J. D. Fleuriot, Mechanical Theorem Proving in Com-
+putational Geometry, Automated Deduction in Geometry, Springer
+Berlin Heidelberg, (2006): 1-18.
+[6] H. T¬ aubig, U. Frese, C. Hertzberg, et al., Guaranteeing Functional
+Safety: Design for Provability and Computer-aided Verication, Au-
+tonomous Robots,32.3 (2012): 303-331.
+[7] D. Walter, H. T¬ aubig, and C. L¬ uth, Experiences in Applying Formal
+Verication in Robotics, Computer Safety, Reliability, and Security,
+Springer Berlin Heidelberg, (2010): 347-360.
+[8] M. Norrish, C formalised in HOL, University of Cambridge, Computer
+Laboratory (1998).
+[9] C L¬ uth and D. Walter, Certiable Specication and Verication of
+C Programs, FM 2009: Formal Methods, Springer Berlin Heidel-
+berg(2009): 419-434.
+[10] L. Cellier, P. Dauchez , R. Zapata, et al., Collision Avoidance for a
+Two-arm Robot by Reex Actions: Simulations and Experimentations,
+Journal of Intelligent and Robotic Systems, 14.2(1995): 219-238.
+[11] H. Tuch, Formal verication of C systems code, Journal of Automated
+Reasoning, 42.2-4 (2009): 125-187.
+[12] N. Vahrenkamp, D. Berenson, T. Asfour, et al., Humanoid motion
+planning for dual-arm manipulation and re-grasping tasks, Intelligent
+Robots and Systems, 2009, IROS 2009, IEEE/RSJ International Con-
+ference on. IEEE, 2009: 2464-2470.
+[13] E. Cohen, M. Dahlweid, M. Hillebrand, et al., VCC: A Practical
+System for Verifying Concurrent C, Theorem Proving in Higher Order
+Logics, Springer Berlin Heidelberg, (2009): 23-42.
+[14] M. Kloetzer and C. Belta, A Fully Automated Framework for Control
+of Linear Systems from Temporal Logic Specications, Automatic
+Control, IEEE Transactions on, 53.1 (2008): 287-297.
+[15] M. Choi, S. Lim, J. Lee, et al., Cooperative Path Planning for
+Redundant Dual-Arm Robot Using Low-Dimensional Sample-Based
+Algorithm, Mechatronic Systems. (2010): 701-708.
+1385

@@ -1,0 +1,895 @@
+A Soft, Amorphous Skin that can Sense and Localize Textures
+Dana Hughes and Nikolaus Correll
+Abstract— We present a soft, amorphous skin that can
+sense and localize textures. The skin consists of a series
+of sensing and computing elements that are networked
+with their local neighbors and mimic the function of
+the Pacinian corpuscle in human skin. Each sensor node
+samples a vibration signal at 1KHz, transforms the signal
+into the frequency domain, and classiﬁes up to 15 textures
+using logistic regression. By measuring the power spectrum
+of the signal and comparing it with its local neighbors,
+computing elements can then collaboratively estimate the
+location of the stimulus. The resulting low-bandwidth in-
+formation, consisting of the texture probability distribution
+and its location are then routed to a sink anywhere in
+the skin in a multi-hop fashion. We describe the design,
+manufacturing, classiﬁcation, localization and networking
+algorithms and experimentally validate the proposed ap-
+proach. In particular, we demonstrate texture classiﬁcation
+with 71% accuracy and centimeter accuracy in localization
+over an area of approximately three square feet using ten
+networked sensor nodes.
+I. INTRODUCTION
+Developing a sense of touch in robotic devices has
+been explored for several decades. Within the last
+decade, tactile sensors have evolved from being located
+solely on a ﬁngertip or hand to sensor arrays for full
+body sensing [1]. Robotic arms equipped with full-body
+tactile sensing become capable of navigating cluttered
+environments and avoid damaging fragile objects [2].
+This capability becomes even more important with direct
+human-robot interaction, such as with nursing robotic
+assistants or robotic companions [3]. Incorporating a
+sense of touch can improve the robustness of grasping
+tasks, such as when grasping with an end effector [4],
+[5] or with full-body manipulation of large objects [6].
+In addition, autonomous mobile robots can utilize full-
+body tactile sensing in environments where vision may
+be limited by occlusion of obstacles, such as when
+navigating through bushes and trees or manipulating
+foliage during a foraging task. Here, the ability to
+not only sense touch, but also texture adds a whole
+new dimension of environmental awareness both during
+human-robot interaction and when navigating through or
+manipulating the environment.
+The move to full-body, multi-modal tactile sensing
+presents several engineering challenges which are not
+of concern with ﬁngertip and hand sensors [7], [8].
+Sensor arrays and networks suffer scalability issues as
+Both authors are with the Department of Computer Science, Univer-
+sity of Colorado at Boulder, CO 80309. Email: ﬁrst.last@colorado.edu
+Fig. 1: A soft, amorphous texture-sensitive skin mounted on
+the back of a Baxter robot.
+the number of sensors becomes large and their re-
+quired bandwidth increases. Communication bandwidth
+and centralized processing of measured values are both
+bottlenecks in the system, limiting the number of sensors
+(and consequently, the sensor density) and individual
+sensor bandwidth. Sensor shape may be inﬂuenced by
+the ability to tessellate individual sensors into a large ar-
+ray. Adhering sensors to complex robotic structures may
+result in gaps in the tessellation, severed communication
+channels and areas where sensors must be modiﬁed or
+omitted [9], however.
+This paper presents a soft, autonomous sensing skin
+for localizing and identifying textures rubbed against
+the skin that can be manufactured in arbitrary shapes or
+sizes, only limited by the size and spacing of individual
+sensor nodes. We propose a design that considers the
+skin as an amorphous material capable of processing
+stimuli within the material itself, rather than a matrix
+of densely packed individual sensors acting as texels
+and communicating measurements directly to a central
+processor. Collocating microcontrollers with sensors al-
+lows for local and distributed processing of sensor mea-
+surements. The skin only needs to communicate with
+external devices when an event of interest occurs (e.g.,
+the skin rubs against an obstacle), reducing communi-
+cation and processing bandwidth. This is particularly
+important when moving from binary tactile sensors to
+high-bandwidth sensors such as textures, which require
+information at bandwidths in the order of hundreds of
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 1844
+Hertz.
+II. BACKGROUND
+Human skin is sensitive to several different tactile
+stimuli, such as tension, vibration and pressure. Each
+sensation is detected through four different mechanore-
+ceptors embedded in the human skin: the Pacinian
+corpuscles, Meissner’s corpuscles, Merkel’s discs, and
+Rufﬁni corpuscles [10]–[12]. The Pacinian corpuscles
+are of particular interest to this investigation, as they
+are responsible for detecting rapid vibrations generated
+by sweeping the skin over a texture. The corpuscles
+themselves have a resonant frequency of 250Hz, and
+motivate the use of a high-bandwidth vibration sensor
+for recording texture information. Tactile sensing in
+human skin is more complex than this, the analogy
+simply provides a motivation for this project.
+Early work into texture detection includes the devel-
+opment of a ﬁngertip for identifying texture [13]. This
+ﬁngertip combined slip detection, temperature, pressure
+sensors and vision to train a neural network to distin-
+guish between 20 different textures with 100% accuracy.
+More recently, a robotic ﬁngertip was developed which
+was capable of identifying textures from a database of
+117 textures with an accuracy of 95.4% using a Bayesian
+classiﬁer [14]. The focus of this paper is not to replicate
+these results, but to investigate an amorphous architec-
+ture and distributed algorithms that can integrate such
+high-bandwidth, multi-modal sensors into a stretchable
+skin in a scalable and robust fashion.
+As comprehensively surveyed in [1], the last decade
+has seen tactile sensing evolve from sensors for ﬁn-
+gertips and hands to sensor arrays suitable for full-
+body tactile sensing, particularly for force and pressure
+sensing [15]–[18]. These full-body arrays have focused
+primarily on the development of the sensors themselves
+and transduction of the signal. There is still much need
+for suitable conditioning and processing of the signal
+within the sensor network, prior to passing the signal to
+a central processor [1].
+A central issue with full-body tactile sensing is trans-
+mitting the signals from the sensors to a communication
+sink for further processing. Arranging the sensors in
+a matrix is one solution, and is the approach used by
+[17] and [18], among others, for a capacitive pressure
+sensing skin. An alternative is to organize the sensors in
+a hierarchical bus. Using this approach, [19] constructed
+“cut-and-paste” tactile sensing sheets whose 1,024 sen-
+sors in groups of 32 can be connected to an SMBus.
+Also, [20] demonstrated a system with 192 capacitive
+pressure that feed into a hierarchical bus with increasing
+bandwidth (I
+2
+C to CAN) and allowed recording binary
+touch events at 50 Hz. This system has evolved to
+the ROBOSKIN project [16]. As the design maxed out
+the bandwidth of the CAN bus, any additional sensor
+sharing this communication channel would drastically
+reduce the sensor bandwidth.
+III. APPROACH
+This paper investigates the utility of collocating com-
+putation with individual sensors, and connecting these
+in a large sensor network embedded in a robotic skin.
+The sensors may be sparsely distributed in the skin,
+and may leverage known properties of the material the
+skin is made of to determine the location of stimuli.
+The skin itself may be programmed to process the
+signal and determine when a signal should be reported
+to an external device for further processing. Individual
+sensor nodes or local neighborhoods of sensors may also
+perform in-network processing of the signal, possibly
+reducing several data points to a single, predeﬁned event.
+Combining distributed sensing and computation with
+known material properties shifts this approach of skin
+design from one of a sensor array to an amorphous
+material.
+For this investigation, we constructed a prototype skin
+combining texture sensing and localized computation.
+The purpose of this prototype is to explore texture detec-
+tion and identiﬁcation, networking issues and stimulus
+localization. The skin prototype consists of a network of
+ten sensor nodes embedded in silicone rubber (Figure
+1). The task of texture recognition demonstrates the
+ability of this type of skin to solve the computation
+and communication bottlenecks associated with sensor
+arrays, while stimulus localization demonstrates how
+material selection and skin design can be leveraged.
+A. Sensor Node Network
+A single sensor node is shown in Figure 2, left. Each
+sensor node is composed of an Atmel ATxmega128A3U
+microcontroller attached to a single WM-64K micro-
+phone. The microphone is attached to the microcon-
+troller’s 12-bit analog-digital converter (ADC) through
+an operational ampliﬁer (LM358). Each microcontroller
+can communicate with the node network using six hard-
+ware serial ports (USARTs) at 115kbps. Using these six
+independent communication channels allows arranging
+the sensor nodes in a hexagonal lattice packing. Commu-
+nication channels consist of a four-wire bus consisting
+of power, ground, transmit and receive lines. A seventh
+serial port is optionally available on each node, and
+is only used for interfacing to a computer for initial
+programming and retrieving data. Nodes can propagate a
+program in a viral fashion throughout the network. The
+absence of any central component allows for including
+or removing nodes at any time.
+1845
+Fig. 2: Left: Close-up on an individual sensor node. Middle: sensor network woven into a neoprene lattice. Sensor node network
+embedded into EcoFlex
+TM
+rubber. Right: Finished skin with 60-grit surface texture.
+B. Design and Manufacturing
+Individual sensor nodes are ﬁrst placed on a ﬂexible
+neoprene rubber mesh (McMaster) and then embedded
+into silicone rubber (Ecoﬂex Supersoft 0030). The com-
+munication bus wires are woven in the rubber mesh.
+The wires are woven in a spiraling pattern, providing
+strain relief for the wires and ensuring the resulting
+skin remains stretchable. When connected to the sensor
+nodes, the wires securely attaches the sensor nodes to the
+mesh. Connecting the nodes and communication wires to
+a rubber mesh before embedding in silicone is necessary,
+as these components would otherwise eventually tear out
+of the silicone during use of the skin. Figure 2, middle,
+shows the sensor network and mesh before embedding
+in silicone rubber. The sensor nodes are spaced 15 cm
+apart. Based on the resonant frequency of the Pacinian
+corpuscle, 250Hz is considered the mid-frequency of
+interest to be measured by the microphones. In the
+silicone rubber, 15 cm corresponds to a distance half
+of a wavelength of sound at 250 Hz. The overall size of
+the mesh is approximately 61 cm x 43 cm.
+Ecoﬂex is a two-part liquid rubber which cures solid.
+The sensor network and mesh are placed in a form,
+the bottom of which is covered with 60-grit aluminum
+oxide sandpaper to create a surface texture similar to
+a ﬁngertip. Figure 2, right, shows the surface of the
+prototype skin after the sensor network is embedded in
+silicone. The resulting skin is approximately 1 cm in
+thickness.
+C. Sound Detection
+When the skin is rubbed, vibrations will be generated
+on the surface. These vibrations will propagate through
+the skin as described later in Section V-A. The vibration
+propagates to a sensor node, where it is detected by the
+microphone. The microcontroller continuously samples
+the ampliﬁed signal at a sample rate of 1 kHz. Samples
+are stored in a circular buffer of 256 samples. Once
+the buffer is ﬁlled (i.e., roughly every 256 ms), the
+microcontroller computes the spectrum of the signal
+using the Fast Fourier Transform, resulting in a 128-
+sample time slice. Samples continue to be written into
+the buffer after this operation is performed, allowing
+the signal from the microphone to be sampled as a
+continuous stream.
+The signal may contain various levels of noise, due
+to ambient sound, electrical and ampliﬁcation noise,
+etc. Since the skin ideally focuses on vibrations due to
+a texture rubbed on the surface, ambient noises such
+as these should be reduced if possible. Each sensor
+maintains a buffer representing the best estimate of the
+ambient signal, calculated as a smoothed power estimate
+as in [21]. After every FFT calculation, the ambient
+signal may be updated by slow averaging the incoming
+time slice using the following equation
+A(f;t) =S(f;t)+(1 )A(f;t 1) (1)
+where A(f;t) is the estimated ambient noise at time
+slicet,S(f;t) is the spectrum of the measured signal at
+time t, and  is a factor representing the rate at which
+the ambient signal is updated. High values of  imply
+that the ambient estimation is sensitive to recent events,
+while lower values result in an ambient estimation which
+responds slower to changes in background noise. When
+the background noise is steady, there should be little
+change in A(f;t) over time. For this investigation, a
+value of’ 0:05 was used as a smoothing constants, as
+suggested in [21].
+When an object rubs against the skin, the generated
+vibrations result in a signal which contains extra energy
+in the signal’s spectrum. At each time slice, the transient
+spectrum,T(f;t) is calculated as the difference between
+the spectrum of the measured signal and the ambient
+noise, or
+T(f;t) =min(S(f;t) A(f;t);0) (2)
+The presence of a transient signal indicates that the
+skin has been rubbed. To avoid falsely indicating a
+stimulus on the skin, a sensor node will ignore a
+transient signal unless it exceeds a certain threshold.
+For this investigation, only transient signals whose total
+energy exceeds three times the energy of the ambient
+1846
+signal indicates a stimulus. The threshold was manually
+adjusted until the desired sensitivity was obtained.
+Once a transient signal is detected, the total energy
+of the signal is computed as the sum of spectral compo-
+nents. The sensor node shares this energy with the sensor
+nodes in its immediate neighborhood to determine the
+location of the rubbed stimulus.
+IV. TEXTURE IDENTIFICATION
+Texture sensitive ﬁngertips utilized artiﬁcial neural
+networks [13] and Bayesian classiﬁers [14]. As these
+models are very memory intensive, we implemented a
+logistic regression model to classify a detected stimulus
+as one of 15 predeﬁned textures. Here, the likelihood
+that the spectrum of a signal,X, is produced by a given
+texture t is given by
+y
+t
+(X) =g(w
+0
++w
+1
+X
+1
++X
+2
+f
+2
+:::+w
+n
+X
+n
+) (3)
+whereX
+1
+toX
+n
+is the measured spectrum of the signal
+(in our application, the 128-bin Fourier spectrum), w
+0
+to w
+n
+is a set of trained weights for the particular
+texture, g() is the sigmoid function, and y
+t
+() is a
+value in the range (0;1) representing the likelihood that
+the texture t generated the measured signal. A logistic
+regression model was selected over a neural network
+in order to ensure that the model could be stored on
+each microcontroller in the skin. Forn = 128 frequency
+components and 15 different textures, we need to store
+1920 weights in the microcontroller, which requires a
+little less than 4kB of ﬂash memory. With 128kByte of
+ﬂash available on the Xmega platform, this approach can
+therefore scale to larger number of textures and more
+potent classiﬁers.
+V. LOCALIZATION APPROACH
+Localization of a stimulus can either be performed
+by determining which sensor detected the most intense
+signal, as is the case in a densely packed sensor array, as
+in [17] and [20] or by utilizing the signals detected from
+a collection of sparsely located nodes and knowledge of
+how a signal propagates through the skin’s material. This
+latter approach is similar to sound source localization
+in [22], albeit sound propagation in this investigation
+involves a different propagation medium and structure.
+A. Sound Propagation
+For simplicity, the skin may be modeled as a thin
+vibrating plane. As the skin is expected to be very
+large in terms of signal wavelength, we assume it to be
+inﬁnite in extent. This simpliﬁes the analysis of sound
+propagation, as only a traveling wave radiating from
+a stimulus. A more complete analysis would consider
+reﬂections from the edge of the skin, connections, etc.,
+and would consider various modes of vibration. As we
+will see, an inﬁnite vibrating plane is sufﬁcient for our
+purposes.
+The displacement of an inﬁnite plate due to the
+excitation from a point source is approximated by the
+equation
+w(r)'
+iF
+8!
+s
+2
+
+s
+hDk
+f
+r
+e
+i(k
+f
+r =4)
+(4)
+where F is the displacement force of the point source,
+! is the frequency of the vibration, 
+s
+, h and D is the
+density, thickness and rigidity of the plate, k
+f
+is the
+wavenumber (!=c), andr is the distance from the point
+source [23]. The sound intensity, I(r), is proportional
+to the square of the displacement:
+I(r) =
+1
+2
+
+s
+cjw(r)j
+2
+(5)
+where c is the sound velocity in the skin. Combining
+these two equations yields the sound intensity due to a
+point excitation
+I(r)'
+F
+2
+64!hDk
+2
+f
+r
+(6)
+Details of this derivation is available in [23].
+Equation 6 describes the intensity of a vibration
+measured by a microphone a distancer from the source
+of the vibration. The material properties of the skin
+(density, thickness and rigidity) are constant throughout
+the skin. Isolating the terms associated with the material
+and the stimulus results in
+I(r) =
+I
+0
+(F;!)
+r
+(7)
+where I
+0
+(F;!) is related to the intensity of the
+vibration signal at the source of the vibration, and is
+given by
+I
+0
+(F;!) =
+F
+2
+64!hDk
+2
+f
+(8)
+For a given stimulus, the displacement force F will
+be some arbitrary value which cannot be determined
+directly from a microphone sensor. Performing calcu-
+lations using a single frequency (as may be done for
+localization), the source intensity I
+0
+may be considered
+a constant in equation 7. The spectrum of the source
+intensity will vary based on the mechanical properties
+of the material rubbing against the skin [24], which is
+used for material classiﬁcation.
+To validate this derivation, we pressed a small vibra-
+tion motor (1 cm x 2 mm) at speciﬁc distances from a
+microphone sensor against the skin. The motor vibrated
+with a force equivalent to 1G, at a frequency of 150
+Hz. The size of the motor is assumed to be much
+smaller than an area stimulated by rubbing, ensuring
+1847
+that the results from the motor experiment relate well
+to localizing texture signal sources in practice.
+Figure 3 shows the intensity of the measured sig-
+nal with respect to the distance between the vibration
+motor and microphone. At each point, 15 measurements
+were made. The smooth curve is a least-square ﬁt to
+the expression I
+0
+=r, where I
+0
+represents the unknown
+source intensity in equation 7, and is the term varied
+to ﬁt the measurement points. This ﬁgure demonstrates
+that equation 7 is an accurate representation of the
+propagation of sound in the skin.
+Fig. 3: Amplitude of transient signal vs. Distance
+B. Source Location Estimation
+A sound of sufﬁcient intensity will be detected by
+various sensors throughout the skin. Estimating the
+location of the stimulus is easily expressed as an error
+minimization problem. The approach to estimating the
+location given here is based on measurements from three
+sensors, but may be extended to more sensors. The local-
+ization approach uses the ratio of two measured signal
+intensities. Uniquely deﬁning a point on the surface of
+the skin requires at least two independent signal ratios.
+Consequently, three sensors can be considered the fewest
+number of sensors needed to locate the source of a
+vibration on the skin.
+Figure 4 shows a signal generated at point (x,y), with
+an source intensity I
+0
+(F;!), as described by equation
+8. Using one frequency bin of the FFT of the mea-
+sured signal, this value becomes a constant for a given
+stimulus, as described in section V-A. The localization
+experiment here used the frequency bin of the FFT of
+the measured signal centered at 152 Hz (the closest
+frequency of the vibration motor stimulus). Performing
+localization measurements using several frequency bins
+will provide additional estimates of the source of the
+vibration.
+Fig. 4: Propagation of sound to various sensors from an
+arbitrary point on the skin.
+As the signal propagates through the skin, it’s inten-
+sity decreases inversely as a function of the distance
+from the source, as given by equation 7. The sensors at
+positionsA,B andC measure signal with intensityI
+A
+,
+I
+B
+and I
+C
+, respectively. These three signals are related
+to the stimulus by
+I
+i
+=
+I
+0
+r
+i
+(9)
+where I
+0
+is the source intensity, I
+i
+is the intensity of
+the signal measured at sensor i, and r
+i
+is the distance
+from the sensor and the stimulus. The goal is to deter-
+mine the source location (x,y) which produces the least
+mean square error between the measured and expected
+signals, or by satisfying the equation
+min
+(x;y)
+X
+i2fA;B;Cg
+
+I
+0
+r
+i
+ I
+i
+
+2
+: (10)
+The displacement force F of the source of the vi-
+bration is not known. Threfore, the value of I
+0
+cannot
+be determined and must be removed from this equation.
+This can be done by combining the measurements at two
+nodes, whose intensity is expressed as
+I
+2
+1
+=
+I
+2
+0
+(x x1)
+2
++(y y1)
+2
+(11)
+I
+2
+2
+=
+I
+2
+0
+(x x2)
+2
++(y y2)
+2
+(12)
+where nodes 1 and 2 are located at positions (x
+1
+,y
+1
+)
+and (x
+2
+,y
+2
+), respectively, and have a measured intensity
+of I
+1
+and I
+2
+. These two equations can be rewritten as
+I
+2
+1
+((x x
+1
+)
+2
++(y y
+1
+)
+2
+) =I
+2
+0
+(13)
+I
+2
+2
+((x x
+2
+)
+2
++(y y
+2
+)
+2
+) =I
+2
+0
+(14)
+The difference between these two equations results in
+the following single equation,
+1848
+TABLE I: Textures used for training and validating the classi-
+ﬁer.
+a) Brillo Pad b) Brush c) Cardboard
+d) Coarse Wire Mesh e) Cotton f) Dense Foam
+g) Fine Wire Mesh h) Plastic i) Sandpaper
+j) Silicone Foam k) Skin l) Sponge
+m) Terry Cloth n) Textured Silicone o) Wood
+I
+2
+1
+((x x
+1
+)
+2
++(y y
+1
+)
+2
+) I
+2
+2
+((x x
+2
+)
+2
++(y y
+2
+)
+2
+) = 0
+(15)
+Given measurements from N nodes, it is possible to
+derive N 1 independent equations of the above form.
+Minimizing the error in these equations with respect
+to (x, y) can be performed using gradient decent. The
+mean of the locations of each node involved in the
+measurement is used as an initial guess. The equations
+are convex, so gradient decent is guaranteed to converge
+on a global minimum.
+VI. NETWORKING
+All sensor nodes are networked to their local 6-
+neighborhood using dedicated serial ports operating at
+115kbps. For the purpose of this work, information is
+propagated using a simple ﬂooding algorithm. That is,
+whenever a sensor node detects a texture, results from
+classiﬁcation are ﬂooded through the network and can be
+collected anywhere. In order to limit communication to
+the immediate neighborhood during texture localization,
+we have implemented a Bloom-ﬁlter based multicast
+routing algorithm [25], [26].
+VII. RESULTS
+A. Texture recognition
+We performed a texture recognition experiment using
+15 textures, which are summarized in Table I/Figure 5.
+We have cut each sample into a small patch of roughly
+one square inch size. For each texture, 100 samples
+were taken by rubbing the texture on the surface of the
+skin near a sensor, and recording the transient signal
+measured by the node. Each sample consisting of 128
+spectral components. A logistic regression model was
+trained on this data set using Weka, a machine learning
+library [27], and accuracy was assessed using 10-fold
+cross-validation. The logistic regression model was able
+to classify textures with an accuracy of 71.7%, which
+compares favorably to the expected accuracy of 6.7%
+from random guessing. To compare, a two-layer neural
+network was also trained using Weka. Classiﬁcation was
+only slightly better with 73.1% accuracy.
+Fig. 5: Textures used for training and validating the classiﬁer.
+Fig. 6: Region and sensor nodes used in localization experi-
+ment.
+B. Localization
+Initial localization experiments involved a 15 cm x 13
+cm region of the skin shown in Figure 6, measuring
+the signal at three sensor nodes (A, B and C). The
+intensity of the vibration motor placed on a grid with
+1 cm intervals were measured by each of these sensors.
+Figure 7 show the measured intensity of the transient
+signal measured by three sensor nodes located in the
+region. In all of these plots, the darker areas indicate
+higher transient signal intensity.
+From these measurements, the location of the stimulus
+at each point was calculated as described in Section V-
+B. The error between the calculated and actual locations
+for each point is shown as a vector in Figure 8. The
+dashed lines deﬁne a triangle whose vertices are the
+three sensors which detected the signal. Outside this
+region, a different set of sensors would be used to
+determine the location of the source and produce a more
+accurate result. Within the region of interest, the mean
+and standard deviation of the overall error was calculated
+as 
+r
+= 3.55 cm and 
+r
+= 1.96 cm, respectively.
+C. Networking
+To compare the reliability and robustness of the pro-
+posed network topology to that of a bus-like architecture,
+we conducted two sets of experiments. First, we sent
+64 byte packets from node 2 to node 3 in Figure 9
+(three hops) using a simple ﬂooding algorithm with all
+adjacent nodes enabled. Figure 10 shows the percentage
+of received packets as a function of packet loss at each
+intermediate node for transport through the amorphous
+1849
+Fig. 7: Amplitude of transient signal from sensors A (left), B (middle) and C (right).
+Fig. 8: Error in calculated location of signal source.
+network (solid line) as a function of individual node
+failure rate (e.g., dropped packet, failed bus connection,
+etc.). In a second experiment, we removed all nodes
+labeled X from the network and sent packets from the
+node 1 to node 4 (6 hops) and measured throughput at
+each node for different packet loss (dashed lines). Re-
+sults show that the amorphous network provides higher
+throughput than communication over one hop with nodes
+deliberately dropping 30% of the packets, and over two
+hops with nodes dropping 55% of the packets.
+Fig. 9: Source and sink nodes used in networking experiment
+VIII. DISCUSSION
+We demonstrated the development and implementa-
+tion of a soft, amorphous sensing skin that performs
+texture recognition, localization and event-driven data
+transport. Focusing on systems-level challenges in this
+Fig. 10: Packet loss in a network with unreliable nodes for
+different networking architectures
+paper, we limited this investigation to only one type of
+sensor (texture), localization of general sound sources,
+and data dissemination using a simple ﬂooding protocol.
+With texture having the highest bandwidth requirements
+among possible sensors (binary touch, pressure, tem-
+perature, capacitance, conductance, etc.) and the highest
+processing requirements (calculating a FFT vs. simply
+recording data or measuring changes), we believe that
+the proposed system can easily be extended to other
+sensor types and in-network processing algorithms, such
+as detecting patterns or shapes in a pressure proﬁle.
+Similarly, texture recognition classiﬁcation accuracy
+of 70% using simple regression and a single sen-
+sor modality could be improved by adding additional
+sensors such as temperature, capacitance or pressure,
+or improving the classiﬁer, as demonstrated in related
+work focusing on single sensor architectures [14]. The
+amorphous computing approach presented here offers
+additional unprecedented ways of improvement. For
+example, implementing consensus classiﬁers [28] that
+compare texture signatures with those recorded by their
+neighbors, or optimizing material properties and topol-
+ogy of the sensor network are obvious next steps.
+For example, sound conductivity might be greatly im-
+proved by embedding metallic meshes, while further
+1850
+miniaturization of electronics could allow for a higher
+sensor density. Finally, techniques from data aggregation
+and routing in sensor networks could be leveraged to
+maximize throughput in the amorphous network.
+IX. CONCLUSION
+We presented a soft, amorphous sensing skin that
+can collaboratively process high-bandwidth sensor in-
+formation within the material and thereby drastically
+reduce the bandwidth requirements of a communication
+subsystem and a central computer that will eventually
+process this information. Although focusing only on
+textures, the bandwidth requirements of this sensor
+are three orders of magnitude larger than pressure or
+temperature, suggesting the suitability of the approach
+for multi-modal sensing and in-network processing, such
+as recognition of shapes, which we will investigate in
+future work. We will also focus on further miniaturizing
+the existing sensor node in order to wrap the sensing
+skin around complex, moving robot parts such as hands,
+wrists and arms.
+ACKNOWLEDGEMENT
+This work was supported by NSF awards #1153158,
+#1150223, #1225934 , the Air Force Ofﬁce of Scientiﬁc
+research under grant #FA9550-12-1-0145 and a NASA
+Early Career Faculty fellowship NNX12AQ47GS02.
+REFERENCES
+[1] R. S. Dahiya, G. Metta, M. Valle and G. Sandini, “Tactile
+Sensing–from Humans to Humanoids,” IEEE Transactions on
+Robotics, vol. 26, no. 1, pp. 1-20, February 2010.
+[2] A. Jain, M. D. Killpack, A. Edsinger and C. C. Kemp, “Manipu-
+lation in Clutter with Whole-Arm Tactile Sensing,” Int. Journal
+of Robotics Research, vol. 32, no. 4, pp. 458-482, April 2013.
+[3] V . Duchaine, N. Lauzier, M. Baril, M.-A. Lacasse and C. Gos-
+selin, “A Flexible Robot Skin for Safe Physical Human Robot
+Interaction”, in Proc. of the Int. Conf. on Robotics and Automa-
+tion, pp. 3676-3681, 2009.
+[4] K. Hsiao, L. P. Kaelbling, and T. Lozano-Perez, “Task-driven
+Tactile Exploration,” In Proc. of Robotics: Science and Systems,
+2010.
+[5] J. Romano, K. Hsiao, G. Niemeyer, S. Chitta and K. Kuchen-
+becker, “Human-Inspired Robotic Grasp Control with Tactile
+Sensing”, IEEE Transactions on Robotics, vol. 27, no. 6, pp.
+1067-1079, December 2011.
+[6] P. Mittendorfer, E. Yoshida, T. Moulard and G. Cheng, “A
+General Tactile Approach for Grasping Unknown Objects with a
+Humanoid Robot”, to appear in Proc. of the IEEE/RSJ Int. Conf.
+on Intelligent Robots and Systems, 2013.
+[7] R. S. Dahiya, P. Mittendorfer, M. Valle, G. Cheng and
+V . J. Lumelsky, “Directions Toward Effective Utilization of
+Tactile Skin: A Review”, IEEE Sensors Journal, vol. 13, no.
+11, pp. 4121-4138, November 2013.
+[8] R. S. Dahiya and M. Valle, Robotic Tactile Sensing, Springer
+2013.
+[9] D. Anghinolﬁ, G. Cannata, F. Mastrogiovanni, C. Nattero and
+M. Paolucci, “On the Problem of the Automated Design of
+Large-Scale Robot Skin”, IEEE Transactions on Automation
+Science and Engineering, vol. PP, issue 99, pp. 1-14, April 2013.
+[10] R. Johannson and A. Vallbo, “Tactile Sensibility in the Hu-
+man Hand: Relative and Absolute Densities of Four Types of
+Mechanoreceptive Units in Glabrous Skin”, Journal of Physiol-
+ogy, vol. 286, pp. 283-300, 1979.
+[11] A. Vallbo and R. Johannson, “Properties of Cutnaeous
+Mechanoreceptors in the Human Hand Related to Touch Sen-
+sation”, Human Neurobiology, vol. 3, pp. 3-14, 1984.
+[12] J. Scheiber, S. Leurent, A. Prevost and G. Debr´ egeas, “The Role
+of Fingerprints in the Coding of Tactile Information Probed with
+a Biomimetic Sensor”, Science, vol. 323, no. 5920, pp. 1503-
+1506, March 2009.
+[13] D. Taddeucci, C. Laschi, R. Lazzarini, R. Magni, P. Dario and
+A. Starita, “An Approach to Integrated Tactile Perception”, in
+Proc. of the Int. Conf. on Robotics and Automation, pp. 3100-
+3105, 1997.
+[14] J. A. Fishel and G. E. Loeb, “Bayesian Exploration for Intelligent
+Identiﬁcation of Textures”, Frontiers in Neurorobotics, vol. 6,
+2012.
+[15] T. Hoshi and H. Shinoda, “A Large Area Robot Skin Based on
+Cell-Bridge System”, in Proc. of the 5th IEEE Conf. on Sensors,
+pp. 827-830, 2006.
+[16] A. Billard, A. Bonﬁglio, G. Cannata, P. Cosseddu, T. Dahl,
+K. Dautenhahn, F. Mastrogiovanni, G. Metta, L. Natale,
+B. Robins, L. Seminara and M. Valle, “The ROBOSKIN Project:
+Challenges and Results”, in Romansy 19–Robot Design, Dynam-
+ics and Control, pp 351-358, Springer, Vienna, 2013.
+[17] S. Mannsfeld, B. Tee, R. Stoltenberg, C. Chen, S. Barman,
+B. Muir, A. Sokolov, C. Reese and Z. Bao, “Highly Sensitive
+Flexible Pressure Sensors with Microstructured Rubber Dielec-
+tric Layers”, Nature Materials, vol. 9, pp. 859-864, 2010.
+[18] J. Ulmen and M. Cutkosky, “A Robust, Low-Cost and Low-Noise
+Artiﬁcial Skin for Human-Friendly Robots”, in Proc. of the Int.
+Conf. on Robotics and Automation, pp. 4836-4841, 2010.
+[19] Y . Ohmura, Y . Kuniyoshi and A. Nagakubo, “Conformable and
+Scalable Tactile Sensor Skin for Curved Surfaces”, inProc.ofthe
+Int. Conf. on Robotics and Automation, pp. 1348-1353, Orlando,
+FL, May 2006.
+[20] G. Cannata, M. Maggiali, G. Metta and G. Sandini, “An Embed-
+ded Artiﬁcial Skin for Humanoid Robots”, in IEEE Int. Conf. on
+Multisensor Fusion and Integration for Intelligent Systems, pp.
+434-438, August 2008.
+[21] R. Martin, “An Efﬁcient Algorithm to Estimate the Instantaneous
+SNR of Speech Signals”, Proc. of the 2nd European Conference
+on Speech, Communication and Technology (EUROSPEECH
+’93), pp. 1093-1096, Berlin, Germany, September 1993.
+[22] J.-M. Valin, F. Michaud, J. Rouat and D. L´ etourneau, “Robust
+Sound Source Localization Using a Microphone Array on a
+Mobile Robot”, Proc. of the 2003 IEEE/RSJ Int. Conf. on
+Intelligent Robots and Systems, vol. 2, pp. 1228-1233, October
+2003.
+[23] M. C. Junger and D. Feit, Sound, Structures, and Their Interac-
+tion, MIT Press, 1972.
+[24] S. Decherchi, P. Gastaldo, R. S. Dahiya, M. Valle and R. Zunino,
+“Tactile Data Classiﬁcation of Contact Materials Using Compu-
+tational Intelligence”, IEEE Transaction on Robotics, vol. 27, no.
+3, pp. 635-639, June 2011.
+[25] H. Hosseinmardi, R. Han, N. Correll, “Bloom Filter-Based Ad
+Hoc Multicast Communication in Cyber-Physical Systems and
+Computational Materials”, in the 7th Int. Conf. on Wireless
+Algorithms, Systems, and Applications (WASA 2012), Lecture
+Notes in Computer Science V olume, 7405, 2012.
+[26] S. Ma, H. Hosseinmardi, N. Farrow, R. Han and N. Correll.
+“Establishing Multi-Cast Groups in Computational Robotic Ma-
+terials”, in IEEE Int. Conf. on Cyber, Physical and Social
+Computing, Besancon, France, November 2012.
+[27] M. Hall, E. Frank, G. Holmes, B. Pfahringer, P. Reutemann and
+I.H. Witten, “The WEKA Data Mining Software: An Update”,
+SIGKDD Explorations, vol. 11, no. 1, 2009.
+[28] J. A. Benediktsson and P. H. Swain, “Consensus Theoretic
+Classiﬁcation Methods”, IEEE Transactions on Systems, Man,
+and Cybernetics, vol. 22, no. 4, pp. 688-704, July 1992.
+1851

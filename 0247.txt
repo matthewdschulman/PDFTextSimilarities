@@ -1,0 +1,1124 @@
+Versatile and Robust 3D Walking with a Simulated Humanoid Robot
+(Atlas): a Model Predictive Control Approach
+Salman Faraji, Soha Pouya, Christopher G. Atkeson
+‡
+, and Auke Jan Ijspeert
+Biorobotics Laboratory, Ecole Polytechnique F´ ed´ erale de Lausanne (EPFL), Lausanne, Switzerland
+‡
+Robotics Institute, Carnegie Mellon University, Pittsburgh, USA
+Abstract— In this paper, we propose a novel walking method
+for torque controlled robots. The method is able to produce a
+wide range of speeds without requiring off-line optimizations
+and re-tuning of parameters. We use a quadratic whole-body
+optimization method running online which generates joint
+torques, given desired Cartesian accelerations of center of mass
+and feet. Using a dynamics model of the robot inside this
+optimizer, we ensure both compliance and tracking, required
+for fast locomotion. We have designed a foot-step planner that
+uses a linear inverted pendulum as simpliﬁed robot internal
+model. This planner is formulated as a quadratic convex
+problem which optimizes future steps of the robot. Fast libraries
+help us performing these calculations online. With very few
+parameters to tune and no perception, our method shows
+notable robustness against strong external pushes, relatively
+large terrain variations, internal noises, model errors and also
+delayed communication.
+I. INTRODUCTION
+Among legged robots, bipeds are difﬁcult to control com-
+pared to quadruped and multi-legged robots. Keeping the
+Center of Mass (CoM) inside support polygon (statically-
+stable walking) produces an un-natural and slow motion. The
+concept of Zero Moment Points (ZMP) ([1], [2]) is then
+used which enables the CoM to move more freely while
+still having dynamic stability. Maintaining the ZMP inside
+the support polygon is the key rule, preventing feet to roll
+or tilt. For instance, [3] and [4] use inverse kinematics to
+produce and track stable ZMP trajectories.
+Model-free methods like [5], [6] and [7] optimize a walk-
+ing pattern off-line, targeting stability, fast motion, energy
+efﬁciency or similarity to human walking. Other approaches
+incorporate a kinematics model of the robot into the loop,
+which enables them to convert Cartesian positions, velocities
+or forces to joint variables and vice-versa. Among these are
+[8] and [3] that use inverse kinematics to reproduce trajec-
+tories while [9] and [10] use this data to convert Cartesian
+forces to joint torques. The latter is called Virtual Model
+Control, which balances the robot and performs locomotion
+by means of virtual spring/dampers, connected between the
+robot and a moving frame.
+Using dynamics-model allows us to predict future motion
+of the robot at a wide range of speeds. This additional
+information is more useful than pure kinematics regarding
+dynamics coupling effects, since we can calculate required
+torques for a speciﬁc motion. It requires smaller feedback
+gains for perturbation rejection and behaves more compli-
+ant compared to kinematics-based methods which follow
+trajectories using high gains. The beneﬁts of using robot’s
+dynamics model to reduce the need for high-gain position
+controllers have been discussed and demonstrated via sim-
+ulation as well as real robot experiments in [11] and [12].
+Compliance is important because in legged robots, each step
+makes an impact on the whole body. These shocks can be
+harmful for the environment and for the robot itself if it
+behaves stifﬂy. There are some mechanical techniques to
+alleviate these effects such as using soft feet. Designers
+use spring/damper sets either mechanically or virtually in
+joints to decrease stiffness of a position-controlled robot. The
+former can also be used in torque-controlled robots, but it
+generally complicates the control problem and adds more
+dynamics to the system.
+The current platform we use to test our algorithms is
+the Atlas robot simulated in Gazebo, an ODE-based rigid
+body simulator. Fig.1 shows the real robot built by Boston
+Dynamics
+1
+that serves as a platform for the DARPA Robotic
+Challenge. Using strong hydraulic actuators, the robot is
+capable of performing many dexterous tasks which makes
+it a good platform for our fast walking method as well.
+Fig. 1: The fully torque controlled Atlas robot by Boston Dynamics. It is
+190cm tall and weighs 150Kg. Leveraging high power hydraulic actuators, it
+is capable of doing many dexterous tasks. The 2-layers control architecture
+is shown on left which will be described in sections II and III.
+In this work, we propose a walking control framework
+for torque-controlled humanoids (See Fig.1) which is not
+based on joint trajectories. Here we only have joint ac-
+celerations in the control loop and follow trajectories in
+the Cartesian or task space. For the purpose of walking,
+planning these trajectories is simpler as we are interested
+in footstep locations. The problem formulation is presented
+1
+http://www.bostondynamics.com/
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 1943
+in section II. Given task-space accelerations produced by
+PD tracker controllers, we run an optimization algorithm
+which optimizes joint accelerations and contact forces while
+considering friction cones, center of pressure and joint torque
+limits as constraints. The outcome will be joint torques
+calculated from equations of motion (EOM). In [13], [14] the
+same approach is taken, however they ﬁrst optimize contact
+forces with those constraints separately and then minimize
+joint accelerations by pseudo-inversion in next step. We
+prefer the approach of [15] as it simply solves the problem
+in one step and enables us to consider torque limits as well.
+We also use a convex optimization library called CVXGEN
+[16] in which we formulate the problem efﬁciently tailored
+to our own speciﬁc application. CVXGEN avoids solving the
+problem by forming standard large matrices which are sparse
+in our case. We can then solve the problem very rapidly and
+avoid the computationally expensive matrix operations used
+in [13]. In comparison to previous works, the main features
+and strengths of our low-level controller are two-folded: (i)
+it operates in task-space and does not depend on prescribed
+joint-space trajectories and (ii) it is computationally efﬁcient
+and capable of solving the corresponding optimization prob-
+lem online. This controller will be described in section II.
+In section III, we explain the high-level algorithm we
+use to plan Cartesian task-space trajectories for the above-
+mentioned low-level controller. We use a state machine to
+determine the pattern of motion and also the swing-phase
+trajectories. The high-level planner uses Linear Inverted
+Pendulum Model (LIPM) [17], [18] to produce CoM motion
+which helps us reduce problem dimensions and plan for
+multiple future steps. This planning is done in the form
+of a discrete-time Model Predictive Control (MPC) which
+determines future footstep locations.
+To compare, [19] has similar control architecture. At a
+low level, they run a quadratic kinematics-based problem
+which optimizes joint torques given Cartesian forces. We use
+a dynamics model however which brings more compliance
+and improves task space tracking properties. The method
+in [19] optimizes half-cycle full body trajectories off-line
+and replicates them online. We plan online however with
+our LIPM simpliﬁed model which is more robust and fast
+enough. Whitman in [14] uses the same low-level control,
+however it plans body motion off-line and builds a library
+of motions supporting a wide range of states and required
+speeds. We avoid such computationally expensive off-line
+optimization and plan the motion online.
+Other works such as Foot Point Indicator (FPI) [20] and
+Instantaneous Capture Point (ICP) [18],[21], [22] and [4]
+plan a motion for taking the next step, where the robot goes
+to rest condition after being pushed. FPI takes full body
+dynamics into account while ICP simpliﬁes the robot’s model
+into a LIPM. The latter is computationally less expensive
+which allows calculating rest condition after multiple steps
+[18]. Inspired by this idea, we formulate a MPC problem
+which brings the robot to a desired speed instead of rest
+condition in multiple steps. Our work is therefore similar
+to [23] except that we use LIPM instead of SLIP (Spring
+Loaded Inverted Pendulum), where we can linearly express
+the state of the system in multiple footsteps and optimize it
+per time-step.
+Our low-level controller is slightly better than similar
+formulations in the sense that it can consider torque limits
+as well. However the novelty of the present work is in high-
+level footstep planning rather than the low-level controller.
+The proposed discrete-time MPC formulation in high-level
+is based on the LIPM and lets us deal with the footstep
+planning constraints in a systematic way. We provide a
+linear convex optimization that allows online planning over
+multiple future steps regarding the current state of the CoM.
+Section IV is dedicated to evaluate this approach through
+different scenarios, in which the robot is subject to various
+internal perturbations (like sensor noises or model errors)
+or external perturbations (like pushes or unevenness in the
+terrain). The conclusion and future works are discussed in
+section V.
+II. LOW LEVEL CONTROLLER
+In this section, we present our approach for generat-
+ing the joint torques, given task-space trajectories. Using
+a dynamics-model based method which calculates the re-
+quired torques for the given motion, we can reduce tracking
+feedback gains and make the robot more compliant. On
+top of this controller layer, a planner determines Cartesian
+trajectories and tracks them by PD controllers which produce
+Cartesian accelerations. Controlling a ﬂoating based robot
+with many degrees of freedom is difﬁcult in joint space. We
+are interested in giving task-space trajectories however to
+reduce the problem size in trajectory planning level.
+Our whole body optimization approach takes Cartesian
+accelerations of CoM and feet as the inputs and considers
+the lower body joint accelerations and contact forces as
+open parameters subject to optimization. Ultimately, the joint
+torques can be extracted by replacing the above-mentioned
+parameters in the equation of motion. Such task space
+formulation eliminates the need to use pre-optimized joint
+trajectories that are usually driven off-line. Hereafter, we
+formulate our problem for the speciﬁc type of robot under
+control.
+Beside Gazebo as the main simulator, the controller is
+running in a separate process on the same computer while
+ROS
+2
+is used to exchange the robot’s states and commands.
+Atlas publishes its states at 1KHz over ROS and our con-
+troller subscribes to these packets. The robot in Gazebo
+has on-board controllers for each joint which generate joint
+commands according to the following PID rule:
+t =t
+des
++ K
+p
+(q
+des
+  q)+ K
+d
+( ˙ q
+des
+  ˙ q)+ K
+i
+Z
+(q
+des
+  q) (1)
+So for each joint, our controller can give a feed-forward
+torque t
+des
+and desired trajectories q
+des
+and ˙ q
+des
+as well
+as feedback gains K
+p
+, K
+d
+and K
+i
+. In this work, we merely
+give desired torques t
+des
+to leg joints (lower body) and keep
+torso joints and arms (upper body) ﬁxed. This is done by
+2
+http://wiki.ros.org/
+1944
+giving constant q
+des
+and ˙ q
+des
+= 0 to ﬁxed joints and disabling
+PID for leg joints. However we already calculate gravity
+compensation torques for the upper body of the robot. Thus,
+we have 12 DoF for the legs and 16 DoF ﬁxed in the robot.
+The equation of motion (EoM) is:
+M(q)¨ q+ h(q; ˙ q)= St t t+ J
+T
+C
+(q)l l l (2)
+With n= 28 to be the total number of joints and k to be
+the number of constraint equations, variables are deﬁned as:
+ q2R
+n+6
+: All degrees of freedom
+ M(q)2R
+(n+6)(n+6)
+: The ﬂoating base inertia matrix
+ h(q; ˙ q)2R
+n+6
+: The ﬂoating base centripetal, Coriolis
+and gravity forces
+ S2R
+(n+6)n
+: The actuated joint selection matrix
+ t t t2R
+n
+: The vector of actuated joint torques
+ J
+C
+2R
+k(n+6)
+: The Jacobian of k linearly independent
+constraints
+ l l l2R
+k
+: The vector of k linearly independent constraint
+forces if any exists
+We have 6 DoF in global coordinates, k = 6 in single
+support phase and k= 12 in double support phase when both
+feet are on the ground. Regarding each foot, we have:
+˙ x
+c
+= J
+c
+˙ q (3)
+¨ x
+c
+= J
+c
+¨ q+
+˙
+J
+c
+˙ q
+Positions, velocities and accelerations should be consistent
+in both Cartesian and Joint spaces. In the case of ground
+contact, these equations should be equal to zero.
+As mentioned before, the inputs to this low level layer
+of the controller are Cartesian accelerations for the feet and
+CoM and the outputs are joint torques. In Eqn.2, variables
+are decomposed as:
+ ¨ q=
+
+¨ q
+p
+2R
+3
+¨ q
+o
+2R
+3
+¨ q
+u
+2R
+16
+¨ q
+l
+2R
+12
+
+ t t t =
+
+02R
+6
+t t t
+u
+2R
+16
+t t t
+l
+2R
+12
+
+ l l l =
+
+l l l
+le ft
+2R
+6
+l l l
+right
+2R
+6
+
+Where ¨ q
+p
+and ¨ q
+o
+refer to position and orientation of the
+robot’s frame respectively. The subscript u refers to the upper
+body and l refers to the lower body of the robot. Our speciﬁc
+way of formulating the problem takes the following steps:
+1) Given by the high level controller:
+ ¨ x
+c:l
+2R
+6
+: Cartesian acceleration of the left foot
+ ¨ x
+c:r
+2R
+6
+: Cartesian acceleration of the right foot
+ ¨ x
+p;com
+2R
+3
+: CoM translational acceleration
+ ¨ q
+o
+2R
+3
+: Torso’s angular acceleration
+ desired hybrid state (left, right or double support)
+2) Set to zero: ¨ q
+u
+.
+3) Subject to optimization: ¨ q
+p
+, ¨ q
+l
+, l l l
+le ft
+and l l l
+right
+.
+4) Calculated from EoM: t t t
+u
+as upper-body gravity
+compensation and t t t
+l
+as leg actuator torques.
+We implicitly formulate a quadratic problem with the
+standard form of Eqn.4:
+min
+x
+x
+T
+Qx (4)
+s:t:
+Ax+ B= 0
+Cx+ D 0
+Where Q is a positive semi-deﬁnite matrix, A, B, C and D
+are coefﬁcient matrices, and x is a concatenation of variables
+subject to optimization in step 3. We also have various
+constraints that should be considered:
+Equality:
+ EoM as a constraint: Considering Eqn.2, the 6 equa-
+tions where there is no actuation on global coordinates
+are equality constraints.
+ Joint/Cartesian consistency: Joint accelerations should
+be consistent with the given Cartesian accelerations of
+the CoM and both feet, either being in contact or in
+swing phase.
+ Existence of foot constraint: When we want the robot
+to switch to right support for example, we should force
+left forces to zero in the optimization. Torque limits
+on ankles are proportional to ground normal forces as
+mentioned in [14] regarding the CoP limits. Thus setting
+normal forces to zero prevents the existence of non-zero
+torques as well.
+Inequality:
+ Center of Pressure (CoP): Ankle torques should be
+limited regarding the size of feet to avoid tilting or
+rolling effects.
+ Ground friction: CoM accelerations should not exceed
+maximum static ground friction.
+ Actuator torque limits: We can also take care of
+joint torque magnitudes and rate limits as we can
+calculate them from EoM, knowing joint accelerations
+and constraint forces.
+Since the matrices generated by Eqn.2 are mostly sparse,
+we only select proper blocks which are used in calculations
+and not multiplied by zeros. The library we use for solving
+this optimization problem is called CVXGEN [16] which
+generates C codes, tailored for the speciﬁc formulation of
+our problem. It avoids explicitly forming matrices of Eqn.2
+and instead, it generates codes which do math operations
+only on none-zero elements.
+A small difference that our formulation has with [15] and
+[13] is the orientation regulation which is done here directly
+on the torso. Herzog in [15] uses whole body momentum rate
+to regulate q
+o
+(torso orientation), whereas we directly use
+torso’s angular acceleration (¨ q
+o
+) to regulate its orientation.
+Thus, the inputs and outputs of our PD orientation regulator
+are on the same variable.
+So far we have described the general form of formulating
+the optimization used in the low level controller. On top of
+this, we have some more blocks that restrict motion of the
+robot, but greatly reduce problem dimensions.
+ Orientation control: In general, we keep postures of
+both feet and torso upright by a PD controller which
+uses ¨ x
+o:left
+, ¨ x
+o:left
+and ¨ q
+o
+as control inputs.
+ Acceleration regulator: It might happen that the given
+desired accelerations exceed maximum friction and an-
+kle torques available. This block thresholds incoming
+accelerations.
+ Force distribution: In double support, the optimization
+1945
+equally distributes contact forces between the two feet
+which is not a realistic assumption. We determine corre-
+sponding elements in quadratic cost matrix Q such that
+the weighting becomes proportional to closeness of the
+CoM to each foot similar to [14].
+This formulation enables us to abstract a high dimensional
+problem in joint space to a low dimensional one in Cartesian
+space. The high-level controller block now only generates
+translational accelerations of three points in the robot and
+also imposes the discrete state.
+III. HIGH LEVEL CONTROLLER
+In the previous section, we described the low level con-
+troller used to generate joint torques, given the high level
+Cartesian accelerations. We have thus transferred trajectories
+to task space where they are easier to formulate and generate.
+As mentioned in the previous section, we only determine
+Cartesian accelerations and the hybrid state of the system in
+the high level controller and keep posture of the torso and
+the feet always upright, using a PD controller. The pattern of
+motion in our method is determined via a ﬁnite state machine
+with ﬁxed frequency and phase.
+To plan future motions of the robot, we prefer to sim-
+plify its model to make the problem computationally less
+expensive. Mordatch et al. [23] use SLIP model which is
+more realistic in terms of contact forces [7]. This model lets
+the CoM change height which looks more natural especially
+during running. However since the SLIP model is not linear,
+predicting the future motion with this model is not easy in
+closed form. The method in [23] approximates trajectories
+with polynomials and expresses states of the system across
+hybrid transitions in closed form. Optimizing the evolution
+of variables over future steps is not linear however and has
+many local optima. Although their planning produces more
+natural motion, it takes considerable time while reducing per-
+formance and responsiveness to perturbations. This motivates
+us to choose a simpler model to describe robot’s state for
+future planning during walking.
+A. Model simpliﬁcation
+In this work, we use the Linear Inverted Pendulum Model
+[18] without feet and inertial mass to simplify the robot’s
+motion. This model is composed of a mass and a telescopic
+actuator which is basically massless. The equation for accel-
+eration of this structure is:
+¨ x =
+g
+z
+0
+(x  x
+base
+) (5)
+Where x refers to CoM and x
+base
+to base positions, z
+0
+is the
+CoM height and g is gravity. We can write same equations
+for the y direction assuming no steering and rotation. The
+assumption in LIPM is that the telescopic actuator keeps
+the CoM height constant (z
+0
+). This assumption makes the
+equation linear and enables us to solve it in the time domain
+as:
+x(t)= Ae
+ t=t
++ Be
+t=t
++C (6)
+By examining x(0) and ˙ x(0) in this equation we can obtain:
+t =
+r
+z
+0
+g
+; C= x
+base
+(7)
+A=
+ t ˙ x(0)+ x(0)  x
+base
+2
+B=
+t ˙ x(0)+ x(0)  x
+base
+2
+If we approximate the robot in single support phase with
+this simpliﬁed model and assume a ﬁxed swing duration of T ,
+we can express the CoM state evolution by deﬁning h= e
+T=t
+:
+x(T) = x(0)(
+1
+2h
++
+h
+2
+)+ ˙ x(0)(
+ 1
+2h
++
+th
+2
+) (8)
++ x
+base
+(
+ 1
+2h
++
+ h
+2
++ 1)
+which is a linear relation between the state of CoM in the
+beginning and at the end of a swing phase. One can obtain
+similar relations for y, ˙ x and ˙ y as well. Expressing the full
+state of the CoM with these variables as q2R
+4
+, we can
+write:
+q(T)= A(T)q(0)+ B(T)P
+base
+(9)
+Where A and B are functions of T and thus constant. Note
+that a similar evolution could be calculated for the CoM in
+the middle of a swing phase with T as the nominal remaining
+time.
+Performing such linearization in double support phase is
+not easy because we have two supports and the force distri-
+bution policy makes the problem nonlinear. Thus we prefer
+to omit this phase so that the robot switches between the
+left and right support phases directly. Instead of leveraging
+ankle torques to control the CoM path, we let the robot
+follow LIPM behavior and basically fall while the swing leg
+touches down in a location which captures the energy of the
+robot. Thus we convert the CoM control problem to a foot-
+placement problem with this strategy. The obvious beneﬁt is
+avoiding dependency on having feet and ankle torques and
+thus, not being concerned about the CoP (this constraint is
+considered in the low level controller).
+We can now formulate up to N future steps and predict
+the motion of the robot between these steps:
+q[1]= A
+0
+q[0]+ B
+0
+P[0] (10)
+q[2]= Aq[1]+ BP[1]
+q[3]= Aq[2]+ BP[2]
+:
+q[N+ 1]= Aq[N]+ BP[N]
+The ﬁrst equation in Eqn.10 slightly differs as q[0] corre-
+sponds to the current state of the system in the middle of a
+swing phase. To obtain q[1] which is the state at the end of
+same swing phase, the remaining phase time is less than T
+which changes nominal matrices A and B to A
+0
+and B
+0
+.
+Given the current state of CoM at each time-step q[0],
+our approximate model lets us predict the evolution of future
+states with a linear sequence where footsteps act like discrete
+1946
+inputs. Note that one can easily verify controllability [24] of
+the system matrices A and B with our choice of T = 0:5s
+which results in a natural and fast motion. Additionally, sim-
+ulating the robot walking over several steps (150s simulation
+time) veriﬁes the walking stability.
+3
+B. Model predictive control
+Having the discrete time dynamical system, we can now
+formulate a Model Predictive Control (MPC) problem to
+plan future footsteps. The robot is principally falling during
+the single support phase while the swing leg is navigating
+toward a desired location. This location is the ﬁrst control
+input P[1] in Eqn.10 which captures the extra energy in the
+system. Swing trajectories in task space are deﬁned using
+sinusoidal arcs and a soft exponential transitions between
+the previous and the next desired footstep locations which
+guaranty zero speeds at the two ends of the arc. These
+arcs are then tracked by PD controllers in the task space,
+producing Cartesian accelerations. The x and y components
+of the CoM acceleration are determined according to the
+LIPM model (Eqn.5) in the z
+0
+plane and this height is
+controlled via a PD controller.
+We require the robot to track a certain average velocity
+v
+ref
+. Our MPC minimizes the least square error between this
+velocity and future states of the robot (q[i] in Eqn.10). It
+also minimizes the least square errors between control inputs
+(future footsteps P[i] in Eqn.10) and a desired sequence
+deﬁned in Eqn.11 regarding the average speed.
+P
+des
+[i] = P
+base
++ 2iT v
+ref
+(11)
++ (i mod 2)
+
+0 dk
+
+T
+; 1 i N
+The variable d is inter-feet clearance distance determined
+manually and k is either 1 or 1, if the planning is done
+in right or left support phases respectively. If we cancel
+this similarity minimization, foot steps become closer in
+the lateral plane (left/right) and ﬁnally overlap to minimize
+lateral motion of the CoM which is not desired due to self
+collision. We thus try to keep the feet separated in the ideal
+foot sequence. Our MPC problem is again formulated in
+CVXGEN up to a horizon of N = 5 future steps which
+is enough regarding the range of speeds we are targeting.
+Using the CoM state at each time-step, we solve the MPC
+problem to ﬁnd the next footstep location, used to generate
+arc trajectories.
+The only top-level variable to be determined is the average
+speed (v
+ref
+) which we regulate with a simple PD controller
+to track the desired path and speed proﬁle for the robot.
+With this formulation, the robot stabilizes dynamically and
+recovers from perturbations by taking proper steps rather
+than relying on ankle torques. Herdt et al. [25] formulate a
+similar MPC problem that optimizes both footstep locations
+and the CoP trajectories, but their low level controller is
+based on inverse kinematics. We do not use ankle torque to
+3
+Movies for all the presented scenarios in this work are online available
+at: http://biorob.epfl.ch/page-96274-en.html .
+modulate the motion like [25], rather we use them for per-
+turbation rejection (in our low level controller) which yields
+in a simpler problem formulation and enhanced robustness
+in different scenarios.
+In this layer, the restricting assumption is constant CoM
+height which essentially makes the problem linear. One can
+use more complex models if the target is to reach higher
+speeds and a more natural motion. Also, feet are always
+assumed to be in full contact (both toes and heels) if placed
+on the ground which again restricts the motion at high
+speeds.
+IV. RESULTS AND DISCUSSIONS
+In this section, we will characterize the performance and
+robustness of the two blocks we described in the previ-
+ous sections. We ﬁrst test compliance of the low level
+controller by testing the robot’s reaction/behavior against
+external pushes. To this end, in stance mode we have two
+PD controllers regulating CoM position and torso’s posture.
+We make the position controller stiffer so that (i) the CoM
+does not move considerably and (ii) the force distribution
+between the feet does not change. The resulting behaviour
+after applying a constant push of 50N on the pelvis is shown
+in Fig.2 where the posture changes and helps the robot
+withstand such a strong external push.
+Fig. 2: Static push recovery scenario in (a) normal, (b) backward, (c) left
+and (d) front directions. The posture change helps the robot withstand a
+maximum constant push of 50N on its pelvis. The CoM controller is stiffer
+and keeps the CoM between the two feet.
+This test shows the compliance of the robot and the fact
+that it can handle large pushes without reacting stifﬂy. The
+complex joint space control problem is converted to task
+space where PD controllers are more meaningful with respect
+to the desired tasks.
+For walking, we show the sequence of footsteps planned
+by the MPC controller in Fig.3. Regarding the duration of the
+single support phase which is T = 0:5s, we plot the planned
+sequence every 0:1s to show its emergence. Fig.3 shows 6
+snapshots of this sequence where the robot is in left support
+phase in the beginning. When it switches to right support,
+the blue rectangle shows the next desired footstep location
+(P[1]) where the swing foot should touch down. This point
+is then used to generate arc trajectories.
+Note that the slight bending to left and right in the
+sequence of Fig.3 is because of the PD average speed
+regulator on top of the high level controller. Such behavior
+is due to the regulation of CoM lateral motion which is not
+1947
+9.2 9.4 9.6 9.8 10 10.2 10.4
+?0.2
+?0.1
+0
+0.1
+0.2
+0.3
+0.4
+9.2 9.4 9.6 9.8 10 10.2 10.4
+?0.2
+?0.1
+0
+0.1
+0.2
+0.3
+0.4
+9.2 9.4 9.6 9.8 10 10.2 10.4
+?0.2
+?0.1
+0
+0.1
+0.2
+0.3
+0.4
+9.2 9.4 9.6 9.8 10 10.2 10.4
+?0.2
+?0.1
+0
+0.1
+0.2
+0.3
+0.4
+9.2 9.4 9.6 9.8 10 10.2 10.4
+?0.2
+?0.1
+0
+0.1
+0.2
+0.3
+0.4
+9.2 9.4 9.6 9.8 10 10.2 10.4
+?0.2
+?0.1
+0
+0.1
+0.2
+0.3
+0.4
+ 
+ swing
+right
+left
+t = 0.1 t = 0.0 t = ?0.1
+t = 0.3 t = 0.2 t = 0.4
+right support
+right support
+right support right support left support
+right support
+Fig. 3: Sequence of steps planned by MPC during a single support phase.
+The ﬁgure shows snapshots from this sequence every 0:1s where the duration
+of single support is T = 0:5s. In the upper left plot, the robot is in left support
+and about to switch the contacting foot. The swing foot (green) is trying to
+reach the blue location P[1] gradually in next plot.
+normally needed except when the robot is on a lateral slope.
+The role of this PD speed regulator is thus correcting biased
+errors in both lateral and coronal directions. Note also that
+the choice of N does not have big impacts on the sequence.
+We observe that choosing larger N will produce the same
+repeated motion. Smaller N causes the sequence to capture
+energy very fast which produces large steps.
+With this control architecture and manual tuning of few
+parameters (mostly Cartesian PD controllers), we can obtain
+a notable controllability over forward speed, namely from
+ 0:2m=s up to 0:5m=s which is remarkable. This ability
+is more highlighted when comparing to off-line optimized
+solutions where the gait can be sustained only around a
+speciﬁc nominal solution. Achieving higher speeds would
+require releasing some restricting assumptions like full foot
+contact and knee bending which are future works.
+There could be various uncertainties and perturbations in
+the real robot such as frictions, damping, actuator dynamics,
+noises, model errors and etc. In this part we analyze the
+robustness against some important internal and external
+perturbations.
+A. External pushes
+Methods like [4] and [25] depend on ankle torques to
+control the CoP and provide motion. These approaches
+produce good tracking, but they are not robust to terrain
+variations and depend also on contact properties. In this work
+however, we react to perturbations by taking steps. Our MPC
+maintains the system stability dynamically by capturing extra
+energy in the robot. It does not rely solely on ankle torques
+and thus makes locomotion robust to moderate variations
+in the terrain and contact model. Here we expose the robot
+to external pushes in four directions during walking. Fig.4
+shows the resulting foot steps when v
+ref;x
+= 0:4m=s. The
+robot successfully recovers from these pushes and continues
+stepping forward.
+B. Delayed communication
+The controller almost runs in about 2:3ms with both layers
+of optimizations. The simulation and controller processes
+run on the same machine with a Quad-Core Intel Core-i5
+processor running at 1.7GHz. We have no parallelization for
+the controller as its layers work sequentially. A remarkable
+property of our controller is that it tolerates a total delay
+of about 10:7ms caused by the packet based communication
+method (ROS). This can be further improved when running
+the controller on-board on the real robot.
+C. System noise
+Another important and inevitable issue in real robot con-
+trol is the sensor noise. To examine our controller perfor-
+mance in the presence of noise, we have added a Gaussian
+noise of zero mean and standard deviation of s to all joint
+state variables during in-place stepping. Such noise can affect
+the task-space motion of a kinematic chain severely. The
+maximum noise tolerable before falling or self collisions is
+characterized in Table.I.
+TABLE I: Maximum tolerable noise.
+Variable Noise strength s
+position sensors & IMU 1:8
+o
+velocity sensors & IMU 9:9
+o
+=s
+Output torques 3N:m
+This test shows that the robot is able to tolerate a reason-
+able amount of noise, although various methods exist in the
+literature to ﬁlter such per time-step noise.
+D. Model errors in link masses and lengths
+In the previous test, we tested the effect of sensor noises
+on the robustness of our method. However, there are constant
+errors which can not be predicted, measured or ﬁltered.
+Modeling error is one of these problems, which is important
+in our model based controller. To test the sensitivity of the
+method to the modeling errors, here we change some link
+masses in the simulator while they are kept intact in our
+robot model. These changes make the robot heavier and
+asymmetric. Here we assume the inertia matrix of a link to
+be the same as before. In Table.II we have listed maximum
+extra mass that could be added to different links while in-
+place stepping is still stable.
+TABLE II: Maximum tolerable mass added to different links as model error.
+scenario link name maximum mass [Kg]
+(a) pelvis 3
+(b) left thigh 5
+(c) left foot 3
+(d) left and right feet 3 each
+Our controller is in fact tolerating a large amount of
+unknown mass added to links, but limit cycles change con-
+siderably. We can also perform similar tests during walking
+where v
+ref
+6= 0. Generally the maximum tolerable mass is
+less than the case of stepping in place, but similar effects
+are observed. We have also tested the algorithm against link
+length errors in a speciﬁc scenario where we make the left
+thigh 10cm longer and the left shank 10cm shorter to keep
+the total leg length the same. This is the maximum tolerable
+error for the robot while still being stable. Our algorithm is
+capable of tolerating such a large internal geometric error
+without affecting task-space tracking considerably.
+1948
+Fig. 4: Push recovery scenario with v
+ref
+= 0:4m=s. Pushes of 40N each lasting 0:5s are applied to the system at t = 30s to left, t = 40s to front, t = 50s
+to right, t = 60s to back. The CoM is usually outside the support polygons which is veriﬁed by the fact that we do not have double support phase. Note
+that in this ﬁgure, x  y scale is not true as robot’s rectangular feet are appearing to be square.
+E. Walking on uneven terrain and slopes
+In this section we test our method against unperceived
+unevenness and gradual changes of slopes in the terrain. The
+maximum tolerable roughness (difference between maximum
+and minimum height) is 10% of the robot’s leg length while
+the robot can go up a slope of 4:6
+o
+at maximum. In both
+scenarios the terrain is smooth to avoid contact problems
+and instability in simulations.
+Fig.5 and Fig.6 show the uneven terrain scenario and
+slopes respectively. In the former case, we give v
+ref
+= 0:2m=s
+to the robot and start on a hill. It speeds up on a downhill
+slope while slowing down on a uphill slope. It can also shift
+left or right if it ﬁnds a non-negative sideways component
+in the gradient of the terrain. Note that one can achieve
+better performance by either choosing higher desired speeds
+or using larger feedback gains for the PD regulator on top
+of the high level controller. In the second scenario, the
+Fig. 5: The performance of our controller with the same conﬁguration of
+parameters as before. In this ﬁgure, the robot is given desired speed of v
+ref
+=
+0:2m=s. It speeds up on negative slopes and slows down when reaching an
+uphill slope. If the gradient of the terrain has a sideway component, it can
+cause the robot to shift to the left or right and bypass a hill.
+slope in front of the robot increases 0:02rad' 1:14
+o
+every
+3m. We gradually increase slopes, since placing foot on
+a discontinuity in the surface will change its posture and
+stability of the simulation in Gazebo.
+One can use larger feedback gains here, but this prevents
+the robot from responding ﬂexibly to the the environment,
+such as the lateral shifts appearing in Fig.5 for instance.
+Maximizing performance is a matter of parameter tuning,
+which is out of the scope of this research.
+V. CONCLUSION
+In this work, we have chosen a dynamics-model based
+method as we target versatile biped locomotion which re-
+quires knowledge on robot dynamics to allow both compliant
+behavior and good tracking performance in a wide range of
+states. Although one could use simpler methods in terms
+of computation and optimize a gait off-line for fast motion,
+the resulting solution will only work in a limited range of
+speeds and terrain conditions. Using inverse dynamics, we
+predict future motion of the robot and calculate the required
+torques which reduces feedback gains and thus provides
+more compliant behavior. We consider various constraints
+in the control loop for which a whole body optimization
+method is suitable. Given desired Cartesian accelerations for
+the CoM and feet, our optimization generates feed-forward
+torques for the robot.
+To generate task space swing foot trajectories, we have a
+simple online strategy, unlike many approaches which need
+off-line optimization. We only determine an arc shape in the
+Cartesian space and follow it while we do not require any
+desired joint trajectory. Many other approaches need to op-
+timize these trajectories, replicate them online and maintain
+constraint consistency which results in only a locally optimal
+and robust pattern generation. We have used a simpliﬁed
+model of the robot which enables us to plan multiple future
+steps. Although our model assumes constant CoM height
+and torso posture which results in a less natural motion, the
+method is generic and can be produce a wide range of speeds.
+In terms of calculations, in both low level and high level
+controllers we have quadratic convex optimizations running
+per time-step. However our novel problem formulation and
+simpliﬁcation has enabled us to do all calculations in almost
+2:3ms, resulting in a fast control loop. Our footstep planner
+runs per time-step and enables us to react against external
+pushes almost without delay. On top of the high level
+controller we have a simple PD controller which regulates
+the desired average speed.
+The ﬁnal controller is able to withstand large perturbations
+either externally from pushes or terrain variations, or inter-
+nally from noise, model errors or delays. A notable example
+is recovery from strong external pushes while methods
+depending on ankle torques can not recover from those easily.
+This performance is without any external perception and thus
+shows the intrinsic properties of our method. In future work
+we will add perception and modify strategies and methods
+to be able to deal with larger terrain variations.
+The total of 34 degrees of freedom are guided by 2 task-
+space average speeds. We can also have control over the
+feet and CoM in task space which improves navigation and
+obstacle avoidance. A drawback in our footstep planning
+method is the assumption on exact foot placement. Although
+1949
+0 2 4 6 8 10 12 14
+?0.5
+0
+0.5
+1
+1.1 2.3 3.4 4.6
+Fig. 6: The performance of our controller with addition of position feedback in the x direction. The robot slows down on slope transitions, but recovers
+its speed and even accelerates more to reach the desired x(t) due to position feedback. It can go maximally on the slope of 4:6
+o
+and then falls out.
+the ﬁrst step in the sequence could be imposed, the method
+needs more freedom for further steps to recover from pushes
+and capture the extra energy. Our method could be improved
+by adding steering, using more complicated IPM, including
+torso joints and arms and also adding non-convex constraints
+in footstep planning to handle self collisions in a more
+systematic way. We are currently transferring this algorithm
+to our torque-controlled humanoid robot Coman.
+VI. ACKNOWLEDGMENTS
+The authors would like to thank Eric Whitman for his kind
+collaboration and feedbacks in this work.
+REFERENCES
+[1] P. Sardain and G. Bessonnet, “Forces acting on a biped robot. center
+of pressure-zero moment point,” Systems, Man and Cybernetics, Part
+A: Systems and Humans, IEEE Transactions on, vol. 34, no. 5, pp.
+630–637, 2004.
+[2] M. Vukobratovi´ c and B. Borovac, “Zero-moment point—thirty ﬁve
+years of its life,” International Journal of Humanoid Robotics, vol. 1,
+no. 01, pp. 157–173, 2004.
+[3] Y . Choi, B.-J. You, and S.-R. Oh, “On the stability of indirect ZMP
+controller for biped robot systems,” in Intelligent Robots and Systems,
+2004.(IROS 2004). Proceedings. 2004 IEEE/RSJ International Con-
+ference on, vol. 2. IEEE, 2004, pp. 1966–1971.
+[4] J. Englsberger, C. Ott, M. A. Roa, A. Albu-Schaffer, and G. Hirzinger,
+“Bipedal walking control based on capture point dynamics,” in In-
+telligent Robots and Systems (IROS), 2011 IEEE/RSJ International
+Conference on. IEEE, 2011, pp. 4420–4427.
+[5] G. Endo, J. Morimoto, T. Matsubara, J. Nakanishi, and G. Cheng,
+“Learning CPG-based biped locomotion with a policy gradient
+method: Application to a humanoid robot,” The International Journal
+of Robotics Research, vol. 27, no. 2, pp. 213–228, 2008.
+[6] C.-S. Park and J.-H. Kim, “Stable modiﬁable walking pattern algo-
+rithm with constrained optimized central pattern generator,” in Robot
+Intelligence Technology and Applications 2012. Springer, 2013, pp.
+223–230.
+[7] H. Geyer and H. Herr, “A muscle-reﬂex model that encodes principles
+of legged mechanics produces human walking dynamics and muscle
+activities,” Neural Systems and Rehabilitation Engineering, IEEE
+Transactions on, vol. 18, no. 3, pp. 263–273, 2010.
+[8] S. Kajita, T. Nagasaki, K. Kaneko, K. Yokoi, and K. Tanie, “A running
+controller of humanoid biped HRP-2LR,” in Robotics and Automation,
+2005. ICRA 2005. Proceedings of the 2005 IEEE International Con-
+ference on. IEEE, 2005, pp. 616–622.
+[9] J. Pratt, C.-M. Chew, A. Torres, P. Dilworth, and G. Pratt, “Virtual
+model control: An intuitive approach for bipedal locomotion,” The I.
+J. of Robotics Research, vol. 26, no. 2, pp. 129–143, February 2001.
+[10] A. Lauber, “Virtual model control on ALoF,” master thesis, Swiss
+Federal Institute of Technology Zurich, Spring 2011.
+[11] L. Righetti, J. Buchli, M. Mistry, M. Kalakrishnan, and S. Schaal,
+“Optimal distribution of contact forces with inverse-dynamics control,”
+The International Journal of Robotics Research, vol. 32, no. 3, pp.
+280–298, 2013.
+[12] J. Buchli, M. Kalakrishnan, M. Mistry, P. Pastor, and S. Schaal, “Com-
+pliant quadruped locomotion over rough terrain,” in Intelligent Robots
+and Systems, 2009. IROS 2009. IEEE/RSJ International Conference
+on. IEEE, 2009, pp. 814–820.
+[13] B. J. Stephens and C. G. Atkeson, “Dynamic balance force control
+for compliant humanoid robots,” in Intelligent Robots and Systems
+(IROS), 2010 IEEE/RSJ International Conference on. IEEE, 2010,
+pp. 1248–1255.
+[14] E. C. Whitman and C. G. Atkeson, “Control of instantaneously
+coupled systems applied to humanoid walking,” in Humanoid Robots
+(Humanoids), 2010 10th IEEE-RAS International Conference on.
+IEEE, 2010, pp. 210–217.
+[15] A. Herzog, L. Righetti, F. Grimminger, P. Pastor, and S. Schaal,
+“Momentum-based balance control for torque-controlled humanoids,”
+arXiv preprint arXiv:1305.2042, 2013.
+[16] J. Mattingley and S. Boyd, “CVXGEN: a code generator for embedded
+convex optimization,” Optimization and Engineering, vol. 13, no. 1,
+pp. 1–27, 2012.
+[17] S. Kajita and K. Tani, “Study of dynamic biped locomotion on rugged
+terrain-derivation and application of the linear inverted pendulum
+mode,” in Robotics and Automation, 1991. Proceedings., IEEE In-
+ternational Conference on. IEEE, 1991, pp. 1405–1411.
+[18] T. Koolen, T. De Boer, J. Rebula, A. Goswami, and J. Pratt,
+“Capturability-based analysis and control of legged locomotion, part 1:
+Theory and application to three simple gait models,” The International
+Journal of Robotics Research, vol. 31, no. 9, pp. 1094–1113, 2012.
+[19] J.-c. Wu and Z. Popovi´ c, “Terrain-adaptive bipedal locomotion con-
+trol,” ACM Transactions on Graphics (TOG), vol. 29, no. 4, p. 72,
+2010.
+[20] P. van Zutven, D. Kostic, and H. Nijmeijer, “Foot placement for planar
+bipeds with point feet,” in Robotics and Automation (ICRA), 2012
+IEEE International Conference on. IEEE, 2012, pp. 983–988.
+[21] J. Pratt, T. Koolen, T. De Boer, J. Rebula, S. Cotton, J. Carff,
+M. Johnson, and P. Neuhaus, “Capturability-based analysis and control
+of legged locomotion, part 2: Application to M2V2, a lower-body
+humanoid,” The International Journal of Robotics Research, vol. 31,
+no. 10, pp. 1117–1133, 2012.
+[22] J. Pratt, J. Carff, S. Drakunov, and A. Goswami, “Capture point: A
+step toward humanoid push recovery,” in Humanoid Robots, 2006 6th
+IEEE-RAS International Conference on. IEEE, 2006, pp. 200–207.
+[23] I. Mordatch, M. De Lasa, and A. Hertzmann, “Robust physics-based
+locomotion using low-dimensional planning,” ACM Transactions on
+Graphics (TOG), vol. 29, no. 4, p. 71, 2010.
+[24] K. Ogata and Y . Yang, “Modern control engineering,” 1970.
+[25] A. Herdt, N. Perrin, and P.-B. Wieber, “Walking without thinking
+about it,” in Intelligent Robots and Systems (IROS), 2010 IEEE/RSJ
+International Conference on. IEEE, 2010, pp. 190–195.
+1950

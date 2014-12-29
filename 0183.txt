@@ -1,0 +1,1375 @@
+A Globally Stabilizing Hybrid Control Algorithm for
+Mobile Manipulation Subject to Joint-Space Constraints
+Johan Markdahl and Xiaoming Hu
+Abstract— This paper proposes a hybrid control algorithm
+for mobile manipulation subject to joint-space constraints.
+More speciﬁcally, we consider the problem of making the end-
+effector of a planar manipulator attached to a nonholonomic
+mobile platform reach a set-point or equivalently follow a
+given path in workspace by means of kinematic actuation. A
+switched control strategy allows the robot to avoid singular joint
+conﬁgurations and execute a pseudo-inverse based feedback
+using bounded and continuous control signals. The switching
+scheme is also utilized to maintain feasible joint conﬁgurations.
+Numerical examples provide an intuitive understanding of the
+algorithm’s workings.
+I. INTRODUCTION
+A mobile manipulator combines the unlimited workspace
+of a mobile platform with the multiple functionalities of a
+manipulator, thus providing a ﬂexible system with a high
+degree of manipulability [1]. Wheeled mobile platforms are
+generally preferred to those using other means of locomotion
+since wheeled robots tend to move faster while consuming
+less energy. The wheels of a nonholonomic mobile platform
+are of a simpler and more reliable mechanical design than
+those of a mobile platform capable of omnidirectional mo-
+tion. The nonholonomic motion constraints do however pose
+challenges to a control engineer. For example, a consequence
+of Brockett’s theorem is that the pose of nonholonomic vehi-
+cles cannot be stabilized to a point by means of a continuous
+time-invariant feedback [2]. Still, there is a considerable
+literature on the subject of control of nonholonomic vehicles
+and mobile manipulators with nonholonomic platforms, see
+e.g. [3] and the references therein.
+This paper proposes an inverse kinematics based feedback
+linearization approach to the problem of end-effector (EE)
+path following for mobile manipulators subject to joint-space
+constraints. The problem of inverse kinematics based control
+has a long history of study, a sample of works are [4], [5], [6],
+and [7]. A related problem is that of redundancy resolution
+as studied in e.g. [6], [8], [9], [10], and [11]. Redundancy
+arises when a task requires less degrees of freedom than those
+possessed by the manipulator. Some degrees of freedom
+are thus left unspeciﬁed and can be utilized to achieve
+objectives of secondary (or lower) priority. The key idea is
+to project the control laws corresponding to those objectives
+on the nullspace of the manipulator Jacobian [3] (or a block
+Jacobian in the case of mobile manipulation [7], [8], [10]).
+This work was supported by the Swedish Foundation for Strategic
+Research (SSF) through the Centre for Autonomous Systems (CAS) at KTH.
+Johan Markdahl and Xiaoming Hu are with the Division of Optimization
+and Systems Theory, KTH Royal Institute of Technology, Stockholm,
+Sweden, markdahl@kth.se, hu@kth.se
+Multiple objectives of successively lower priority can be
+accommodated by repeating this procedure [9], [11].
+Issues that have been addressed concerning inverse kine-
+matics based algorithms and priority based methods include:
+(i) the pseudo-inverse becoming unbounded as the manip-
+ulator approach a singular conﬁguration, (ii) a low priority
+objective does not belong to the nullspace and cannot be met
+exactly, and (iii) there may be a conﬂict between objectives
+of different priority. The case of (i) can be addressed using
+optimization techniques such as damped least-squares [4],
+[6], but is sometimes left outside the scope of the work even
+though it is of critical importance [5], [7]. Issue (ii) can be
+addressed approximately by use of a least squares approach
+[7], or be resolved by a technique that avoids inversion
+[6], or (for joint-limits avoidance) by deﬁning a weighted
+pseudo-inverse using nonlinear optimization [5]. Sufﬁcient
+conditions for convergence using a high gain approach in the
+case of (iii) is given in [11]. However, the combined approach
+of exact cancellation and gains of different magnitudes may
+be sensitive to noise and modeling errors, making lower
+priority objectives conﬂict with higher ones in practice.
+The algorithm we propose is an inverse-kinematic based
+control law for stabilization of the EE position that also guar-
+antees the achievement of two additional objectives, namely
+singularity-avoidance and joint-space constraint satisfaction.
+The chosen approach separates the inverse kinematics based
+control from singularity avoidance and joint-space constraint
+satisfaction in time by means of a switched control strategy.
+One advantage of this separation is a kind of inverse optimal-
+ity: if, at any time, the desired set-point can be reached along
+a line in workspace without any joint self-motion (although
+the joint conﬁgurations must be feasible and at a sufﬁcient
+distance from singularities), then, for the remainder of time,
+the set-point will be approached along a geodesic curve in
+workspace. Moreover, if the initial condition do not satisfy
+these requirements, then the mobile manipulator will reach
+a state which does.
+Our main motivation for developing the proposed algo-
+rithm is to solve the cooperative manipulation problem of
+stabilizing the pose of an object that has been grasped by
+multiple mobile manipulators as addressed in our previous
+works [12], [13]. The paper [12] mainly considers the aspect
+of distributed control, using standard inverse kinematics
+based manipulator control techniques to establish asymptot-
+ical stability of the object pose. Its main contribution is to
+provide a distributed algorithm for object pose control that
+scales linearly with the number of agents. The work [13]
+uses a singularity-free but discontinuous switched control
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 5152
+approach to establish global asymptotical stability. Its main
+contribution is to rigorously prove convergence results that
+are valid on a global scale.
+This paper extends the algorithm of [12] and [13] to
+the case of (i) a larger class of mobile manipulators, (ii)
+continuous feedback control, and (iii) the satisfaction of
+rather general joint-space constraints. The problem of EE
+path following for a single mobile manipulator is, in a way,
+a special case of the cooperative manipulation problem. As
+such, the proposed algorithm differs from that of [5], [7],
+by providing a guarantee that the inverse kinematics are
+well deﬁned. It also differs from works such as [6], [7],
+in guaranteeing the satisfaction of joint-space constraints
+without requiring the system to be redundant (note however
+that the proposed approach is compatible with priority-based
+task assignment).
+NOMENCLATURE
+The unit circle is denoted byS and the n-torusS?...?S by
+T(n). A k-dimensional box in R
+k
+is denoted P(k). The set
+of 2?2 rotation matrices and skew-symmetric matrices are
+denoted SO(2) and so(2) respectively. The standard basis
+for R
+n
+is denoted {e
+1
+,...,e
+n
+}. The interior, closure, and
+complement of a set S are denoted by int(S), cl(S), and S
+c
+respectively. A closed ball with radius r around a point p is
+denoted B
+r
+(p). The distance between a set S and a point p
+is denoted d(p,S). The inner product between two vectors
+of equal length is denoted h·,·i. The norm of a vector or
+a matrix is denoted k·k and refers either to the Euclidean
+vector norm, the induced matrix 2-norm or the Frobenius
+norm (the results we obtain hold for any matrix norm that is
+compatible with the Euclidean vector norm). We also write
+S =
+
+0 ?1
+1 0
+
+? so(2). (1)
+Consider a system consisting of a manipulator and a
+mobile platform. The position of the end-effector (EE) is
+denoted by p
+e
+, the position of the ﬁrst manipulator joint
+by p
+j
+, and the position of the mobile platform by p
+m
+. The
+joint-space variables are denoted by q ?T(n)?P(k). The
+mobile platform orientation is expressed using a rotation
+matrixR ?SO(2) that rotates the inertial frame by? radians
+into the mobile platform’s body frame. Control signals are
+denoted by u
+?
+i
+, where i ? {e,j,m} indicates the entity
+being actuated and ? ? {e,m,p,t} indicates the value of
+the switching signal.
+Relative positions are denoted by double subindices,p
+ik
+=
+p
+i
+?p
+k
+, i,k ?{e,j,m}. This can be illustrated by
+p
+ej
+=f(q) (2)
+where f :T(n)?P(k)?R
+2
+is the forward kinematic map.
+In relation to f we deﬁne the manipulator Jacobian matrix,
+J :T(n)?P(k)?R
+2?n+k
+, by
+J(q) =
+
+∂f
+i
+∂q
+j
+
+. (3)
+The superindex? indicates a desired value for some quantity.
+For example, p
+?
+jm
+could denote a vector in workspace such
+that allq
+?
+?f
+?1
+(p
+?
+jm
+) are joint conﬁgurations characterized
+by a high manipulability index [3]. See Fig. 1 for a graphic
+illustration of the notation describing the robotic system.
+q
+p
+m
+p
+e
+p
+ej
+p
+j
+p
+mj
+e
+1
+e
+2
+Re
+1
+Re
+2
+Fig. 1: A planar mobile manipulator.
+II. SYSTEM DESCRIPTION
+We make the following assumptions regarding the robotic
+system.
+Assumption 1 (Robotic System): The manipulator has a
+known, open kinematic chain and is planar. Its joints are
+fully actuated. The ﬁrst joint is revolute and is situated on
+the line that connects the midpoint of the platform’s both
+drive wheels. The feasible joint conﬁgurations belong to the
+set
+F ={g(q)≤0|q ?T(n)?P(k)}, (4)
+where g is such that F is connected, cl(int(F)) = F ,
+q
+1
+is unconstrained, and there exists a desired operating
+conﬁguration q
+?
+? F which is characterized by a high
+manipulability index [3]. Also, any prismatic joint q
+i
+is
+constrained by q
+i
+? [a
+i
+,b
+i
+] with a
+i
+,b
+i
+? R. The platform
+is nonholonomic of unicycle type, an example of which is
+the differential-drive vehicle [3].
+Remark 1: Assumption 1 is more general than the cor-
+responding assumption in [13] and may include dual-arm
+mobile manipulators like the one illustrated in Fig. 2. In
+[13] we only consider nR manipulators but the introduction
+of (4) allows us to include prismatic joints without having
+to address the theoretical issue of their extension becoming
+unbounded.
+Fig. 2: A dual-arm mobile manipulator. The line referred to in
+Assumption 1 runs diagonally through the ﬁgure. The joints
+are subject to linear constraints
+?
+1
+2
+π ≤ qi ≤
+1
+2
+π, i ? {2,3,4}.
+5153
+Before presenting the system model we make a key
+assumption regarding the control system.
+Assumption 2 (Control System): Control of the manipula-
+tor and the platform is carried out on a kinematic level and
+is a bounded, continuous function of time.
+Remark 2: Assumption 2 is more restrictive than the
+corresponding assumption in [13] but also more realistic
+since we do not allow discontinuous feedback.
+System 1: The ﬁrst-order differential kinematics of a pla-
+nar mobile manipulator,
+˙ p
+em
+=
+˙
+?Sp
+em
++J˙ q, (5)
+express the relative linear velocity between the platform and
+the EE, ˙ p
+em
+= ˙ p
+e
+?˙ p
+m
+, as a function of the platform angular
+velocity
+˙
+? and the angular velocities of the joints ˙ q (see [12]
+for a derivation of (5)). Assumption 2 gives
+˙ q =u
+q
+, (6)
+whereu
+q
+is a control input. The mobile platform kinematics
+are described by
+˙ p
+m
+= u
+v
+Re
+1
+,
+˙
+R = u
+?
+SR (7)
+where R represent the platform orientation, u
+v
+is the linear
+velocity and equals k˙ p
+em
+k up to sign, and u
+?
+=
+˙
+? is the
+angular velocity. Assumption 2 also implies that the input
+signals are subject to constraints of the type
+|u
+qi
+|≤ U
+qi
+, |u
+v
+|≤ U
+v
+, |u
+?
+|≤ U
+?
+, (8)
+where the bounds may be interpreted as input saturation
+levels.
+In this paper we will be satisﬁed with establishing bounded
+control signals without specifying the actual bounds (8).
+III. PROBLEM STATEMENT
+Consider System 1 under Assumption 1–2. Our goal is to
+design a bounded, continuous feedback control that steers an
+operational point, which we chose to be the EE, to a desired
+set-point from any initial condition while at the same time
+avoiding any singular manipulator conﬁgurations. There is
+no loss of generality in assuming the set-point to be the
+origin. Note that the seemingly more general problem of
+EE path following can also be solved by such a control law
+under rather mild additional assumptions using a feedforward
+technique.
+IV. CONTROL ALGORITHM
+The proposed solution to the problem described in §III will
+ﬁrst be outlined in §IV-A and then be given an in-depth
+description in §IV-B–IV-E.
+A. Switched control strategy
+Inverse kinematics based task space control is a form of
+feedback linearization and suffers from the limitations as-
+sociated with such an approach. Stability results can be
+established on a local level but the system may not be
+globally asymptotically stable and can even display ﬁnite
+escape time. To avoid the input norm growing unboundedly
+as the manipulator approaches a singular conﬁguration we
+modify the inverse kinematics based approach by making
+use of a switched control strategy.
+The discrete state ? of the system switches between four
+modes which we refer to as the EE mode (e), manipulator
+mode (m), mobile platform mode (p), and transition mode
+(t). The following switching sequences are allowed e ?
+t ? m, m ? t ? e, m ? t ? p, and p ? t ? m.
+The switching modes are grouped as T = {e}, J = {m,p}
+where T corresponds to task space control and J to joint-
+space control in the sense that the EE position is ﬁxed in J.
+The switching mode t is transient since it only serves as a
+passage between other modes. An illustration of the overall
+switching scheme is provided in Fig. 3.
+The switching is state and time dependent. The mode e is
+where the robot performs the main task of stabilizing the EE
+position. A robot executes the switch e ? t ? m when
+its manipulator is close to a singular conﬁguration or an
+unfeasible conﬁguration and the reverse switch m?t?e
+when said manipulator is at sufﬁcient distance from such
+conﬁgurations to resume its work. The modem is hence about
+improving the manipulability of the manipulator conﬁgura-
+tion. The mode t is used to connect the control signals u
+?
+i
+for i ? {e,j,m}, ? ? {e,m,p} in a continuous fashion,
+thereby circumventing the discontinuity that a direct switch
+between these modes could result in. The switchm?t?p
+is executed when the nonholonomic motion constraints of the
+platform prevent the robot from approaching a manipulator
+conﬁguration that is characterized by a good manipulability
+index, i.e. is far from a singularity. A robot inp will readjust
+the orientation of its mobile platform whereafter it executes
+the switch p?t?m.
+In light of the recently introduced notation, we rewrite (5)
+as follows
+u
+?
+e
+= u
+?
+v
+Re
+1
++u
+?
+?
+Sp
+em
++Ju
+?
+q
+, (9)
+where the superindex ? ? {e,m,p,t} is the switching
+signal, u
+?
+e
+may be considered as a virtual input signal to
+the EE, u
+?
+v
+and u
+?
+?
+are input signals to the mobile platform,
+Re
+1
+represents the mobile platform orientation, and u
+?
+q
+is
+an input signal to the joints of the arm. In (9) we use that
+˙ p
+?
+e
+=u
+?
+e
+, ˙ p
+?
+m
+= u
+?
+v
+Re
+1
+, and ˙ q
+?
+=u
+?
+q
+.
+B. The end-effector mode
+In end-effector mode (e) we want to achieve the main task of
+moving the EE to its desired set-point position. This is done
+using pseudo-inverse based control in work space. Introduce
+the constraints
+kJ
+†
+k≤ ?, (10)
+d(q,F
+c
+)≥ ?
+e
+. (11)
+where? and?
+e
+are strictly positive constants and† denote the
+Moore-Penrose inverse operator. Note that condition (11) is
+stricter than the requirement on joint conﬁguration feasibility
+made in Assumption 1. Condition (10) is an important step
+towards formalizing the requirement of bounded control
+5154
+Task space control (T) Joint space control (J)
+Platform
+mode (p)
+Manipulator
+mode (m)
+End-e?ector
+mode (e)
+Transition
+mode (t)
+Transition
+mode (t)
+Fig. 3: The switching modes.
+inputs made in Assumption 2. The choice of ?
+e
+and ? cannot
+be done arbitrarily, but must take kJ
+†
+k and F into account.
+The switched control of [13] is autonomous but depends
+discontinuously on the states. The use of an instantaneous
+switch simpliﬁes the switching criteria. In this paper we need
+to predict the possibility of (10) being violated and initiate
+the switch prior to this happening.
+A robot switches e?t?m whenever
+kJ
+†
+k≥ ?
+?
+or d(q,F
+c
+)≤ ?
+e?
+, (12)
+an illustration of the former case is provided in Fig. 4. Con-
+dition (12) implies that the robot leavese whenever the norm
+of its manipulator Jacobian grows close to an upper bound ?
+or when the joints are close to within a lower distance ?
+e?
+of
+an infeasible conﬁguration. Note that condition (12) covers
+both boundary and internal singularities [14].
+Je
+1
+, J
+†
+e
+1
+Je
+2
+J
+†
+e
+2
+e
+1
+e
+2
+Fig. 4: A PR manipulator for which kJ
+†
+k is large.
+The constraints (10), (12) are soft in the sense that they
+can be violated when ? ? {m,p} (note however that the
+constraint (11) is hard for all?). To make sure that (10) is not
+violated in the transition phase t of the switch e?t?m
+when pseudo-inverse based control is still being applied, we
+set0 < ?
+?
+< ? so thatkJ
+†
+k may exceed?
+?
+without exceeding
+?. Likewise we set 0 < ?
+e
+< ?
+e?
+so that d(q,F
+c
+) may
+decrease in t without falling below ?
+e
+.
+The time spent in t is designed to be a constant number
+??
+t
+(see §IV-E). Hence ??
+t
+,?
+?
+, and ?
+e?
+should be chosen
+so that the maximum rate of change of q cannot lead to a
+violation of (10)–(11) before ??
+t
+time units have passed
+after that the switch has been initiated. More speciﬁcally, ?
+?
+and?
+e?
+are such thatkJ
+†
+(q(?))k≤ ?
+?
+andd(q(?),F
+c
+)≥ ?
+e?
+respectively implies that
+kJ
+†
+k≤ ?, d(q,F
+c
+)≥ ?
+e
+, ?q ? B
+r
+(q(?)),
+where r = ??
+t
+max
+q,u
+e
+v
+,u
+e
+?
+,u
+e
+e
+u
+e
+q
+subject to q,u
+e
+v
+,u
+e
+?
+, and
+u
+e
+e
+being feasible.
+The switching logic guarantees thatkJ
+†
+k < ? holds at any
+time when ? =e or e ?t. Hence J
+†
+is well-deﬁned in e
+and we may set
+u
+e
+q
+=J
+†
+(?u
+e
+v
+Re
+1
+?u
+e
+?
+Sp
+em
++u
+e
+e
+), (13)
+which satisﬁes (9) for any u
+e
+e
+. Stated another way, we have
+used a feedback linearization to obtain
+˙ p
+e
+e
+=u
+e
+e
+, (14)
+where u
+e
+e
+is a bounded, continuous virtual input signal that
+does not directly correspond to any physical actuator. The
+input u
+e
+e
+can be chosen to make the EE move towards the
+desired set-point using standard techniques.
+Remark 3: In order to solve the path following problem,
+the path needs to be parametrized by a variable that only
+evolves when ? =e and in the ﬁrst half of the switch e?
+t ? m so that the error vector connecting the end-effector
+with its desired position remains constant when ? ?{m,p}.
+C. The manipulator mode
+In manipulator mode (m) we want to restore (12) (with some
+additional margin) in ﬁnite time without moving the EE.
+Introduce the constraint
+˙ p
+e
+=u
+p
+e
+=0. (15)
+The purpose of (15) is to avoid having the control in m
+interfere with the progress in e towards the goal of making
+the EE reach its desired set-point.
+A robot switches m?t?e when
+q ? B
+?
+m?(q
+?
+), (16)
+whereq
+?
+? F is a joint conﬁguration characterized by a high
+manipulability index [3] and ?
+m?
+is a small positive number.
+The ?
+m?
+is introduced so that q can come sufﬁciently close
+to q
+?
+in ﬁnite time using a large class of control laws u
+m
+q
+(not necessarily ﬁnite time convergent control).
+The idea is to pick a q
+?
+and bring q sufﬁciently close to
+it before switching to e so that the next switch e?t?m
+do not occur until after at least a time ??
+e
+> 0 have passed
+wherefore a minimum of progress in the objective of moving
+the EE can be made after every switching sequence of the
+form e ? t ? m ? ... ? m ? t ? e. Stated in another
+way, the system has a dwell time ??
+e
+in e. Almost global
+asymptotical stability of the desired objective can then be
+established by formulating the switching logic for? ?{m,p}
+such that the system always returns to e [13], i.e. ? =e for
+inﬁnitely long time.
+This requires that q
+?
+of the condition (16) is chosen such
+that kJ
+†
+(q
+?
+)k < ?
+?
+and d(q
+?
+,F
+c
+) > ?
+e?
+holds with some
+margin since there will then be a dwell time ??
+e
+in e.
+More precisely, for some ??
+e
+> 0 we need a q
+?
+such that
+5155
+kJ
+†
+(q)k < ?
+?
+and d(q,F
+c
+) > ?
+e?
+for allq ? B
+?
+m(q
+?
+) where
+?
+m
+satisﬁes
+?
+m
+≥ ?
+m?
++??
+e
+max
+q?B
+?
+m(q
+?
+),
+u
+e
+v
+,u
+e
+?
+,u
+e
+e
+ku
+e
+q
+k.
+The fact that kJ
+†
+(q
+?
+)k < ?
+?
+allows us to bound ku
+e
+q
+k in
+a neighborhood of q
+?
+and ensure the existence of a ?
+m
+for
+sufﬁciently small ??
+e
+in a manner similar to that of [13].
+The switch m?t?p occurs when
+|hRe
+1
+,p
+em
+i|≤ ?
+m?
+, (17)
+whereRe
+1
+is a vector parametrization of the mobile platform
+orientation and ?
+m?
+is a small positive number. Note that as
+|hRe
+1
+,p
+em
+i| becomes zero, the terms including Re
+1
+and
+Sp
+em
+in (9) will be parallel and the input signals u
+?
+v
+and
+u
+?
+?
+will hence have the same instantaneous effect on the EE
+velocity, i.e. the mapping from u
+?
+v
+and u
+?
+?
+tou
+e
+e
+will become
+singular (an illustration is provided in Fig. 5).
+f
+Re
+1
+u
+m
+?
+Sf
+u
+m
+v
+Re
+1
+e
+1
+e
+2
+, Re
+1
+Re
+2
+Fig. 5: A robot for which p
+jm
+=0 and |hRe1,fi| is small.
+Knowing that (17) is not fulﬁlled in m tells us there is an
+?
+m
+such that 0 < ?
+m
+< ?
+m?
+and|hRe
+1
+,p
+em
+i|≥ ?
+m
+for ? =m.
+This allows us to ﬁnd a bounded solution of (9) withu
+m
+e
+=0
+and u
+m
+v
+, u
+m
+?
+expressed in terms of u
+m
+q
+,
+
+u
+m
+v
+u
+m
+?
+
+=
+1
+hRe
+1
+,p
+em
+i
+
+hp
+em
+,Ju
+m
+q
+i
+hRe
+2
+,Ju
+m
+q
+i
+
+. (18)
+Recall that there is a feasible path from any feasibleq toq
+?
+due to the characterization of F in Assumption 1. Since (6)
+is a linear system we can make q move towards q
+?
+along
+such a path using standard techniques.
+Finally, we need to assure that |hRe
+1
+,p
+em
+i| ≥ ?
+m
+holds
+also in the transition phase m ? t ? p. This is fulﬁlled if
+we chose ?
+m
+and ?
+m?
+such that
+?
+m?
+= ?
+m
++??
+t
+max
+q,u
+m
+v
+,u
+m
+?
+|h
+˙
+Re
+1
+,p
+em
+i+hRe
+1
+, ˙ p
+em
+i|,
+where the optimization is subject to q,u
+m
+v
+, and u
+m
+?
+being
+feasible.
+D. Mobile platform mode
+In mobile platform mode (p) we want to change the platform
+pose in ﬁnite time so that the system can return to performing
+manipulator mode control. Introduce the constraints
+˙ p
+e
+=u
+p
+e
+=0, (19)
+˙ q
+i
+= 0, i?{2,3,...,n} (20)
+The purpose of (19)–(20) is to avoid having the control in
+p interfere with the progress in e and m towards the goal
+of making the EE reach its desired set-point and the joint
+variables approach q
+?
+respectively.
+The switch p?t?m occurs when
+|hRe
+1
+,p
+em
+i|≥ ?
+p
+, (21)
+where ?
+p
+satisﬁes ?
+p
+> ?
+m?
+and ?
+p
+< kfk. The switch is
+achieved by changing Re
+1
+(i.e. the platform orientation)
+as explained below. The fact that ?
+p
+> ?
+m?
+assures us that
+there is a dwell time ??
+m
+in m (or at least during switching
+sequences that do not include e).
+The control signals in p are chosen such that (9) holds
+with ˙ q
+2
+,..., ˙ q
+k
+= 0, and f =p
+em
+?p
+jm
+constant, i.e.
+˙
+f = u
+p
+?
+S(p
+jm
++f)+J˙ q
+1
+e
+1
+?u
+p
+?
+Sp
+jm
+=0. (22)
+Note that J˙ q
+1
+e
+1
+= ˙ q
+1
+Sf since the ﬁrst joint is revolute by
+Assumption 1. The control in p is given by
+u
+p
+?
+= sgn(hp
+em
+,Re
+2
+i)hp
+em
+,Re
+2
+i,
+u
+p
+v
+= sgn(hp
+jm
+,Re
+2
+i)kp
+jm
+ku
+p
+?
+,
+u
+p
+q
+=?u
+p
+?
+e
+1
+,
+where the last equality implies ˙ q
+1
+= ?u
+p
+?
+. Note that (22) is
+satisﬁed regardless of u
+p
+v
+. What is more, plugging the control
+into (9) we obtainu
+p
+e
+=0 as required. The choice of control
+signals in the case of p
+jm
+=0 is illustrated in Fig. 6.
+˙ p
+e
+=0
+˙ p
+m
+=0
+˙ q
+1
+=?u
+p
+?
+˙
+?
+m
+= u
+p
+?
+˙
+? = u
+p
+?
+˙ q
+2
+= 0
+˙ q
+3
+= 0
+˙ q
+4
+= 0
+Fig. 6: A mobile robot with p
+mj
+=0 in platform mode.
+E. Transition mode
+In transition mode (t) we want to connect the input signals
+of the previous mode (?) with that of the next (?) in a
+continuous fashion. This is done by multiplying all signals
+by a time-dependent gain g(t), essentially ramping down the
+previous signal to zero and then ramping up the next signal
+to its value at the current states.
+Consider the case of a switching sequence ? ? t ? ?
+where the switch ? ?t takes place at time ?. Then
+u
+t
+i
+=
+(
+g(t??)u
+?
+i
+if t?? ≤ ??
+t
+g(t??)u
+?
+i
+if t?? > ??
+t
+,
+(23)
+where ??
+t
+is a positive constant corresponding to half the
+time spent in t and g : [0,2??
+t
+] ? [0,1] is a Lipschitz
+continuous function that satisﬁes, g(0) = 1, g(??
+t
+) = 0,
+and g(2??
+t
+) = 1.
+5156
+V. NUMERICAL EXAMPLES
+The proposed algorithm as simulated in MATLAB for the
+task of moving the EE position of a 3R mobile manipulator
+from p
+e
+(0) to the origin while maintaining the constraints
+kJ
+†
+k≤ 5, ?t s.t. ?(t) =e or ?(t) =t, ?(t???
+t
+) =e,
+q ? F =
+
+q ?S
+3
+
+
+
+
+?
+2π
+3
+≤ q
+i
+≤
+2π
+3
+, i?{2,3}
+
+.
+We used the control laws u
+e
+e
+, u
+m
+q
+from [13] and put u
+e
+v
+, u
+e
+?
+to zero. The linear control u
+m
+q
+is bounded since q ? S
+3
+and respects the constraints due to F being convex. The
+algorithm performed as required.
+Consider the case of an initial condition p
+e
+(0) = [2 2]
+?
+andq(0) =q
+?
+= [0.81.50.5]
+?
+. The parameters were tuned,
+in particular we set ?
+?
+= 4. Fig. 7 shows the manipulator
+ﬁrst reaching out until kJ
+†
+k = 4 at time 1.2 (see Fig 8). The
+platform then moves until q = q
+?
+again. Note from Fig. 8
+that kJ
+†
+k approaches the value 5 at time 1.5. This does not
+risk a violation of the norm constraint since ? = m at that
+time (the joint constraints are never close to being violated).
+The motion sequence consisting of the manipulator reach-
+ing out followed by the platform repositioning itself is
+repeated three times (the number of separate intervals on
+which ? = e in Fig 8). It is occurs due to the choice of
+u
+e
+v
+= u
+e
+?
+= 0. Setting the mobile platform inputs to zero
+is sometimes reasonable in practice, for example if the EE
+is to follow a path which lies close to the platform most
+of the time. For most tasks it will however be beneﬁcial to
+use nonzero controls u
+e
+v
+, u
+e
+?
+. Also note the two manipulator
+conﬁgurations in Fig. 7 that are similar to the one in Fig.
+5. They occur at times instances that correspond to the two
+occasions ? =p in Fig. 8.
+REFERENCES
+[1] B. Bayle, J.Y . Fourquet, and M. Renaud, “Manipulability of wheeled
+mobile manipulators: Application to motion generation,” The Interna-
+tional Journal of Robotics Research, vol. 22, no. 7-8, p. 565, 2003.
+[2] R.W. Brockett, “Asymptotic stability and feedback stabilization,” in
+Differential Geometric Control Theory, R.W. Brockett, R.S. Millman,
+and H.J. Sussmann, Eds. Birkauser, 1983.
+[3] B. Siciliano and O. Khatib, Springer handbook of robotics. Springer-
+Verlag, 2008.
+[4] C. W. Wampler, “Manipulator inverse kinematic solutions based on
+vector formulations and damped least-squares methods,” IEEE Trans-
+actions on Systems, Man and Cybernetics, vol. 16, no. 1, pp. 93–101,
+1986.
+[5] T. F. Chan and R. V . Dubey, “A weighted least-norm solution based
+scheme for avoiding joint limits for redundant joint manipulators,”
+Robotics and Automation, IEEE Transactions on, vol. 11, no. 2, pp.
+286–292, 1995.
+[6] S. Chiaverini, “Singularity-robust task-priority redundancy resolution
+for real-time kinematic control of robot manipulators,” Robotics and
+Automation, IEEE Transactions on, vol. 13, no. 3, pp. 398–410, 1997.
+[7] B. Bayle, J.-Y . Fourquet, F. Lamiraux, and M. Renaud, “Kinematic
+control of wheeled mobile manipulators,” in Proceedings of the
+IEEE/RSJ International Conference on Intelligent Robots and Systems,
+vol. 2, 2002, pp. 1572–1577.
+[8] J. Tan, N. Xi, and Y . Wang, “Integrated task planning and control for
+mobile manipulators,” The International Journal of Robotics Research,
+vol. 22, no. 5, pp. 337–354, 2003.
+[9] L. Sentis and O. Khatib, “Synthesis of whole-body behaviors through
+hierarchical control of behavioral primitives,” International Journal of
+Humanoid Robotics, vol. 2, no. 04, pp. 505–518, 2005.
+0 1 2 3
+0
+1
+2
+Fig. 7: The robot trajectory in work space at the current time
+(black) and three previous time instances (grey).
+ 
+ 
+?
+kJ
+†
+k
+e
+m
+t
+7 9 5 1 3
+1
+5
+3
+p
+Fig. 8: The values of ? (left axis) andkJ
+†
+k (right axis) as functions
+of time.
+[10] A. De Luca, G. Oriolo, and P. R. Giordano, “Kinematic modeling
+and redundancy resolution for nonholonomic mobile manipulators,”
+in IEEE International Conference on Robotics and Automation, 2006,
+pp. 1867–1873.
+[11] G. Antonelli, “Stability analysis for prioritized closed-loop inverse
+kinematic algorithms for redundant robotic systems,” Transactions on
+Robotics, vol. 25, no. 5, pp. 985–994, 2009.
+[12] J. Markdahl, Y . Karayiannisdis, X. Hu, and D. Kragic, “Distributed
+cooperative object attitude manipulation,” in Proceedings of the IEEE
+International Conference on Robotics and Automation, 2012, pp.
+2960–2965.
+[13] J. Markdahl, Y . Karayiannisdis, and X. Hu, “Cooperative object
+path following control by means of mobile manipulators: a switched
+systems approach,” in Proceedings of the IFAC Symposium on Robot
+Control, 2012, pp. 773–778.
+[14] B. Siciliano, L. Sciavicco, and L. Villani, Robotics: Modelling, Plan-
+ning and Control. Springer Verlag, 2009.
+5157

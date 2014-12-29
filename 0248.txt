@@ -1,0 +1,814 @@
+Guidance for Human Navigation using a Vibro-Tactile Belt Interface
+and Robot-like Motion Planning
+Akansel Cosgun, E. Akin Sisbot and Henrik I. Christensen
+Abstract— We present a navigation guidance system that
+guides a human to a goal point with a tactile belt interface and a
+stationary laser scanner. We make use of ROS local navigation
+planner to ﬁnd an obstacle-free path by modeling the human
+as a non-holonomic robot. Linear and angular velocities to
+keep the ’robot’ on the path are dynamically calculated, which
+are then converted to vibrations and applied by the tactile
+belt. We deﬁne directional and rotational vibration patterns
+and evaluate which ones are suitable for guiding humans.
+Continuous patterns for representing directions had the least
+average angular error with 8:4
+
+, whereas rotational patterns
+were recognized with near-perfect accuracy. All patterns had
+a reaction time slightly more than 1 seconds. The person is
+tracked in laser scans by ﬁtting an ellipse to the torso. Average
+tracking error is found to be 5cm in position and 14
+
+in
+orientation in our experiments with 23 people. Best tracking
+results was achieved when the person is 2.5m away and is facing
+the sensor or the opposite way. The human control system as
+a whole is successfully demonstrated in a navigation guidance
+scenario.
+I. INTRODUCTION
+A severe loss of vision hinders an individual’s ability to
+complete daily activities such as walking safely. Mobility
+tools such as canes and guide dogs provide invaluable assis-
+tance to these people. With advancing technology, assistive
+mobility devices have been available to the visually impaired.
+However, these devices are used only as secondarily to tra-
+ditional tools and a more comprehensive solution is desired.
+Our proposed solution is a companion robot traveling with
+the blind person and guiding him to a destination with a
+haptic interface. There are several research problems that
+needs to be solved before such a system can be realized,
+such as reliable human tracking, joint path planning of the
+robot-human pair and interfaces that can represent spatial
+information. We start with the simpler problem of guiding a
+person to a location in the room with a stationary robot or
+sensor. Our approach is based on controlling the human like
+a robot using a tactile belt interface.
+Guiding a human with a tactile belt is similar to au-
+tonomous mobile robot navigation. A mobile robot is con-
+trolled by inputs to its motors whereas in our system the
+human is controlled by vibration motors. In the case of a
+non-holonomic robot, the inputs to the motor controller is
+in the form of a linear and angular velocity. Our approach
+is to model the human as a robot, plan a path to the goal
+and to convert the input velocities into vibration patterns.
+In order to do this, we consider two types of vibration
+A. Cosgun and H.I. Christensen are with Georgia Institute of Technology,
+Atlanta, GA
+E. A. Sisbot is with Toyota InfoTechnology Center, Mountain View, CA
+patterns: directional and rotational. There are differences
+between controlling a robot and a human because there is
+more uncertainty on human’s motions given for a given
+velocity command and there is a time delay between the
+applied vibration and human’s recognition of the signal.
+One other difference is the sensor placement; as a mobile
+robot localizes itself with its on-board sensors whereas in
+our system an external sensor localizes the human. Keeping
+these differences in mind, we adapt robot path planning and
+control methods to human guidance.
+In this paper we present a tactile belt interface, a laser-
+based human tracking method and a motion planner for
+navigation guidance. More speciﬁcally, after brieﬂy describ-
+ing our tactile belt prototype, we evaluate the recognition
+accuracy and reaction times of 4 directional and 4 rotational
+vibration patterns. We then introduce our ellipse-ﬁtting ap-
+proach to estimate the position and orientation of humans.
+Finally, we describe the navigation guidance system and
+present a demonstration.
+II. RELATED WORKS
+Below we review the body of related work in the areas
+of haptic human-machine interfaces, person tracking and
+navigation guidance.
+A. Haptic Interfaces
+Haptic human-machine interfaces have been used in a
+broad range of applications including waypoint naviga-
+tion [1], facilitating navigation for blind pedestrians [2] or
+the elderly [3], helping ﬁreﬁghters to ﬁnd their paths [4],
+teleoperation [5], driving support [6], ﬂight support [7],
+gaming [8] and dancing [9]. The intended application of a
+tactile display device inﬂuences its design and form factor
+as they can be in forms of handheld devices [10], [1] and
+wearable devices [11].
+Tactile belts are one of the most popular wearable haptic
+interfaces. Ways of using tactile belts include discrete [12]
+and continuous [13] direction encoding, distance encod-
+ing [14] and rhythm modulation [15]. Different direction
+encoding methods in tactile belts is discussed in [16].
+B. Laser Based Human Tracking
+Leg detection is common practice for robots where a laser
+scanner is placed at ankle height [17], [18], [19], [20]. Leg
+tracking in cluttered environments was found to be prone
+to false positives by Topp [19]. Some approaches attempted
+to reduce the false positives by employing multiple layers
+of laser scans, usually at the torso height in addition to
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 6350
+ankle height [21], [22]. In a comparison study, Schenk [23]
+showed that upper body tracker achieved better results than
+leg tracker, due to the simpler linear motion model instead
+of a walking model. Double-layer approach was generalized
+to multi-level in depth images by Spinello [24].
+C. Navigation Guidance
+Some of the related work on tactile belts demonstrated
+GPS-based waypoint navigation using a single actuator [25]
+or continuous range of directions [26]. An alternative to
+encoding directional information is to convey how much
+distance is left to a waypoint or an object of interest [14],
+[7], [27]. It is shown in [28] that recognition accuracy of
+vibration patterns is reduced when people are walking instead
+of standing still.
+Haptic feedbacks are also used in human-robot interaction.
+Scheggi [29] used a tactile bracelet in a scenario of a human
+leader followed by a team of mobile robots. Navigation
+feedback was achieved through a tactile belt in telepresence
+context in [5]. In [30], turning instructions through tactile
+actuators attached to the handlebar of a Segway platform is
+shown to reduce the cognitive workload. A robotic system
+that is designed to provide haptic feedback to promote self-
+initiated mobility in children is presented in [31]. A robot
+that guides a visually impaired person in structured indoor
+environments is given in [32].
+III. SYSTEM OVERVIEW
+Our system consists of a Tactile Belt to apply vibration
+patterns, a stationary laser scanner to track the user and
+a Navigation Planner that computes the path of the user.
+Figure 1 shows the system diagram, illustrating the tactile
+belt and the Controller PC, which incorporates the Human
+Tracker and Navigation Planner modules.
+Fig. 1. System overview.
+Whenever a goal position is provided to the Navigation
+Planner by a higher level process, it plans an obstacle-free
+path from the current position of the human to the goal
+position. Human Tracker module is responsible for tracking
+the position and orientation of the user and reporting it to
+the Navigation Planner. To keep the human on the path,
+Navigation Planner continiously re-computes the desired
+motion of the human. The motion command is converted to
+a corresponding vibration pattern, which is sent as a message
+to the tactile belt. The processor on the tactile belt reads the
+message and applies the vibrations with the vibration motors.
+The path is re-planned periodically because humans usually
+deviates from the path that is initially calculated and to be
+able to avoid dynamic obstacles (i.e. bypassers).
+IV. TACTILE BELT
+Our intended application of guiding visually impaired
+individuals affected our choice of the human-machine in-
+terface. Readily available options for assistive interfaces
+are limited to Braille or devices that presents content with
+speech synthesis. These ways of presenting information have
+difﬁculty dealing with representing spatial information. We
+also think visually impaired individuals would prefer a non-
+speech interface because they mostly rely on their sense
+of hearing in daily life. We therefore use a tactile belt for
+navigation guidance, because it can represent directions and
+rotations, be worn discreetly and does not occupy the hearing
+sense.
+In our previous work, we presented the tactile belt and its
+evaluation in detail [33]. In this section, we summarize the
+design of the tactile belt and the vibration patterns.
+Fig. 2. Tactile belt prototype.
+A. Hardware
+The belt is made of elastic material that provides a ’one
+ﬁts all’ solution. Because the belt is stretched when it is
+worn, vibration motors makes contact with the human body,
+increasing the likelihood of a vibration being detected.
+There are 8 coin-type vibration motors on the belt, which
+operates at 9000rpm at 3V rated voltage. Motors are driven
+with Pulse Width Modulation with a 20 kHz square signal.
+The processor on the belt is an Arduino Uno, which is
+powered by its USB port. The communication with the
+Controller PC is achieved by a serial connection and a serial-
+to-USB converter.
+B. Software
+We use Robot Operating System (ROS) software archi-
+tecture for the communication between the Controller PC
+and the Arduino on the belt. A message from the Controller
+PC contains 8 bit arrays, an array for each motor. A bit
+in an array indicates if the motor is going to vibrate or
+6351
+not, during a time interval of 1/16 seconds. When Arduino
+receives the message, it consequently reads the bit array and
+synchronously applies the corresponding voltages to motors.
+C. Vibration Patterns
+We deﬁne two classes of vibration patterns depending on
+the intended human motion: directional and rotational. This
+is motivated by the motion control of mobile robots, where
+the velocity inputs are linear and angular. Directional patterns
+are intended to induce a motion towards a direction and
+rotational patterns are intended to induce a rotation around
+self. We evaluated 4 commonly used and intuitive vibration
+patterns for both directional and rotational motion.
+0
+2
+4
+7 1
+3
+5
+6
+ONE TAP
+time
+M0
+M1
+M2
+M3
+M4
+M5
+M6
+M7
+0
+2
+4
+7 1
+3
+5
+6
+TWO TAPS
+time
+M0
+M1
+M2
+M3
+M4
+M5
+M6
+M7
+0
+2
+4
+7 1
+3
+5
+6
+CONT
+time
+M0
+M1
+M2
+M3
+M4
+M5
+M6
+M7
+0
+2
+4
+7 1
+3
+5
+6
+WAVE
+time
+time
+M0
+M1
+M2
+M3
+M4
+M5
+M6
+M7
+Fig. 3. Vibration Patterns for Directional Motion.
+1) Directional Motion:
+ ONE TAP: a motor is active for 250ms
+ TWO TAPS: a motor is active 250ms, inactive for
+250ms and active for 250ms again
+ CONT: a motor is active until a new pattern is applied
+ WA VE: a vibration that starts from the opposite end of
+desired direction and ends in desired direction
+Figure 3 illustrates all 4 directional patterns for towards
+northeast cardinal direction (Vibration Motor 1).
+2) Rotational Motion:
+ SOLO ONCE: activates all 8 motors consecutively,
+starting from left motor for clockwise, right for counter-
+clockwise.
+ SOLO CONT: repeats SOLO ONCE pattern
+ DUAL ONCE: circle motion is executed for one full
+circle with two opposing motors instead of one
+ DUAL CONT: repeats DUAL ONCE pattern
+Figure 4 illustrates all 4 rotational patterns for a clockwise
+rotation motion.
+M0
+M1
+M2
+M3
+M4
+M5
+M6
+M7
+0
+2
+4
+7 1
+3
+5
+6
+SOLO ONCE
+time
+time
+0
+2
+4
+7 1
+3
+5
+6
+DUAL ONCE
+M0
+M1
+M2
+M3
+M4
+M5
+M6
+M7
+time
+M0
+M1
+M2
+M3
+M4
+M5
+M6
+M7
+0
+2
+4
+7 1
+3
+5
+6
+SOLO CONT
+time
+time
+0
+2
+4
+7 1
+3
+5
+6
+DUAL CONT
+M0
+M1
+M2
+M3
+M4
+M5
+M6
+M7
+time
+Fig. 4. Vibration patterns for Rotational Motion
+V. NAVIGATION GUIDANCE
+In this section we describe the components necessary
+for navigation guidance. First, we introduce our laser-based
+human tracking system. We then present our robot-inspired
+path planning approach and explain how the velocity of the
+commands are mapped to vibrations on the haptic belt.
+A. Human Tracking by Ellipse Fitting
+The guidance system should be able to track the pose
+of the human so that it can provide the right navigation
+commands through the belt. The Human Tracker module
+tracks the position and orientation of the user by ﬁtting
+an ellipse to the torso of the user (Figure 5). The Hokuyo
+UTM-30LX-EW laser scanner, which has 30 Hz refresh rate,
+is placed placed at torso height (1.27m). Whenever a laser
+scan is received, it is ﬁrst segmented into clusters by using
+a Euclidean distance threshold metric. Tracking is activated
+when a person-sized cluster gets close enough to the sensor.
+This cluster is assumed to correspond to the torso of a
+human. We ﬁt an ellipse to the tracked torso cluster by
+solving the problem with a generalized eigensystem [34].
+This ellipse ﬁtting approach is relatively robust and ellipse
+speciﬁc, meaning that even noisy sensor data always returns
+an ellipse. Compared to iterative methods, it is computation-
+ally more efﬁcient and easy to implement. The speed of the
+system is limited to the Hokuyo refresh rate.
+The centroid of the ellipse is considered as the position and
+the shorter principal axis of the ellipse is used to estimate the
+orientation the human. Data association between consecutive
+frames is achieved by the nearest neighbor approach. By
+modeling the human torso as an ellipse, there are two
+orientations that the person can have (facing the sensor
+or not). The correct angle is determined by choosing the
+orientation closer to the previous orientation of the human.
+6352
+Fig. 5. Human pose is estimated by ﬁtting an ellipse to the torso.
+The pose of the human is used in path planning, which is
+described in next section.
+B. Path planning
+ROS provides an easy-to-use navigation stack for mobile
+robots. The input to the navigation stack is a map and a
+goal point and the output is a path and linear and angular
+velocities (v,w) necessary to keep the robot on the course of
+the path. We assumed that the human is a non-holonomic
+robot with a circular footprint. The obstacle information is
+acquired from the laser scanner and the goal is provided
+in the sensor frame. Coupled with the Human Tracker, the
+’robot’ stays localized in the map and with respect to the
+path. The path is re-planned every second to deal with
+possible deviations. Next section is concerned with how the
+linear and angular velocities are converted to the vibration
+patterns.
+C. Velocity to Vibration Pattern Mapping
+Given a desired velocity that the ’robot’ should execute,
+we ﬁrst determine if a directional or rotational vibration
+pattern should be applied by the belt. If the linear velocity is
+dominant, then the human should walk towards that direction.
+If the angular velocity is dominant, the human should rotate
+around self. If both the linear and angular velocity is close to
+zero, the human should not move. To calculate which motion
+is appropriate, the ’robot’ is simulated for a ﬁxed amount of
+time using the motion model in [35]. If the distance the
+’robot’ took is larger than a threshold, then a directional
+vibration pattern is used. If it is less than the threshold, a
+rotational pattern is used. If both of the velocities are small
+enough, the no vibration is applied.
+When the human gets to the vicinity of the goal point, a
+special stop signal is applied to inform the person that the
+destination is reached. Stop signal is implemented similar
+to TWO TAPS pattern except all the motors are activated
+instead of one.
+VI. EVALUATION
+In this section, we report on the recognition accuracies of
+vibration patterns presented in Section IV and the tracking
+error of the Human Tracker presented in Section V-A. We
+then present a demonstration of the human guidance system.
+A. Vibration Patterns
+To evaluate which vibrations are better suited to guide a
+human, we conducted experiments on 15 people. We aim
+to evaluate the vibrations in real scenarios, so the subjects
+were asked to walk randomly during the experiments. The
+experiment consisted of 2 parts: ﬁrst directional patterns
+and then rotational patterns are tested. Whenever the subject
+decides on the type of pattern, he/she pressed on a joystick
+button and uttered the perceived cardinal direction (1-8) or
+the rotation (clockwise or counter-clockwise). For directional
+patterns, we measure the angle error between applied and
+perceived direction. For rotational patterns, we measure the
+percentage of correct recognition. Reaction time is deﬁned
+as the time passed between the start of the vibration and
+the instant the subject presses the button. A total of 344
+directional patterns and 256 rotational patterns are randomly
+applied with the belt. Tables I and II show the results of our
+experiments.
+ONE
+TAP
+TWO
+TAPS
+CONT WA VE
+Directional Error 12:4
+
+10:6
+
+8:4
+
+23:1
+
+Reaction Time (s) 1.32 1.13 1.26 1.92
+TABLE I
+AVERAGE RECOGNITION ERROR AND REACTION TIMES OF DIRECTIONAL
+PATTERNS
+Most accurate directional pattern was CONT with a mean
+angular error of 8:4
+
+, whereas TWO TAPS had the least
+reaction time of 1.13 seconds. WA VE performed signiﬁcantly
+worse than others.
+SOLO
+ONCE
+DUAL
+ONCE
+SOLO
+CONT
+DUAL
+CONT
+Recog. Accuracy %100 %92 %100 %98
+Reaction Time (s) 1.32 1.84 1.16 1.68
+TABLE II
+AVERAGE RECOGNITION ACCURACY AND REACTION TIMES OF
+ROTATIONAL PATTERNS
+The second part of our experiment showed that subjects
+rarely made mistakes in rotation recognition. SOLO CONT
+pattern was recognized by perfect accuracy and it had the
+least reaction time of 1.16 seconds. DUAL patterns did not
+perform well in our studies.
+B. Human Tracking
+In order to evaluate the accuracy of the position and
+orientation estimations of our human tracking method, we
+conducted experiments of 23 people. Subjects were in-
+structed to stand on 4 targets at different distances with 8
+different orientations on each target. For every measurement,
+positional and angular error is logged. Experimental setup
+from the sensor’s view is shown in Figure 7.
+Table III shows the angular error at every target distance
+and bearing. The average positional error in all experiments
+was between 0.05-0.06 meters regardless of the distance
+and the bearing of the human. The average orientation
+error throughout all the experiments was 14:5
+
+. Error in
+orientation, however, varied greatly by pose of the person
+with respect to the laser scanner.
+Average error in orientation differed slightly with respect
+to the distance from the sensor and was the least with 11
+
+when the humans were 2.5m away from the sensor. We
+6353
+(a) (b) (c)
+(d) (e) (f)
+Fig. 6. Autonomous guiding of a blindfolded person using the tactile belt.
+Fig. 7. Experimental setup for the evaluation study of the Human Tracker.
+Distance N NE E SE S SW W NW ALL
+1.0 m 4
+
+12
+
+22
+
+13
+
+5
+
+7
+
+26
+
+17
+
+13
+
+2.5 m 5
+
+16
+
+19
+
+10
+
+3
+
+6
+
+14
+
+17
+
+11
+
+4.0 m 4
+
+10
+
+30
+
+16
+
+7
+
+11
+
+21
+
+17
+
+15
+
+5.5 m 5
+
+11
+
+41
+
+18
+
+10
+
+6
+
+38
+
+23
+
+19
+
+ALL 4
+
+12
+
+27
+
+14
+
+6
+
+7
+
+24
+
+18
+
+14:5
+
+TABLE III
+AVERAGE ORIENTATION ERROR OF HUMAN TRACKER WITH RESPECT TO
+DISTANCE FROM SENSOR AND BODY POSE IN A STUDY WITH 23 PEOPLE
+attribute to the fact that when humans closer than 2.5m to
+the laser scanner, it captures more of the arms, which makes
+the ﬁtted ellipse slightly worse.
+The bearing of the human with respect to the sensor
+had a signiﬁcant effect on orientation error. Least error
+was achieved when the human faces (4
+
+) the sensor or the
+opposite way (6
+
+). On the other hand, average orientation
+error was 24  27
+
+when humans are perpendicular to the
+sensor, because most of the torso can’t be seen in that
+conﬁguration. The ellipse ﬁtting method is efﬁcient and
+accurate enough to be used for navigation guidance system.
+C. Demonstration
+We demonstrated that our system can successfully guide
+a blindfolded person to a goal location in a room. Based on
+our evaluation results of vibration patterns, we used CONT
+for directional motions and SOLO CONT for rotational
+motions. The experimenter manually provided several goal
+poses using the GUI. Note that since the system is re-
+planning frequently, the planner is able to accommodate
+dynamic obstacles and compensate unpredictable motions
+of the person. The demonstration is shown in Figure 6
+with following steps: a) The guidance starts. The user is
+blindfolded and is standing at the left of the screen. The
+human detection system detects him and places an ellipse
+marker with an arrow depicting his orientation. The operator
+gives a goal point by clicking on the screen. The goal point
+is the right trafﬁc cone, and given by the big arrow. b) The
+system autonomously generates a path for the user. As seen
+in the picture the path is collision free. At this stage the
+belt begin to vibrate towards the front of the user. c) An
+unexpected obstacle (another person) appears and stops in
+front of the user. The system detects the other person as an
+obstacle, and reevaluates the path. A new path going around
+the obstacle is immediately calculated and sent to the user by
+the belt. d) The user receives a rotation vibration modality,
+and begins to turn towards the new path. And follows this
+path from now on. e) The obstacle leaves. The path is
+then reevaluated and changed. The user receives forward
+directional belt signal, and advances towards the goal. f) The
+person reaches to the vicinity of the goal and stop signal is
+applied.
+VII. CONCLUSION AND FUTURE WORK
+We successfully demonstrated a system that guides a
+human to a goal position with external sensing and without
+physical contact. The system comprises of a tactile belt to
+apply vibrations that encode spatial data, a human tracker
+that estimates the position and orientation of the human
+and a motion planner that assumes the human is a non-
+holonomic robot with a circular footprint. Output linear and
+angular velocities of the the motion planner are mapped to
+6354
+corresponding directional and rotational vibration patterns on
+the belt. We found that continuous patterns for representing
+directions had the least recognition error and that rotational
+patterns had near-perfect accuracy. The human tracker serves
+as the localization service for path planning. Our method ﬁts
+an ellipse to human torsos, is computationally efﬁcient and
+has a low positional error. Best person tracking results were
+achieved when the person is 2.5 away from the laser and is
+facing the sensor or the opposite way.
+The main limitation of our system is the stationary laser
+scanner because the system loses track if the human navi-
+gates to another room. Next step in our research is to place
+the sensor on a mobile robot that accompanies the human.
+An interesting research problem is the joint path planning
+and control of the robot and the human.
+REFERENCES
+[1] S. R¨ umelin, E. Rukzio, and R. Hardy, “Naviradar: a novel tactile
+information display for pedestrian navigation,” in Proceedings of
+the 24th annual ACM symposium on User interface software and
+technology. ACM, 2011, pp. 293–302.
+[2] N. Henze, W. Heuten, and S. Boll, “Non-intrusive somatosensory nav-
+igation support for blind pedestrians,” in Proceedings of Eurohaptics,
+2006.
+[3] L. Grierson, J. Zelek, and H. Carnahan, “The application of a tactile
+way-ﬁnding belt to facilitate navigation in older persons,” Ageing
+International, vol. 34, no. 4, pp. 203–215, 2009.
+[4] L. Ramirez, S. Denef, and T. Dyrks, “Towards human-centered support
+for indoor navigation,” in Proceedings of the 27th international
+conference on Human factors in computing systems. ACM, 2009,
+pp. 1279–1282.
+[5] D. Tsetserukou, J. Sugiyama, and J. Miura, “Belt tactile interface
+for communication with mobile robot allowing intelligent obstacle
+detection,” in World Haptics Conference (WHC). IEEE, 2011, pp.
+113–118.
+[6] C. Ho, H. Tan, and C. Spence, “Using spatial vibrotactile cues to direct
+visual attention in driving scenes,” Transportation Research Part F:
+Trafﬁc Psychology and Behaviour, vol. 8, no. 6, pp. 397–412, 2005.
+[7] J. Erp, H. Veen, C. Jansen, and T. Dobbins, “Waypoint navigation with
+a vibrotactile waist belt,” ACM Transactions on Applied Perception
+(TAP), vol. 2, no. 2, pp. 106–117, 2005.
+[8] A. Israr and I. Poupyrev, “Tactile brush: Drawing on skin with a tactile
+grid display,” in Proceedings of the 2011 annual conference on Human
+factors in computing systems. ACM, 2011, pp. 2019–2028.
+[9] J. Rosenthal, N. Edwards, D. Villanueva, S. Krishna, T. McDaniel,
+and S. Panchanathan, “Design, implementation, and case study of a
+pragmatic vibrotactile belt,” Instrumentation and Measurement, IEEE
+Transactions on, vol. 60, no. 1, pp. 114–125, 2011.
+[10] R. Raisamo, T. Nukarinen, J. Pystynen, E. M¨ akinen, and J. Kildal,
+“Orientation inquiry: a new haptic interaction technique for non-visual
+pedestrian navigation,” Haptics: Perception, Devices, Mobility, and
+Communication, pp. 139–144, 2012.
+[11] L. Jones, B. Lockyer, and E. Piateski, “Tactile display and vibrotactile
+pattern recognition on the torso,” Advanced Robotics, vol. 20, no. 12,
+pp. 1359–1374, 2006.
+[12] K. Tsukada and M. Yasumura, “Activebelt: Belt-type wearable tactile
+display for directional navigation,” UbiComp 2004: Ubiquitous Com-
+puting, pp. 384–399, 2004.
+[13] M. Pielot, N. Henze, W. Heuten, and S. Boll, “Evaluation of con-
+tinuous direction encoding with tactile belts,” Haptic and Audio
+Interaction Design, pp. 1–10, 2008.
+[14] T. McDaniel, S. Krishna, V . Balasubramanian, D. Colbry, and S. Pan-
+chanathan, “Using a haptic belt to convey non-verbal communication
+cues during social interactions to individuals who are blind,” in IEEE
+International Workshop on Haptic Audio visual Environments and
+Games (HAVE), 2008. IEEE, 2008, pp. 13–18.
+[15] P. Barralon, G. Ng, G. Dumont, S. Schwarz, and M. Ansermino, “De-
+velopment and evaluation of multidimensional tactons for a wearable
+tactile display,” in Proceedings of the 9th international conference on
+Human computer interaction with mobile devices and services. ACM,
+2007, pp. 186–189.
+[16] M. Srikulwong and E. O’Neill, “A comparative study of tactile
+representation techniques for landmarks on a wearable device,” in
+Proceedings of the 2011 annual conference on Human factors in
+computing systems. ACM, 2011, pp. 2029–2038.
+[17] D. Schulz, W. Burgard, D. Fox, and A. B. Cremers, “Tracking multiple
+moving targets with a mobile robot using particle ﬁlters and statistical
+data association,” in Proceedings of IEEE International Conference on
+Robotics and Automation (ICRA), vol. 2. IEEE, 2001, pp. 1665–1670.
+[18] M. Montemerlo, S. Thrun, and W. Whittaker, “Conditional particle
+ﬁlters for simultaneous mobile robot localization and people-tracking,”
+in IEEE International Conference on Robotics and Automation (ICRA),
+vol. 1. IEEE, 2002, pp. 695–701.
+[19] E. A. Topp and H. I. Christensen, “Tracking for following and passing
+persons,” in IEEE/RSJ International Conference on Intelligent Robots
+and Systems (IROS). IEEE, 2005, pp. 2321–2327.
+[20] K. O. Arras, O. M. Mozos, and W. Burgard, “Using boosted features
+for the detection of people in 2d range data,” in Robotics and
+Automation, 2007 IEEE International Conference on. IEEE, 2007,
+pp. 3402–3407.
+[21] A. Carballo, A. Ohya, and S. Yuta, “Fusion of double layered multiple
+laser range ﬁnders for people detection from a mobile robot,” in IEEE
+International Conference on Multisensor Fusion and Integration for
+Intelligent Systems (MFI). IEEE, 2008, pp. 677–682.
+[22] D. F. Glas, T. Miyashita, H. Ishiguro, and N. Hagita, “Laser-based
+tracking of human position and orientation using parametric shape
+modeling,” Advanced robotics, vol. 23, no. 4, pp. 405–428, 2009.
+[23] K. Schenk, M. Eisenbach, A. Kolarow, and H.-M. Gross, “Comparison
+of laser-based person tracking at feet and upper-body height,” in KI
+2011: Advances in Artiﬁcial Intelligence. Springer, 2011, pp. 277–
+288.
+[24] L. Spinello and K. O. Arras, “People detection in rgb-d data,” in
+IEEE/RSJ International Conference on Intelligent Robots and Systems
+(IROS). IEEE, 2011, pp. 3838–3843.
+[25] J. Marston, J. Loomis, R. Klatzky, and R. Golledge, “Nonvisual route
+following with guidance from a simple haptic or auditory display,”
+Journal of Visual Impairment and Blindness, vol. 101, no. 4, p. 203,
+2007.
+[26] W. Heuten, N. Henze, S. Boll, and M. Pielot, “Tactile wayﬁnder: a
+non-visual support system for wayﬁnding,” in Proceedings of the 5th
+Nordic conference on Human-computer interaction: building bridges.
+ACM, 2008, pp. 172–181.
+[27] A. Riener and A. Ferscha, “Raising awareness about space via vibro-
+tactile notiﬁcations,” Smart Sensing and Context, pp. 235–245, 2008.
+[28] I. Karuei, K. MacLean, Z. Foley-Fisher, R. MacKenzie, S. Koch,
+and M. El-Zohairy, “Detecting vibrations across the body in mobile
+contexts,” in Proceedings of the 2011 annual conference on Human
+factors in computing systems. ACM, 2011, pp. 3267–3276.
+[29] S. Scheggi, F. Chinello, and D. Prattichizzo, “Vibrotactile haptic
+feedback for human-robot interaction in leader-follower tasks,” in
+Proceedings of the 5th International Conference on Pervasive Tech-
+nologies Related to Assistive Environments. ACM, 2012, p. 51.
+[30] M. Li, L. Mahnkopf, and L. Kobbelt, “The design of a segway ar-
+tactile navigation system,” Pervasive Computing, pp. 161–178, 2012.
+[31] X. Chen, C. Ragonesi, J. Galloway, and S. Agrawal, “Design of a
+robotic mobility system with a modular haptic feedback approach to
+promote socialization in children,” in IEEE Transactions on Haptics,
+2013.
+[32] V . Kulyukin, C. Gharpure, J. Nicholson, and G. Osborne, “Robot-
+assisted wayﬁnding for the visually impaired in structured indoor
+environments,” Autonomous Robots, vol. 21, no. 1, pp. 29–41, 2006.
+[33] A. Cosgun, E. A. Sisbot, and H. I. Christensen, “Evaluation of
+rotational and directional vibration patterns on a tactile belt for guiding
+visually impaired people,” in Haptics Symposium (HAPTICS). IEEE,
+2014.
+[34] A. Fitzgibbon, M. Pilu, and R. B. Fisher, “Direct least square ﬁtting
+of ellipses,” Pattern Analysis and Machine Intelligence, IEEE Trans-
+actions on, vol. 21, no. 5, pp. 476–480, 1999.
+[35] A. Cosgun, D. A. Florencio, and H. I. Christensen, “Autonomous
+person following for telepresence robots,” in IEEE International
+Conference on Robotics and Automation (ICRA). IEEE, 2013, pp.
+4335–4342.
+6355

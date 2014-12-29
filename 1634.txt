@@ -1,0 +1,2255 @@
+Planning Under Uncertainty in the Continuous Domain:
+a Generalized Belief Space Approach
+Vadim Indelman, Luca Carlone, and Frank Dellaert
+Abstract—This work investigates the problem of planning
+under uncertainty, with application to mobile robotics. We
+propose a probabilistic framework in which the robot bases
+its decisions on the generalized belief, which is a probabilistic
+description of its own state and of external variables of interest.
+The approach naturally leads to a dual-layer architecture: an
+inner estimation layer, which performs inference to predict the
+outcome of possible decisions, and an outer decisional layer
+which is in charge of deciding the best action to undertake.
+The approach does not discretize the state or control space,
+and allows planning in continuous domain. Moreover, it allows
+to relax the assumption of maximum likelihood observations:
+predicted measurements are treated as random variables and
+are not considered as given. Experimental results show that
+our planning approach produces smooth trajectories while
+maintaining uncertainty within reasonable bounds.
+I. INTRODUCTION
+Autonomous navigation in complex unknown scenarios
+involves a deep intertwining of estimation and planning
+capabilities. A mobile robot is required to perform inference,
+from sensor measurements, in order to build a model of
+the surrounding environment and to estimate variables of
+interest. Moreover, it has to plan actions to accomplish
+a given goal. Clearly, if the scenario in which the robot
+operates is unknown, robot decisions need to be based on the
+estimates coming from the inference process. This problem
+is an instance of a partially observable Markov decision
+process (POMDP), which describes a decisional process
+in Markovian systems, in which the state is not directly
+observable. While POMDP are intractable in general [12],
+it is of practical interest to device problem-speciﬁc solutions
+or approximations (e.g., locally optimal plans) that trade-off
+optimality for computational efﬁciency.
+The estimation problem arising in robot navigation has
+recently reached a good maturity. State-of-the-art techniques
+for localization and mapping (SLAM) allow fast solution of
+medium-large scenarios [16], [19], [21], [17], using efﬁcient
+nonlinear optimization techniques, that exploit the structure
+of the underlying problem. On the other hand, planning
+under uncertainty is still attracting a consistent attention from
+the robotic community as, besides the amount of published
+papers, few approaches are able to deal with the complexity
+and time-constraints of real-world problems.
+Related literature offers heterogeneous contributions on
+the topic. A recurrent idea is to restrict the state space or the
+control space to few possible values. While this discretization
+V . Indelman, L. Carlone, and F. Dellaert are with the College
+of Computing, Georgia Institute of Technology, Atlanta, GA 30332,
+USA, indelman@cc.gatech.edu, luca.carlone@gatech.edu,
+frank@gatech.edu.
+prevents obtaining an optimal solution, it allows to frame the
+“computation” of a plan into a “selection” of the best plan
+among few candidates. In this case, a consistent research
+effort has been devoted to design suitable metrics to quantify
+the quality of a candidate plan. The problem itself is not
+trivial as the metric depends on the representation we use
+for the environment and on the inference engine. Examples
+of this effort are the work of Stachniss et al. [31], [30],
+Blanco et al. [4], and Du et al. [8], in which particle
+ﬁlters are used as estimation engine. Martinez-Cantin et
+al. [23], [24] and Bryson and Sukkarieh [5] investigate
+planning techniques in conjunction with the use of EKF
+for estimation. Huang et al. [10] propose a model predictive
+control (MPC) strategy, associated with EKF-SLAM. Leung
+et al. [22] propose an approach in which the MPC strategy
+is associated with a heuristic based on global attractors. Sim
+and Roy [28] propose A-optimal strategies for solving the
+active SLAM problem. Carrillo et al. [6] provide an analysis
+of the uncertainty metrics used in EKF-based planning. Other
+examples are [18], [32] in which the belief is assumed to be
+a Gaussian over current and past poses of the robot.
+We notice that, while all the previous approaches are
+applied to mobile robot navigation problems (the correspond-
+ing problem is usually referred to as active Simultaneous
+Localization and Mapping), similar strategies can be found
+with application to manipulation and computer vision (e.g.,
+next best view problem [26]). A related problem is also
+the so-called informative path planning (although in these
+problems the estimation aspects are often neglected). A
+greedy strategy for informative path planning is proposed
+by Singh et al. [29] while a branch and bound approach is
+proposed by Binney et al. in [3]. More recently, Hollinger et.
+al [9] propose more efﬁcient algorithms, based on rapidly-
+exploring random trees and probabilistic roadmaps. These
+approaches usually assume that the robot moves in a par-
+tially known environment; a remarkable property of these
+techniques is that they approach optimality when increasing
+the runtime (which is exponential in the size of the problem).
+Recent literature on planning under uncertainty is trying to
+go beyond three limitations that are common to most of the
+works mentioned so far. The ﬁrst limitation is discretization.
+Reasoning in terms of a discretized grid world may lead to
+suboptimal plans (Figure 1c) as the performance of the cor-
+responding approaches heavily depends on grid resolution,
+while increasing grid resolution usually implies an increase
+in the computational cost of planning. Continuous models
+appear as more natural representations for real problems, in
+which robot states (e.g., poses) and controls (e.g., steering
+angles) are not constrained to few discrete values. In [1], Bai
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 6763
+et al. avoid discretization by using Monte Carlo sampling
+to update an initial policy. Platt et al. [11] apply linear
+quadratic regulation (LQR) to compute locally optimal poli-
+cies. Kontitsis et al. [20] propose a sampling based approach
+for solving a constrained optimization problem in which the
+constraints correspond to state dynamics, while the objective
+function to optimize includes uncertainty and robot goal.
+A hierarchical goal regression for mobile manipulation is
+proposed by Kaelbling et al. in [13], [14], [15].
+A second limitation regards the assumption that some
+prior knowledge of the environment is available and the belief
+typically represents only the robot trajectory [2], [27]. In
+particular, the Belief Roadmap [27] incorporates predicted
+uncertainty of future position estimates into planning, while
+assuming the environmental map to be given.
+A third limitation is the assumption of maximum likelihood
+observations: since future observations are not given at
+planning time, the robot assumes that it will acquire the mea-
+surements that are most likely given the predicted belief. Van
+den Berg et al. [2] relax the maximum likelihood assumption,
+while assuming prior knowledge on the environment and on
+the state-dependent measurement noise.
+This work addresses the three limitations mentioned in the
+literature review. We introduce the concept of generalized
+belief space (GBS): the robot keeps a joint belief over its
+own state and the state of external variables of interest.
+This allows relaxing the assumption that the environment
+is known or partially known, and enables applications in
+completely unknown and unstructured scenarios. Planning
+in GBS, similarly to planning in belief space [11], is done
+in a continuous domain and avoids the maximum likelihood
+assumption that characterizes earlier works. The concept of
+generalized belief space is introduced in Section II. Our
+planning strategy is then described in Section III. In Section
+IV, we present experimental results, comparing the proposed
+approach with a planning technique based on state space
+discretization. Conclusions are drawn in Section V.
+II. GENERALIZED BELIEF SPACE
+A. Notation and Probabilistic Formulation
+Let x
+i
+andW
+i
+denote the robot state and the world state
+at timet
+i
+. For instance, in mobile robots navigation,x
+i
+may
+describe robot pose at time t
+i
+and W
+i
+may describe the
+positions of landmarks in the environment observed by the
+robot by timet
+i
+. In a manipulation problem, instead,x
+i
+may
+represent the pose of the end effector of the manipulator, and
+W
+i
+may describe the pose of an object to be grasped. The
+world stateW
+i
+is time-dependent in general (e.g., to account
+for possible variations in the environment, or to model the
+fact that the robot may only have observed a subset of the
+environment by time t
+i
+) and for this reason we keep the
+index i inW
+i
+. Let Z
+i
+denote the available observations at
+time t
+i
+and u
+i
+the control action applied at time t
+i
+.
+We deﬁne the joint state at time t
+k
+as X
+k
+:
+=
+fx
+0
+;:::;x
+k
+;W
+k
+g, and we write the probability distribution
+function (pdf) over the joint state as:
+p (X
+k
+jZ
+k
+;U
+k 1
+); (1)
+whereZ
+k
+:
+=fZ
+0
+;:::;Z
+k
+g represent all the available obser-
+vations until time t
+k
+, andU
+k 1
+:
+=fu
+0
+; ;u
+k 1
+g denotes
+all past controls. The probabilistic motion model given the
+control u
+i
+and robot state x
+i
+is
+p (x
+i+1
+jx
+i
+;u
+i
+): (2)
+?1500 ?1000 ?500 0 500 1000 1500
+0
+500
+1000
+1500
+3
+2
+8
+4
+1
+East [m]
+7
+5
+6
+North [m]
+(a)
+?1500 ?1000 ?500 0 500 1000 1500
+0
+500
+1000
+1500
+3
+2
+8
+4
+1
+East [m]
+7
+5
+6
+North [m]
+(b)
+?1500 ?1000 ?500 0 500 1000 1500
+0
+500
+1000
+1500
+3
+2
+8
+4
+1
+East [m]
+7
+5
+6
+North [m]
+(c)
+Fig. 1: Planning under uncertainty. A mobile robot starts
+at the origin without prior knowledge of the environment
+and has to reach a sequence of goals, labeled from 1
+to 8, while keeping bounded its uncertainty. The ﬁgure
+shows: trajectories, mapped landmarks, and uncertainties for
+different planning approaches. (a) Planning in the GBS;
+(b) Planning in the GBS without uncertainty terms in the
+objective function; (c) Discrete planning.
+We consider a general observation model that involves at
+time t
+i
+a subset of joint states X
+o
+i
+X
+i
+:
+p (Z
+i
+jX
+o
+i
+): (3)
+The basic observation model, commonly used in motion
+planning, e.g., [2], involves only the current robot state x
+i
+at each time t
+i
+and is a particular case of the above general
+6764
+model (3). In general Z
+i
+may include several observations:
+in the next section we consider the case in which Z
+i
+=
+fz
+i;1
+;:::;z
+i;ni
+g, making explicit that at time t
+i
+the robot
+acquires n
+i
+measurements.
+The joint pdf (1) at the current time t
+k
+can be written
+according to motion and observation models (2) and (3):
+p (X
+k
+jZ
+k
+;U
+k 1
+) =priors
+k
+Y
+i=1
+p (x
+i
+jx
+i 1
+;u
+i 1
+)p (Z
+i
+jX
+o
+i
+):
+(4)
+Thepriors term includesp (x
+0
+) and any other available prior
+information.
+B. Generalized Belief Space (GBS)
+Our goal is to compute an optimal control action over L
+look-ahead steps. This control action will depend in general
+on the belief over the time horizon. The belief at the lth
+look-ahead step involves the distribution over all the states
+so far, accounting for all the commands and observations
+until that time. For example, the belief at the planning time
+t
+k
+is exactly given by Eq. (4). However, for computing the
+control policy we also need to predict the belief at future
+time instancest
+k+1
+untilt
+k+L
+whose general expression for
+the lth look-ahead step is given as follows:
+gb (X
+k+l
+)
+:
+=p (X
+k+l
+jZ
+k
+;U
+k 1
+;Z
+k+1:k+l
+;u
+k:k+l 1
+); (5)
+where we separated actionsU
+k 1
+and observationsZ
+k
+oc-
+curring until the planning timet
+k
+from the actionsu
+k:k+l 1
+and observations Z
+k+1:k+l
+from the ﬁrst l look-ahead steps
+(t
+k+1
+until t
+k+l
+).
+We consider the case of motion and observation models
+with additive Gaussian noise:
+x
+i+1
+=f (x
+i
+;u
+i
+) +w
+i
+; w
+i
+N (0; 
+
+w
+) (6)
+z
+i;j
+=h
+ 
+X
+o
+i;j
+
++v
+i
+; v
+i
+N (0; 
+
+v
+); (7)
+where z
+i;j
+represents the jth observation at time t
+i
+(recall
+that Z
+i
+= fz
+i;1
+;:::;z
+i;ni
+g, where n
+i
+is the total number
+of observations acquired at time t
+i
+); observation model for
+the measurement z
+i;j
+involves the subset of states X
+o
+i;j
+.
+For instance, z
+i;j
+could represent observations of the jth
+landmark. For notational convenience, we use N(; 
+)
+to denote a Gaussian random variable  with mean  and
+information matrix 
+ (inverse of the covariance matrix). For
+simplicity we assume the same measurement modelh () and
+noisev
+i
+for all the observations at timet
+i
+, although the above
+formulation can be easily generalized.
+The complexity stems from the fact that it is unknown
+ahead of time whether or not an observation z
+i;j
+will be
+acquired. For example, if the robot is far away from the
+jth landmark there will be no measurement z
+i;j
+in practice.
+For this reason, we introduce a binary random variable
+
+i;j
+for each observation z
+i;j
+to represent the event of
+this measurement being acquired. Furthermore, even if the
+measurement z
+i;j
+is acquired, its actual value is unknown
+ahead of time, and therefore we also treat z
+i;j
+as random
+variable. Therefore, we can deﬁne a joint probability density
+over the random variables in our problem:
+p (X
+k+l
+;  
+k+1:k+l
+;Z
+k+1:k+l
+jZ
+k
+;U
+k 1
+;u
+k:k+l 1
+); (8)
+where  
+i
+:
+=f
+i;j
+g
+ni
+j=1
+, withn
+i
+being the number of possible
+observations at time t
+i
+. In our mobile robotics example n
+i
+is simply the number of landmarks observed thus far.
+We refer to (8) with the term generalized belief as now
+the probability distribution is deﬁned over the robot and
+world state (included in the vectorX
+k+l
+), as well as over the
+random variables  
+k+1:k+l
+, and Z
+k+1:k+l
+. Using the chain
+rule and taking the standard assumption of uninformative
+priors yields
+p (X
+k+l
+;  
+k+1:k+l
+;Z
+k+1:k+l
+jZ
+k
+;U
+k 1
+;u
+k:k+l 1
+) =
+p (X
+k+l
+;  
+k+1:k+l
+jZ
+k
+;U
+k 1
+;Z
+k+1:k+l
+;u
+k:k+l 1
+):
+Since the belief (5) is deﬁned only over the states, we
+marginalize the latent variables  
+k+1:k+l
+and get
+gb (X
+k+l
+) = (9)
+P
+ 
+k+1:k+l
+p (X
+k+l
+;  
+k+1:k+l
+jZ
+k
+;U
+k 1
+;Z
+k+1:k+l
+;u
+k:k+l 1
+):
+We represent this belief by a Gaussian
+gb (X
+k+l
+)N
+ 
+X
+
+k+l
+;I
+k+l
+
+; (10)
+where the mean of the normal distribution is set to the
+maximum a posteriori (MAP) estimate
+X
+
+k+l
+= arg max
+X
+k+l
+gb (X
+k+l
+) = arg min
+X
+k+l
+  loggb (X
+k+l
+):
+(11)
+While in this section we introduced the concept of gen-
+eralized belief space, we did not provide computational
+procedures to compute the Gaussian approximation of the
+belief (10). A computationally efﬁcient technique to compute
+the belief constitutes the inference layer of our planning
+approach and is detailed in Section III-B.
+III. PLANNING IN GBS
+In our receding horizon approach, we want to compute
+an optimal control action over L look-ahead steps. The
+control action has to minimize the general objective function
+J
+k
+(u
+k:k+l 1
+):
+J
+k
+(u
+k:k+L 1
+)
+:
+= (12)
+E
+Z
+k+1:k+L
+n
+P
+L 1
+l=0
+c
+l
+(gb (X
+k+l
+);u
+k+l
+)+c
+L
+(gb (X
+k+L
+))
+o
+;
+wherec
+l
+is a general immediate cost for each of theL look-
+ahead steps. The expectation is taken to account for all the
+possible observations during the planning lag, since these are
+not given at planning time and are stochastic in nature. Since
+the expectation is a linear operator we rewrite (12) as
+J
+k
+(u
+k:k+L 1
+)
+:
+=
+L 1
+X
+l=0
+E
+Z
+k+1:k+l
+[c
+l
+(gb (X
+k+l
+);u
+k+l
+)] +
+E
+Z
+k+1:k+L
+[c
+L
+(gb (X
+k+L
+))]: (13)
+6765
+The optimal control u
+
+k:k+L 1
+:
+=
+
+u
+
+k
+;:::;u
+
+k+L 1
+	
+is the
+control policy :
+u
+
+k:k+L 1
+= (gb (X
+k
+)) = arg min
+u
+k:k+L 1
+J
+k
+(u
+k:k+L 1
+): (14)
+Calculating the optimal control policy (14) involves the
+optimization of the objective function J
+k
+(u
+k:k+L 1
+). Ac-
+cording to (12), the objective depends on the (known)
+GBS at planning time t
+k
+, on the predicted GBS at
+time t
+k+1
+;:::;t
+k+L
+, and on the future controls u
+k:k+L 1
+.
+Since in general the immediate costs c
+l
+(gb (X
+k+l
+);u
+k+l
+)
+are nonlinear functions, E
+Z
+k+1:k+l
+[c
+l
+(gb (X
+k+l
+);u
+k+l
+)] 6=
+c
+l
+
+E
+Z
+k+1:k+l
+[gb (X
+k+l
+)];u
+k+l
+
+, and we have to preserve
+the dependence of the belief gb (X
+k+l
+) on the observations
+Z
+k+1:k+l
+. As anticipated in Section II-B, these observations
+are treated as random variables.
+A. Approach Overview
+In order to optimize the objective function (13) we resort
+to an iterative optimization approach, starting from a given
+initial guess on the controls. The overall approach can be
+described as a dual-layer inference: the inner layer performs
+inference to calculate the GBS at each of the look-ahead
+steps, for a given u
+k:k+L 1
+. The computation of the GBS
+is done via (11), by applying a computationally efﬁcient
+technique, based on expectation-maximization and a Gauss-
+Newton method. The outer layer performs inference over the
+controlu
+k:k+L 1
+, minimizing the objective function (13). In
+the next sections we describe in detail each of these two
+inference processes, starting from the inner layer: inference
+in the generalized belief space.
+B. Inner Layer: Inference in GBS
+In this section we discuss the computation of the Gaussian
+approximation (10), whose mean value coincides with the
+MAP estimate (11). As this inference is performed as part
+of the higher-level optimization over the control (see Section
+III-A), the current values foru
+k:k+l 1
+are given in the inner
+inference layer. There are several complications arising when
+one tries to solve (11). First, in order to obtain the distribu-
+tion gb (X
+k+l
+) one has to marginalize the latent variables
+ 
+k+1:k+l
+, according to (9). Second, contrarily to standard
+estimation problems (in which one would resort to numerical
+optimization techniques to solve (11)) the predicted belief
+gb (X
+k+l
+) is a function of Z
+k+1:k+l
+; which are unknown
+at planning time. Therefore, rather than computing a single
+vector representing the MAP estimate, here the objective
+is to compute a vector-valued function of Z
+k+1:k+l
+; which
+gives the MAP estimate for each possible value ofZ
+k+1:k+l
+.
+We solve these two complications exploiting two tools:
+expectation-maximization and a Gauss-Newton approach.
+According to the expectation-maximization (EM) ap-
+proach, instead of minimizing directly the probability in (11)
+(which requires marginalization of  
+k+1:k+l
+), we minimize
+the following upper bound of  loggb (X
+k+l
+):
+X
+
+k+l
+= arg min
+X
+k+l
+(15)
+E
+ 
+k+1:k+l
+j
+
+X
+k+l
+[ logp (X
+k +l
+; 
+k + 1:k +l
+jZ
+k
+;U
+k  1
+;Z
+k + 1:k +l
+;u
+k:k +l  1
+)];
+where the expectation is computed assuming a given nominal
+state
+
+X
+k+l
+. EM guarantees convergence to a local minimum
+of the cost in (11), see e.g., [25] and the references therein.
+We now want to compute explicit expressions for the ex-
+pectation in (15). The jont pdf over X
+k+l
+;  
+k+1:k+l
+can be
+written as
+p(X
+k
+jZ
+k
+;U
+k 1
+)
+l
+Y
+i=1
+p(x
+k+i
+jx
+k +i 1
+;u
+k +i 1
+)p
+ 
+Z
+k +i
+;  
+k +i
+jX
+o
+k +i
+
+(16)
+and the measurement likelihood termp
+ 
+Z
+k +i
+;  
+k +i
+jX
+o
+k+i
+
+at
+each look-ahead step i can be further expanded as
+Y
+j
+p
+ 
+z
+k+i;j
+jX
+o
+k+i;j
+;
+k+i;j
+
+p
+ 
+
+k+i;j
+jX
+o
+k+i;j
+
+(17)
+Plugging in Eqs. (16)-(17) into Eq. (15), recalling the Gaus-
+sian motion and observation models (6)-(7), and taking the
+expectation, results in
+X
+
+k+l
+= arg min
+X
+k+l
+
+
+X
+k
+ 
+^
+X
+
+k
+
+
+
+2
+I
+k
++
+l
+X
+i=1
+kx
+k+i
+ f (x
+k+i 1
+;u
+k+i 1
+)k
+2
+
+w
++
+l
+X
+i=1
+ni
+X
+j=1
+p
+ 
+
+k+i;j
+= 1j
+
+X
+k+l
+
+
+z
+k+i;j
+ h
+ 
+X
+o
+k+i;j
+
+
+2
+
+v
+;
+(18)
+where we used the standard notation ky k
+2
+
+
+=
+(y )
+T
+
+ (y ) for the Mahalanobis norm, with 
+ be-
+ing the information matrix. We also exploited the fact
+that the latent variable 
+k+i;j
+is binary and, by deﬁnition,
+no observation is taken for 
+k+i;j
+= 0. The expression
+p
+ 
+
+k+i;j
+= 1j
+
+X
+k+l
+
+represents the probability of acquiring
+measurement j at time t
+i
+assuming that the state is
+
+X
+k+l
+.
+This probability may depend on the sensor equipment of the
+robot, although there are grounded ways to compute it: for
+instance, one can assume that the probability of observing a
+landmarkj decreases with the distance of the robot from the
+landmark (recall that
+
+X
+k+l
+contains estimates of both robot
+and landmark positions) and becomes zero outside a given
+sensing radius. If we deﬁne
+
+
+
+ij
+v
+=p
+ 
+
+k+i;j
+= 1j
+
+X
+k+l
+
+
+
+v
+,
+we can rewrite (19) as:
+X
+
+k +l
+=arg min
+X
+k +l
+
+
+X
+k
+ 
+^
+X
+
+k
+
+
+
+2
+I
+k
++
+l
+X
+i=1
+ni
+X
+j=1
+
+
+z
+k +i;j
+ h
+ 
+X
+o
+k +i;j
+
+
+2
+
+
+
+ij
+v
++
+l
+X
+i=1
+kx
+k +i
+ f(x
+k +i  1
+;u
+k +i  1
+)k
+2
+
+w
+; (19)
+which suggests the following interpretation: taking the ex-
+pectation over the binary variables produces a scaling ef-
+fect over the measurement information matrices 
+
+v
+; in
+6766
+particular, according to
+
+
+
+ij
+v
+= p
+ 
+
+k+i;j
+= 1j
+
+X
+k+l
+
+
+
+v
+,
+a low probability p
+ 
+
+k+i;j
+= 1j
+
+X
+k+l
+
+is naturally mod-
+eled in EM by decreasing the information content of the
+measurement. In the limit case p
+ 
+
+k+i;j
+= 1j
+
+X
+k+l
+
+=
+0, the matrix
+
+
+
+ij
+v
+only contains zeros, and the term
+
+
+z
+k+i;j
+ h
+
+X
+o
+k+i;j
+
+
+
+2
+
+
+
+ij
+v
+disappears from the sum, cor-
+rectly modeling that if p
+ 
+
+k+i;j
+= 1j
+
+X
+k+l
+
+= 0, then the
+measurement j is not actually acquired.
+The EM framework allowed to transform the original prob-
+lem (11) into (19). However, problem (19) is still difﬁcult to
+solve, since, in general,f() andh() are nonlinear functions.
+In estimation a standard way to solve the minimization
+problem (19) is the Gauss-Newton method, where a single
+iteration involves linearizing the above equation about the
+current estimate
+
+X
+l+l
+, calculating the delta vector X
+k+l
+and updating the estimate
+
+X
+l+l
+ 
+
+X
+l+l
++ X
+k+l
+. This
+process should be repeated until convergence. While this
+is standard practice in information fusion, what makes it
+challenging in the context of planning is that the observations
+Z
+k+1:k+l
+are unknown and considered as random variables.
+In order to perform a Gauss-Newton iteration on (19), we
+linearize the motion and observation models in Eqs. (6)
+and (7) about the linearization point
+
+X
+k+l
+(u
+k:k+l 1
+). The
+linearization point for the existing states at planning time is
+set to
+^
+X
+k
+, while the future states are predicted via the motion
+model (7) using the current values of the controls u
+k:k+l 1
+:
+
+X
+k+l
+(u
+k:k+l 1
+)
+0
+B
+B
+B
+B
+B
+@
+
+X
+k
+ x
+k+1
+ x
+k+2
+.
+.
+.
+ x
+k+l
+1
+C
+C
+C
+C
+C
+A
+:
+=
+0
+B
+B
+B
+B
+B
+@
+^
+X
+k
+f
+ 
+^ x
+kjk
+;u
+k
+
+f ( x
+k+1
+;u
+k+1
+)
+.
+.
+.
+f ( x
+k+l 1
+;u
+k+l 1
+)
+1
+C
+C
+C
+C
+C
+A
+:
+(20)
+Using this linearization point, Eq. (19) turns into:
+arg min
+X
+k+l
+kX
+k
+k
+2
+I
+k
++
+l
+X
+i=1
+
+
+x
+k+i
+ F
+i
+x
+k+i 1
+ b
+f
+i
+
+
+
+2
+
+w
++
++
+l
+X
+i=1
+ni
+X
+j=1
+
+
+H
+i
+X
+o
+k+i
+ b
+h
+i;j
+
+
+2
+
+
+
+ij
+v
+; (21)
+where the Jacobian matrices F
+i
+:
+=r
+x
+f and H
+i
+:
+=r
+x
+h are
+evaluated about
+
+X
+k+l
+(u
+k:k+l 1
+). The right hand side vectors
+b
+f
+i
+and b
+h
+i;j
+are deﬁned as
+b
+f
+i
+:
+=f ( x
+k+i 1
+;u
+k+i 1
+)   x
+k+i
+; (22)
+b
+h
+i;j
+(z
+k+i;j
+)
+:
+=z
+k+i;j
+ h
+
+
+X
+o
+k+i;j
+
+(23)
+Note that b
+h
+i;j
+is a function of the random variable z
+k+i;j
+.
+Also note that under the maximum-likelihood assumption
+this terms would be nulliﬁed: assuming maximum likelihood
+measurements essentially means assuming zero innovation,
+andb
+h
+i;j
+is exactly the innovation for measurementz
+k+i;j
+. We
+instead keep, for now, the observationz
+k+i;j
+as a variable and
+we will compute the expectation over this random variable
+only when evaluating the objective function (13). In order to
+calculate the update vectors X
+k
+and x
+k+1
+;:::; x
+k+l
+,
+it is convenient to write Eq. (21) in a matrix formulation,
+which can be compactly represented as:
+
+
+A
+k+l
+(u
+k:k+l 1
+)X
+k+l
+ 
+
+b
+k+l
+(u
+k:k+l 1
+;Z
+k+1:k+l
+)
+
+
+
+2
+;
+(24)
+whereA
+k+l
+is built by stacking the appropriate Jacobian
+matrices in (21), and
+
+b
+k+l
+is obtained by stacking the right
+hand side vectorsb
+f
+i
+andb
+h
+i;j
+. The update vector X
+k+l
+, that
+minimizes (24), is given by
+X
+k+l
+(u
+k:k+l 1
+;Z
+k+1:k+l
+)
+:
+=
+ 
+A
+T
+k+l
+A
+k+l
+
+ 1
+A
+T
+k+l
+
+b
+k+l
+:
+(25)
+Using the vector X
+k+l
+in (25) we can update the nominal
+state
+
+X
+k+l
+:
+^
+X
+k+l
+(u
+k:k+l 1
+;Z
+k+1:k+l
+) =
+
+X
+k+l
++ X
+k+l
+(26)
+We can also compute a local approximation of the informa-
+tion matrix of the estimate as:
+I
+k+l
+(u
+k:k+l 1
+)
+:
+=A
+T
+k+l
+A
+k+l
+; (27)
+The estimate
+^
+X
+k+l
+(u
+k:k+l 1
+;Z
+k+1:k+l
+) is the outcome of a
+single iteration of the nonlinear optimization (19).
+We note that the (random) measurements z
+k+l;j
+only
+appear in
+
+b
+k+l
+. Moreover, since
+
+b
+k+l
+is obtained by
+stacking vectors b
+f
+i
+and b
+h
+i;j
+, and observing that each
+b
+h
+i;j
+is a linear function of the corresponding mea-
+surement z
+k+l;j
+, it follows that each entry in
+
+b
+k+l
+is
+a linear function of the measurements Z
+k+1:k+l
+. This,
+in turn, implies that X
+k+l
+(u
+k:k+l 1
+;Z
+k+1:k+l
+) and
+^
+X
+k+l
+(u
+k:k+l 1
+;Z
+k+1:k+l
+) are also linear functions of the
+measurements. This fact greatly helps when taking the
+expectation over Z
+k+1:k+l
+of the immediate cost function
+(13). Considering more iterations would better capture the
+dependence of the estimate on the measurements; however,
+more iterations would make
+^
+X
+k+l
+(u
+k:k+l 1
+;Z
+k+1:k+l
+) a
+nonlinear function of the measurements, making it challeng-
+ing to devise explicit expressions for (13). We currently
+assume a single iteration sufﬁciently captures the effect of
+the measurements for a certain control action on the GBS.
+Therefore,
+^
+X
+
+k+l
+(u
+k:k+l 1
+;Z
+k+1:k+l
+)=
+^
+X
+k+l
+(u
+k:k+l 1
+;Z
+k+1:k+l
+):
+(28)
+Thus, according to the derivation in this section we are now
+able to compute a predicted belief at the l look-ahead step,
+which is parametrized as a Gaussian with mean (28) and
+information matrix (27). In the next section we discuss how
+to use the predicted belief in the outer layer of our approach.
+C. Outer Layer: Inference over the Control
+Finding a locally-optimal control policy u
+
+k:k+L 1
+corre-
+sponds to minimizing the general objective function (13).
+The outer layer is an iterative optimization over the non-
+linear functionJ
+k
+(u
+k:k+L 1
+). In each iteration of this layer
+we are looking for the delta vector u
+k:k+L 1
+that is used
+to update the current values of the controls:
+u
+(i+1)
+k:k+L 1
+ u
+(i)
+k:k+L 1
++ u
+k:k+L 1
+; (29)
+6767
+where i denotes the iteration number. Calculating
+u
+k:k+L 1
+involves computing the GBS of all the L
+look-ahead steps based on the current value of the controls
+u
+(i)
+k:k+L 1
+. This process of calculating the GBS is by itself
+a non-linear optimization and has been already described
+in Section III-B. The GBS gb (X
+k+l
+), given the current
+values of the controls u
+k:k+L 1
+, is represented by the mean
+^
+X
+
+k+l
+(Z
+k+1:k+l
+) and the information matrixI
+k+l
+. The mean
+is a linear function in the unknown observations Z
+k+1:k+l
+.
+The immediate cost function, in the general case, may
+involve both the mean and the information matrix, and is
+therefore also a function ofZ
+k+1:k+l
+. Taking the expectation
+over these random variables produces the expected cost that
+is only a function of u
+k:k+L 1
+and captures the effect of
+the current controls on the lth look-ahead step.
+We conclude this section by noting that the control update
+(29) is performed in a continuous domain and can be real-
+ized using different optimization techniques (e.g., dynamic
+programming, gradient descent, Gauss-Newton).
+IV. EXPERIMENTS
+We evaluate our approach in a simulated scenario where
+the robot has to navigate to different goals in an unknown
+environment, assuming no sources of absolute information
+are available (e.g., no GPS). Results were obtained on an
+Intel i7-2600 processor with a 3.40GHz clock rate and 16GB
+of RAM, using a single-threaded implementation.
+The speciﬁc objective function considered in this study is
+(12) with the immediate cost functions deﬁned as
+c
+l
+(gb (X
+k+l
+);u
+k+l
+)
+:
+=tr
+ 
+M
+
+I
+ 1
+k+l
+M
+T
+
+
++k (u
+k+l
+)k
+Mu
+c
+L
+(gb (X
+k +L
+))
+:
+=
+
+
+E
+G
+k +L
+^
+X
+
+k +L
+ X
+G
+
+
+
+Mx
++tr
+ 
+M
+
+I
+ 1
+k +L
+M
+T
+
+
+;
+(30)
+where tr() returns the trace of a matrix. The immediate
+cost function c
+l
+, with l2 [0;L  1], involves both the robot
+uncertainty and control usage terms, while the terminal cost
+c
+L
+penalizes over the distance between the robot to a desired
+(given) goal X
+G
+as well as robot uncertainty. The matrices
+M
+
+;M
+u
+and M
+x
+are weight matrices; in our example M
+
+is constructed such that it extracts robot covariance at the
+appropriate time instant (i.e., robot uncertainty at each look
+ahead step) from the overall state covarianceI
+ 1
+k+l
+. Likewise,
+the matrix E
+G
+k+L
+selects the terminal position of the robot
+from
+^
+X
+
+k+L
+. The function  (u) is some known function
+that, depending on the application, quantiﬁes the usage of
+control u. For simplicity, we assume the robot can only
+control its heading angle while keeping the velocity constant,
+and therefore deﬁne the function  (u) as the change in the
+heading angle.
+The matrixM
+u
+has a very intuitive function - larger values
+induce conservative policies, penalizing for extensive use of
+control. The choice of the matrices M
+
+and M
+x
+is instead
+less intuitive. A balance between these two matrices is crucial
+for letting the robot satisfy the concurrent tasks of reaching
+a goal and minimizing the estimation uncertainty. Instead
+of assuming the weight on the uncertainty and the goal
+terms in Eqs. (30) to be constant (i.e., determined by the
+matricesM
+
+andM
+x
+), we express the tradeoff between these
+two aspects by introducing a parameter  that is adaptively
+computed, according to the robot uncertainty and a user-
+speciﬁed uncertainty threshold , as  =
+tr(MI
+ 1
+k+L
+M
+T
+
+)
+
+.
+The uncertainty terms in Eqs. (30) are then pre-multiplied by
+ and the goal term (in second equation) is pre-multiplied by
+(1 ). When robot uncertainty is close to, and (1 )
+will be close to 1 and 0 respectively, prioritizing uncertainty
+reduction over reaching the goal. As we are not imposing a
+hard constraint ontr
+ 
+M
+
+I
+ 1
+k+L
+M
+T
+
+
+, this term may become
+larger than  and for that reason the ﬁnal deﬁnition of  is
+changed into  = min
+
+tr(MI
+ 1
+k+L
+M
+T
+
+)
+
+; 1
+
+.
+The control is found by minimizing the objective function
+(12), according to our dual-layer inference approach. We use
+a gradient descent method for optimizing the outer layer and
+the approach of Section III-B for calculating inference in the
+inner layer. The number of look-ahead steps (L) is set to 5.
+We assume onboard range and camera sensors that allow
+the robot to detect and measure the relative positions of
+nearby landmarks, and consider the measurements from these
+sensors to be corrupted by a Gaussian noise with standard
+deviation of 1 meter and 0:5 pixels, respectively. We use
+sensing radius of 1000 meters and consider observations
+of landmarks only within this radius. The motion model is
+represented by a zero-mean Gaussian with standard deviation
+of 0:05 meters in position and 0:5 degrees in orientation. The
+robot starts at the origin, without prior knowledge of the
+environment, and has to reach a sequence of goals (labeled
+from 1 to 8 in Figure 1a-c).
+In this study we compare our method to a discrete planning
+approach and also demonstrate the importance of incorporat-
+ing uncertainty into the planning by dropping the uncertainty
+terms from Eqs. (30). In discrete planning we closely follow
+Kim and Eustice [18], who recently considered a robotic cov-
+erage problem, where the planning generates trajectories to
+promising loop-closure candidates and the decision whether
+to continue exploration or to pursue one of these trajectories
+is made according to the robot current uncertainty and the
+expected uncertainty gain by performing a loop closure. The
+authors discretize the space and use a global A* algorithm
+[7], with the heuristic function weighted by local saliency
+of each of the nodes in the grid to prioritize trajectories
+going through high-saliency nodes. The reader is referred to
+[18] for further details. In our implementation of this discrete
+planning approach, we deﬁne saliency to be 1 within sensing
+radius of an observed landmark and 0 otherwise. Similarly to
+[18], to avoid treating each mapped landmark as loop closure
+candidate, we perform clustering of nearby landmarks and
+consider cluster centers as loop closure candidates.
+Figure 1 provides the obtained results in each of the three
+compared methods (planning in the GBS, planning in the
+GBS without uncertainty, and discrete planning). Each plot
+shows the actual and estimated robot trajectories, denoted
+respectively by blue and red lines, the robot uncertainties
+(at the end of the scenario), the 8 considered goals and
+6768
+the landmarks. The mapped landmarks and the associated
+uncertainty are denoted by green color; ground truth for all
+the landmarks is shown in blue.
+?1500 ?1000 ?500 0 500 1000 1500
+?200
+0
+200
+400
+600
+800
+1000
+1200
+1400
+1600
+1800
+ 
+ 
+East [m]
+North [m]
+GBS GBS No Uncertainty Discrete
+(a)
+0 50 100 150 200
+0
+20
+40
+60
+80
+100
+120
+140
+160
+180
+200
+Time [sec]
+Position uncertainty [m]
+ 
+ 
+GBS GBS No Uncertainty Discrete
+(b)
+0 1 2 3 4 5 6 7 8 9
+0
+10
+20
+30
+40
+50
+60
+70
+80
+Goal Number
+Estimation Error [m]
+ 
+ 
+GBS
+GBS No Uncertainty
+Discrete
+(c)
+Fig. 2: (a) Comparison between trajectories from Figure 1.
+Planning in the GBS produces continuous trajectories. (b)
+Position uncertainty for each of the compared methods. The
+soft uncertainty bound is also shown as a dashed line. (c)
+Estimation error when reaching the goals (miss distance).
+As observed in Figure 1a, in the proposed method (plan-
+ning in the GBS), the robot continues moving to the goal,
+while mapping nearby landmarks, as long as the uncertainty
+does not exceed a threshold. Once robot uncertainty is too
+high, the planner ﬁrst guides the robot to previously observed
+landmarks to perform loop closure (on the way from goal 4
+to goal 5, and from goal 7 to goal 8), and only then the robot
+proceeds to the appropriate goal. Uncertainty drops to lower
+values each time a loop closure is performed, as shown in
+Figure 2b. As we use a soft threshold on the uncertainty,
+performing loop closure is determined not only by the robot
+uncertainty levels but also by the weight matrices M
+
+;M
+u
+and M
+x
+in Eqs. (30). Therefore, the robot uncertainty can
+Method Trajectory length [m] Duration [sec]
+GBS 8068 163
+GBS no uncertainty 7185 145
+Discrete planning 9070 185
+TABLE I: Trajectory length and duration.
+still exceed the uncertainty threshold by some amount.
+Figure 1b shows the results when planning is done without
+incorporating uncertainty. While the overall trajectory is
+shorter (Table I), the uncertainty of robot pose and of newly-
+observed landmarks constantly develops over time (see Fig-
+ure 2b) leading to high estimation errors when reaching the
+goal (i.e. high miss distance), as shown in Figure 2c.
+Discrete planning produces the result shown in Figure
+1c. Observe the trajectories are no longer smooth as in the
+continuous case and look less natural; see also the trajectories
+overlay in Figure 2a. As an example, we elaborate in Figure
+3 on the two-phase trajectory segment when traveling from
+goal 1 to goal 2. The robot position and observed landmarks
+at planning time are shown in Figure 3a, while Figure 3b
+illustrates the A*-generated trajectories. As discussed, from
+the robot current position, discrete planning engages A* to
+generate a trajectory for each of the landmark cluster centers
+and to the goal. In the current case, the objective function
+evaluated for the goal trajectory yields the lowest cost and
+is therefore selected (shown in green). However, instead of
+directly going to the goal (as in the continuous planning
+case), the generated trajectory involves two segments that
+seem unnecessary. Note that saliency is 1 in the entire region
+(according to sensing range) and thus does not have any
+effect, in this particular case, on the generated trajectories.
+We observed a similar underlying behavior also for other
+parts in the discrete trajectory that is shown in Figure 1c.
+While discrete planning and our continuous planning ap-
+proach result in similar levels of robot uncertainty (Figure
+2b), in this example the former generates considerably longer
+trajectories (Table I). As to the estimation errors, although
+no general statements can be made at this point, in the
+considered example we observe them to be higher in the
+discrete case, as shown in Figure 2c. In this particular case,
+the high levels of estimation errors (e.g. goals 2 and 3)
+stem from the two-segment trajectory on the way from goal
+1 to goal 2, that is longer than the trajectory generated
+by planning in the GBS and lead accordingly to further
+development of uncertainty.
+V. CONCLUSIONS
+This work investigates the problem of planning under
+uncertainty, and addresses several limitations of the state-of-
+the-art techniques, namely (i) state or control discretization,
+(ii) assumption of maximum likelihood observations, and (iii)
+assumption of prior knowledge about the environment in
+which the robot operates. We propose a planning approach
+that does not resort to discretization, but directly operates in
+a continuous domain. The approach is based on a dual-layer
+architecture, with an inner inference layer, that is in charge
+6769
+?1500 ?1000 ?500 0 500 1000 1500
+0
+500
+1000
+1500
+3
+2
+8
+4
+1
+East [m]
+7
+5
+6
+North [m]
+(a)
+?200 0 200 400 600 800 1000
+200
+300
+400
+500
+600
+700
+800
+900
+1000
+1100
+Goal 2
+East [m]
+North [m]
+(b)
+Fig. 3: Discrete planning using A*. (a) Trajectory and
+mapped landmarks at planning time. (b) Generated trajec-
+tories to the goal and to each of the landmark clusters are
+shown in red. Trajectory corresponding to the lowest cost is
+shown in green. Robot position at planning time is denoted
+by ﬁlled blue circle, mapped landmarks are represented by
+purple circle marks. Grid resolution is 50 meters.
+of predicting the belief on robot and world states, and outer
+inference layer, which has to compute an optimal control
+strategy using the predictions of the inner layer. In the inner
+inference layer, we treat future measurements as random
+variables, hence avoiding the assumption of maximum likeli-
+hood observations, common in related work. We also include
+random binary variables to model the fact that it is not
+known in advance whether a measurement is acquired or not.
+Therefore, we introduce the concept of generalized belief,
+that besides robot and world state, models also the joint
+probability distributions over future measurements and latent
+binary variables. We evaluate the approach in numerical
+experiments and compare it with a recent related work, based
+on discretization.
+REFERENCES
+[1] H. Bai, H. David, and W.S. Lee. Integrated perception and planning
+in the continuous space: A POMDP approach. In Robotics: Science
+and Systems (RSS), 2013.
+[2] J. Van Den Berg, S. Patil, and R. Alterovitz. Motion planning under
+uncertainty using iterative local optimization in belief space. Intl. J.
+of Robotics Research, 31(11):1263–1278, 2012.
+[3] J. Binney and G. S. Sukhatme. Branch and bound for informative path
+planning. In IEEE Intl. Conf. on Robotics and Automation (ICRA),
+pages 2147–2154, 2012.
+[4] J. Blanco, J. Fernandez-Madrigal, and J. Gonzalez. A novel measure of
+uncertainty for mobile robot SLAM with Rao-Blackwellized particle
+ﬁlters. Intl. J. of Robotics Research, 27(1):73–89, 2008.
+[5] M. Bryson and S. Sukkarieh. Observability analysis and active control
+for airborne SLAM. IEEE Trans. Aerosp. Electron. Syst., 44:261–280,
+2008.
+[6] H. Carrillo, I. Reid, and J.A. Castellanos. On the comparison of
+uncertainty criteria for active SLAM. In IEEE Intl. Conf. on Robotics
+and Automation (ICRA), pages 2080–2087, 2012.
+[7] Rina Dechter and Judea Pearl. Generalized best-ﬁrst search strategies
+and the optimality of a*. Journal of the ACM (JACM), 32(3):505–536,
+1985.
+[8] J. Du, L. Carlone, M. Kaouk Ng, B. Bona, and M. Indri. A comparative
+study on active SLAM and autonomous exploration with particle
+ﬁlters. In Proc. of the IEEE/ASME Int. Conf. on Advanced Intelligent
+Mechatronics, pages 916–923, 2011.
+[9] G. Hollinger and G. Sukhatme. Stochastic motion planning for robotic
+information gathering. In Robotics: Science and Systems (RSS), 2013.
+[10] S. Huang, N. Kwok, G. Dissanayake, Q. Ha, and G. Fang. Multi-step
+look-ahead trajectory planning in SLAM: Possibility and necessity. In
+IEEE Intl. Conf. on Robotics and Automation (ICRA), pages 1091–
+1096, 2005.
+[11] R. Platt Jr, R. Tedrake, L.P. Kaelbling, and T. Lozano-Pérez. Be-
+lief space planning assuming maximum likelihood observations. In
+Robotics: Science and Systems (RSS), pages 587–593, 2010.
+[12] Leslie Pack Kaelbling, Michael L Littman, and Anthony R Cassan-
+dra. Planning and acting in partially observable stochastic domains.
+Artiﬁcial intelligence, 101(1):99–134, 1998.
+[13] L.P. Kaelbling and T. Lozano-Pérez. Pre-image backchaining in belief
+space for mobile manipulation. In Proc. of the Intl. Symp. of Robotics
+Research (ISRR), 2011.
+[14] L.P. Kaelbling and T. Lozano-Pérez. Unifying perception, estimation
+and action for mobile manipulation via belief space planning. In IEEE
+Intl. Conf. on Robotics and Automation (ICRA), pages 2952–2959,
+2012.
+[15] L.P. Kaelbling and T. Lozano-Pérez. Integrated task and motion
+planning in belief space. Intl. J. of Robotics Research, 2013.
+[16] M. Kaess, H. Johannsson, R. Roberts, V . Ila, J. Leonard, and F. Del-
+laert. iSAM2: Incremental smoothing and mapping using the Bayes
+tree. Intl. J. of Robotics Research, 31:217–236, Feb 2012.
+[17] M. Kaess, A. Ranganathan, and F. Dellaert. iSAM: Incremental
+smoothing and mapping. IEEE Trans. Robotics, 24(6):1365–1378,
+Dec 2008.
+[18] A. Kim and R.M. Eustice. Perception-driven navigation: Active visual
+SLAM for robotic area coverage. In IEEE Intl. Conf. on Robotics and
+Automation (ICRA), 2013.
+[19] K. Konolige, G. Grisetti, R. Kuemmerle, W. Burgard, L. Benson, and
+R. Vincent. Efﬁcient sparse pose adjustment for 2D mapping. In
+IEEE/RSJ Intl. Conf. on Intelligent Robots and Systems (IROS), pages
+22–29, Taipei, Taiwan, Oct 2010.
+[20] M. Kontitsis, E.A. Theodorou, and E. Todorov. Multi-robot active slam
+with relative entropy optimization. In American Control Conference,
+2013.
+[21] R. Kümmerle, G. Grisetti, H. Strasdat, K. Konolige, and W. Burgard.
+g2o: A general framework for graph optimization. In Proc. of the IEEE
+Int. Conf. on Robotics and Automation (ICRA), Shanghai, China, May
+2011.
+[22] C. Leung, S. Huang, and G. Dissanayake. Active SLAM using model
+predictive control and attractor based exploration. In IEEE Intl. Conf.
+on Robotics and Automation (ICRA), pages 5026–5031, 2006.
+[23] R. Martinez-Cantin, N. de Freitas, E. Brochu, J.A. Castellanos, and
+A. Doucet. A bayesian exploration-exploitation approach for optimal
+online sensing and planning with a visually guided mobile robot.
+Autonomous Robots, 27(2):93–103, 2009.
+[24] R. Martinez-Cantin, N. De Freitas, A. Doucet, and J.A. Castellanos.
+Active policy learning for robot planning and exploration under
+uncertainty. In Robotics: Science and Systems (RSS), 2007.
+[25] T.P. Minka. Expectation-Maximization as lower bound maximization.
+November 1998.
+[26] C. Potthast and G. Sukhatme. Next best view estimation with eye
+in hand camera. In IEEE/RSJ Intl. Conf. on Intelligent Robots and
+Systems (IROS), 2011.
+[27] Samuel Prentice and Nicholas Roy. The belief roadmap: Efﬁcient
+planning in belief space by factoring the covariance. Intl. J. of Robotics
+Research, 28(11-12):1448–1465, 2009.
+[28] R. Sim and N. Roy. Global A-optimal robot exploration in SLAM. In
+IEEE Intl. Conf. on Robotics and Automation (ICRA), pages 661–666,
+2005.
+[29] A. Singh, A. Krause, C. Guestrin, and W.J. Kaiser. Efﬁcient in-
+formative sensing using multiple robots. J. of Artiﬁcial Intelligence
+Research, 34:707–755, 2009.
+[30] C. Stachniss, G. Grisetti, and W. Burgard. Information gain-based
+exploration using rao-blackwellized particle ﬁlters. In Robotics:
+Science and Systems (RSS), pages 65–72, 2005.
+[31] C. Stachniss, D. Haehnel, and W. Burgard. Exploration with active
+loop-closing for FastSLAM. In IEEE/RSJ Intl. Conf. on Intelligent
+Robots and Systems (IROS), 2004.
+[32] R. Valencia, M. Morta, J. Andrade-Cetto, and J.M. Porta. Planning
+reliable paths with pose SLAM. IEEE Trans. Robotics, 2013.
+6770

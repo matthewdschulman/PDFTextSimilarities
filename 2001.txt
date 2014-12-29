@@ -1,0 +1,1225 @@
+Fast Plane Extraction in Organized Point Clouds
+Using Agglomerative Hierarchical Clustering
+Chen Feng
+1
+, Yuichi Taguchi
+2
+, and Vineet R. Kamat
+1
+Abstract— Real-time plane extraction in 3D point clouds
+is crucial to many robotics applications. We present a novel
+algorithm for reliably detecting multiple planes in real time in
+organized point clouds obtained from devices such as Kinect
+sensors. By uniformly dividing such a point cloud into non-
+overlapping groups of points in the image space, we ﬁrst
+construct a graph whose node and edge represent a group of
+points and their neighborhood respectively. We then perform
+an agglomerative hierarchical clustering on this graph to sys-
+tematically merge nodes belonging to the same plane until the
+plane ﬁtting mean squared error exceeds a threshold. Finally
+we reﬁne the extracted planes using pixel-wise region growing.
+Our experiments demonstrate that the proposed algorithm can
+reliably detect all major planes in the scene at a frame rate of
+more than 35Hz for 640480 point clouds, which to the best of
+our knowledge is much faster than state-of-the-art algorithms.
+I. INTRODUCTION
+As low-cost depth cameras and 3D sensors have emerged
+in the market, they have become a popular choice in various
+robotics and computer vision applications. 3D point clouds
+obtained by such sensors are generally noisy and redundant,
+and do not provide semantics of the scene. For compact
+and semantic modeling of 3D scenes, primitive ﬁtting to the
+3D point clouds has attracted a lot of research interests. In
+particular, planes are one of the most important primitives,
+since man-made structures mainly consist of planes.
+In this paper, we present an efﬁcient plane extraction
+algorithm applicable to organized point clouds, such as
+depth maps obtained by Kinect sensors. Our algorithm ﬁrst
+constructs a graph by dividing a point cloud into several
+non-overlapped regions with a uniform size in the image
+space. The algorithm then performs a bottom-up, agglomer-
+ative hierarchical clustering (AHC) on the graph: It repeats
+(1) ﬁnding the region that has the minimum plane ﬁtting
+mean squared error (MSE) and (2) merging it with one of
+its neighbors such that the merge results in the minimum
+plane ﬁtting MSE. We show that the clustering process can
+be done with the complexity log-linear in the number of
+initial nodes, enabling real-time plane extraction. To reﬁne
+the boundaries of the clustered regions, the clustering process
+is followed by pixel-wise region growing. In experiments, we
+compare our algorithm with state-of-the-art algorithms. Our
+algorithm achieves real-time performance (runs over 35 Hz)
+for 640480 pixel depth maps, while providing the accuracy
+1
+Chen Feng and Vineet R. Kamat are with the Department of Civil &
+Environmental Engineering, University of Michigan, Ann Arbor, MI 48109,
+USA cforrest at umich.edu
+2
+Yuichi Taguchi is with Mitsubishi Electric Research Labs, 201 Broad-
+way, Cambridge, MA 02139, USA taguchi at merl.com
+Fig. 1. Plane extraction results generated using our algorithm with different
+initial node sizes. Extracted planes are superimposed with different colors on
+the RGB image (black means non-planar region). White dash lines show the
+segmentation boundaries before the region-grow-based reﬁnement. Initial
+node size of 10 10 detects most of the planes in the scene (top-left),
+whose 3D view is shown (bottom-left). Initial node size of 4 4 reveals
+more segments in a smaller scale such as stairs and table leg (top-right),
+while that of 2020 focuses on major large planar structures such as ﬂoors
+and walls (bottom-right).
+comparable to the state-of-the-art algorithms. Some example
+results are shown in Figure 1.
+A. Contributions
+This paper makes the following contributions:
+ We present an efﬁcient plane extraction algorithm based
+on agglomerative clustering for organized point clouds.
+ We analyze the complexity of the clustering algorithm
+and show that it is log-linear in the number of initial
+nodes.
+ We demonstrate real-time performance with the accu-
+racy comparable to state-of-the-art algorithms.
+B. Related Work
+Plane Extraction: Several different algorithms have
+been proposed for plane extraction from 3D point clouds.
+RANSAC-based methods [1] have been widely used. These
+methods usually follow the paradigm of iteratively apply-
+ing RANSAC algorithm on the data while removing in-
+liers corresponding to the currently found plane instance.
+Since RANSAC requires relatively long computation time
+for random plane model selection and comparison, several
+different variants were developed. Oehler et al. [2] performed
+Hough transformation and connected component analysis
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 6218
+Agglomerative Hierarchical Clustering
+(a) Initialize graph
+Repeat if merging MSE ≤ threshold
+(c) Merge with neighbor node B 
+which gives min merging MSE
+B
+A
+(d) Extract Coarse Planes
+Otherwise don’t merge but extract A
+(e) Refine details (b) Find node A
+with min MSE
+A
+Fig. 2. Algorithm overview. Each frame of an organized point cloud is processed from left to right. (a) shows the graph initialization with each node
+colored by its normal; black dot and line showing graph node and edge; red ’x’, black ’o’, and red dot showing node rejected by depth discontinuity,
+missing data, and too large plane ﬁtting MSE, respectively. (b) and (c) show the two core operations of the AHC. Regions with random colors in (b) and
+(c) show graph nodes merged at least once. Black lines in (c) show all edges coming out from the node A, in which the thick line shows the edge to the
+node B that gives the minimum plane ﬁtting MSE when merging the node A with one of its neighbors. Colored regions in (d) show the extracted coarse
+planes, which are ﬁnally reﬁned in (e) if required by the application.
+on the point cloud ﬁrst as pre-segmentation and then ap-
+plied RANSAC to reﬁne each of the resulting “surfels”
+(2s per 640 480 points). Several algorithms [3]–[5] ap-
+plied RANSAC on local regions of the point cloud (which
+decreases the data size considered in each RANSAC run
+so as to increase speed) and then grew the region from
+the locally found plane instance to the whole point cloud
+(0.2s [3] or 0.1s [4] per 640 480 points; 0.03s [5] per
+320 240 points). Region-grow-based methods are another
+popular choice. H¨ ahnel et al. [6] and Poppinga et al. [7]
+grew points by both point-plane distance threshold and MSE
+threshold (0.2s per 25,344 points). Holz et al. [8] grew points
+by their surface normal deviation (0.5s per 640480 points),
+which requires per-point normal estimation. A similar but
+much slower variant is voxel grow [9]. Instead of growing
+points, Geogiev et al. [10] ﬁrst extracted line segments from
+each scan line of the data and then grew the line segments
+across scan lines (0.05s per 18,100 points in MATLAB).
+There are other methods which do not belong to the two
+groups. Holz et al. [11] ﬁrst clustered the point cloud in
+the normal space and further clustered each group by its
+distance to the origin (0.14s per 640 480 points). To avoid
+per-point normal estimation, Enjarini et al. [12] designed
+the gradient of depth feature for plane segmentation, which
+could be rapidly computed. Graph-based segmentation using
+self-adaptive threshold was also used [13], [14] (0.17s per
+148,500 points [13]). Although our method also uses a
+graph to represent data relation, our method differs from
+the previous methods as follows: 1) no RGB information
+is used; 2) no per-point normal estimation is required; and
+more importantly, 3) dynamic edge weights are used instead
+of static ones which ﬁx the merging order as in [13].
+Applications: Planes have been used in various appli-
+cations in robotics, computer vision, and 3D modeling.
+Compact and semantic modeling of scenes provided by
+planes is useful in indoor and outdoor 3D reconstruction, vi-
+sualization, and Building Information Modeling (BIM) [15].
+Extracting a major plane is a common strategy for table-top
+manipulation [11], because it helps segment objects placed
+on the plane. Planes have been also used for SLAM [16]–[18]
+and place recognition [19] systems as landmarks, because
+planes are more robust to noise and more discriminative than
+points. However, at least three planes whose normals span
+R
+3
+are required to compute the 6-degrees-of-freedom camera
+pose. To avoid the degeneracy due to the insufﬁcient number
+of planes, Taguchi et al. [3] used both points and planes
+as landmarks in their SLAM system. Salas-Moreno et al.’s
+SLAM system that uses objects as landmarks [20] extracted
+a ground plane and used it as a soft constraint to align the
+poses of objects with respect to the ground plane. All of
+the above works can beneﬁt from fast and accurate plane
+extraction, which we present in this paper.
+II. ALGORITHM OVERVIEW
+Figure 2 illustrates how our algorithm processes each
+frame of an organized point cloud. We deﬁne an organized
+point cloud to be a set of 2D indexed 3D points F =
+fp
+i;j
+= (x
+i;j
+;y
+i;j
+;z
+i;j
+)
+T
+g;i = 1; ;M;j = 1; ;N,
+where the 2D indices (i;j) and (i 1;j 1) reﬂect the
+3D proximity relationship between points p
+i;j
+and p
+i1;j1
+if they lie on the same surface (we call this index space as
+image space). Usually it can be obtained from a depth map
+produced by devices such as a Kinect sensor, time-of-ﬂight
+camera, structured light scanning system, and even rotating
+the scanning plane of a laser range ﬁnder.
+A. Line Segment Extraction as an Analogy
+Before moving into the details of our algorithm, we
+brieﬂy discuss a line segment extraction algorithm called line
+regression, as summarized in [21] and implemented in April
+Robotics Toolkit [22]. It is widely used for extracting line
+features from 2D point sequences obtained from a laser range
+ﬁnder, and inspired us to generalize its idea to 3D case for
+fast plane extraction. As illustrated in Figure 3, every W
+consecutive points (W = 3 in this ﬁgure) in the sequence
+are grouped into nodes
+1
+, forming a double linked list. Then
+1
+We use “node” and “segment” interchangeably to represent a set of data
+points.
+6219
+ab efg ij
+ab c d ef g h ij
+a b c d e f g h i j
+Build double linked list
+AHC
+Extract line segments
+2D point sequences
+Fig. 3. Line regression algorithm. Blue dots show the 2D points. Circles
+labeled with letters show the nodes in a linked list. Brackets show the groups
+of points represented by the nodes. Thick line indicates that merging node
+g with its left neighbor ef gives a smaller line ﬁtting MSE than merging
+it with its right neighbor h.
+AHC is performed on this linked list by repeating (1) ﬁnding
+the node g with the minimum line ﬁtting MSE and (2)
+merging this nodeg with either its left or right neighbor that
+gives the minimum merging MSE. If the minimum merging
+MSE is larger than a predeﬁned threshold, which can usually
+be decided by the noise characteristics of the sensor, then
+the merging is canceled and the node g can be extracted
+as a line segment. When using a binary heap to ﬁnd the
+minimum MSE node, log-linear time complexityO(n logn)
+can be achieved for this algorithm, where n is the number
+of points in the sequence. Note that by applying the idea of
+integral images, as used in [11], [23], merging two nodes and
+calculating the resulting line ﬁtting MSE become constant
+time operations.
+B. Differences When Generalizing to 3D
+Inspired by the use of point’s neighborhood information
+given by the point’s order of the sequence, we wish to
+generalize the 2D line regression to 3D plane extraction in an
+organized point cloud, where the neighborhood information
+is stored in the 2D indices. However, this generalization is
+nontrivial, because of the following two major differences.
+Non-Overlapping Nodes: As opposed to the line regres-
+sion, initial nodes (and thus any two nodes during/after merg-
+ing) should have no identical points, i.e., for any two nodes
+B
+s
+;B
+t
+F,B
+s
+\B
+t
+= ?. This requirement is due to the
+fact that after several merging steps, the 3D points belonging
+to a certain nodeB
+s
+will form an irregular shape instead of
+maintaining its initial rectangular shape in the image space,
+as shown in Figure 2(b). Thus, if allowing different nodes
+to have identical points, it is difﬁcult to efﬁciently handle
+the overlapping points when merging two nodes, even with
+the help of integral images. While in the line regression,
+merging two neighboring line segments will still result in
+a line segment represented by a start and end index in the
+point sequence, which makes overlapping nodes feasible. It
+is important to notice that the overlapping nodes enable the
+line regression algorithm to automatically split line segments
+Algorithm 1 Fast Plane Extraction
+1: function FASTPLANEEXTRACTION(F)
+2: G INITGRAPH(F)
+3: (B; ) AHCLUSTER(G)
+4: (C; 
+0
+) REFINE(B; )
+5: return (C; 
+0
+)
+at their boundaries; since nodes containing points at different
+line segments tend to have larger line ﬁtting MSE than others
+(e.g., nodes c, d, and h in Figure 3), their merging attempts
+will be delayed and ﬁnally rejected. The non-overlapping
+requirement in our algorithm results in losing that advantage
+of automatically detecting boundaries of planes. We will
+describe how to overcome the disadvantage by removing bad
+nodes in the initialization step in Section III-A. We will also
+describe a pixel-wise region growing algorithm to reﬁne the
+boundaries of planes in Section IV.
+Number of Merging Attempts: In the line regression,
+merging a node with its neighbor is a constant time operation
+with at most two merging attempts, either to its left or
+right neighbor. In our case, the number of merging attempts
+is larger, since nodes are initially connected to at most 4
+neighbors to form a graph, and after several merging steps,
+they can be connected to a larger number of neighbors. In
+Section III-B, we will experimentally analyze the average
+number of merging attempts in our algorithm and show that
+it stays small in practice; therefore, the merging step can
+be done in a constant time, resulting in the complexity of
+O(n logn) similar to the line regression.
+III. FAST COARSE SEGMENTATION
+Our fast plane extraction algorithm consists of three major
+steps, as shown in Figure 2 and Algorithm 1: The algorithm
+ﬁrst initializes a graph and then performs AHC for extracting
+coarse planes, which are ﬁnally reﬁned. If the application
+only requires rough segmentation of planar regions, e.g.,
+detecting objects in a point cloud, then the ﬁnal reﬁnement
+step may be skipped, which could increase the frame rate to
+more than 50Hz for 640 480 points.
+First we clarify our notations.F denotes a complete frame
+of an organized point cloud of M rows and N columns.
+B;C represent coarse and reﬁned segmentation respectively,
+i.e., each elementB
+k
+/C
+l
+ofB/C is a segment—a set of 3D
+points p
+i;j
+. Meanwhile ; 
+0
+are sets of plane equations
+corresponding toB;C, respectively. Also note that each node
+v of a graph G is a set of 3D points and each undirected
+edge uv denotes the neighborhood of segments u;v in the
+image space.
+A. Graph Initialization
+As mentioned in Section II-B, our algorithm has a require-
+ment of non-overlapping node initialization, represented in
+lines 3 to 5 of Algorithm 2. This step uniformly divides the
+point cloud into a set of initial nodes of the size HW
+in the image space. The requirement causes our algorithm
+to lose the advantage of automatically detecting boundaries
+6220
+Algorithm 2 Graph Initialization
+1: function INITGRAPH(F)
+2: G (V ?;E ?)
+3: for i 1;d
+M
+H
+e do . initialize nodes
+4: for j 1;d
+N
+W
+e do
+5: v
+i;j
+ fp
+k;l
+g  F;k = (i  1)H +
+1; ; min(iH;M);l = (j  1)W + 1; ; min(jW;N)
+6: if REJECTNODE(v
+i;j
+) then
+7: v
+i;j
+ ?
+8: V V[fv
+i;j
+g
+9: for each v
+i;j
+2V do . initialize edges
+10: if: REJECTEDGE(v
+i;j 1
+;v
+i;j
+;v
+i;j+1
+) then
+11: E E[fv
+i;j 1
+v
+i;j
+;v
+i;j
+v
+i;j+1
+g
+12: if: REJECTEDGE(v
+i 1;j
+;v
+i;j
+;v
+i+1;j
+) then
+13: E E[fv
+i 1;j
+v
+i;j
+;v
+i;j
+v
+i+1;j
+g
+14: return G
+15: function REJECTNODE(v)
+16: if v contains missing data point then return true
+17: else if any pointp
+i;j
+2v is depth-discontinuous with
+any of its 4 neighbor points then return true
+18: else if MSE(v) >T
+MSE
+then return true
+19: else return false
+20: function REJECTEDGE(v
+a
+;v
+b
+;v
+c
+)
+21: if v
+a
+=?_v
+b
+=?_v
+c
+=? then return true
+22: else if included angle of plane ﬁtting normal of v
+a
+and v
+c
+is greater than T
+ANG
+then return true
+23: else return false
+24: function MSE(v)
+25: if v =? then return +1
+26: else return the plane ﬁtting MSE for all p
+i;j
+2v
+of planes. To properly segment planes using AHC under
+this restriction, we remove the following types of nodes and
+corresponding edges from the graph, which are illustrated
+using an example in Figure 4:
+1) Nodes Having High MSE: Non-planar regions lead
+to high plane ﬁtting MSE, which we simply remove.
+2) Nodes Containing Missing Data: Because of the
+limitation of the sensor, some regions of the scene
+might not be sensed correctly, leading to missing data
+(e.g., the glass window behind the shutter).
+3) Nodes Containing Depth Discontinuities: These
+nodes contain two sets of points lying on two surfaces
+that are not close in 3D but are close in the image
+space (usually one surface partially occludes the other,
+e.g., the monitor occludes the wall behind). If principle
+component analysis (PCA) is performed on points
+belonging to this node for plane ﬁtting, the ﬁtted plane
+will be nearly parallel to the line-of-sight direction and
+thus still have a small MSE. Merging this “outlier”
+node with its neighbor node will have bad effect on
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o
+o x
+x
+x
+x
+x
+x
+x
+x
+x
+x
+x
+x
+x
+B
+B
+B
+B
+B
+B
+B
+B
+B
+B
+B
+B
+x x x x x x x x
+? 
+? 
+? 
+? 
+? 
+x x
+Wall A
+Monitor
+Wall B
+Shutter
+Fig. 4. Examples of bad initial nodes. ’o’ shows nodes with missing data
+point; ’x’ shows nodes with depth discontinuity; black dot shows nodes with
+too large plane ﬁtting MSE; and ’B’ shows nodes located at the boundary
+region between two connected planes.
+the plane ﬁtting result because of the well-known issue
+of over-weighting outliers in least-squares methods.
+4) Nodes at Boundary Between Two Planes: These
+nodes contain two sets of points close to each other
+in 3D but lying on two difference planes (e.g., the
+corner of the room), which will decrease the plane
+ﬁtting accuracy if they are merged to one of the planes.
+The functions REJECTNODE and REJECTEDGE in Al-
+gorithm 2 are designed to reduce the inﬂuence of these
+four types of bad initial nodes. The REJECTNODE function
+removes the ﬁrst three types of bad nodes (and thus the points
+inside) from the graph, while the REJECTEDGE function is
+for mitigating inﬂuence of the fourth type of bad nodes.
+It is interesting to note that the gain in this non-overlapping
+“disadvantage” is the avoidance of per-point normal estima-
+tion. Our initialization step can be seen as treating all points
+inside a node as if they have a common plane normal. This
+is an important reason for our speed improvement compared
+to other state-of-the-art methods which often spend a large
+portion of time in the normal estimation for each point.
+B. Agglomerative Hierarchical Clustering
+As shown in Algorithm 3, the AHC in our algorithm is
+almost the same as that in the line regression, except that it
+is operated on a graph instead of a double linked list. We
+ﬁrst build a min-heap data structure for efﬁciently ﬁnding the
+node with the minimum plane ﬁtting MSE. We then repeat
+ﬁnding a nodev that currently has the minimum plane ﬁtting
+MSE among all nodes in the graph and merging it with one of
+its neighbor nodesu
+best
+that results in the minimum merging
+MSE (recall that each node in the graph is a set of points; so
+the merging MSE is the plane ﬁtting MSE of the union of
+the two setsu
+merge
+). If this minimum merging MSE exceeds
+some predeﬁned threshold T
+MSE
+(not necessarily a ﬁxed
+parameter as explained later in Section III-C), then a plane
+segment v is found and extracted from the graph; otherwise
+the merged nodeu
+merge
+is added back to the graph by edge
+contraction between v and u
+best
+.
+As mentioned in Section II-B, our algorithm requires a
+larger number of merging attempts than the line regres-
+sion. However, it turns out to be still quite efﬁcient and
+the clustering process can be done in O(n logn) time in
+6221
+Algorithm 3 Agglomerative Hierarchical Clustering
+1: function AHCLUSTER(G = (V;E))
+2: Q BUILDMINMSEHEAP(V )
+3: B ?;  ?
+4: while Q6=? do
+5: v POPMIN(Q)
+6: if v = 2V then . v was merged previously
+7: continue
+8: u
+best
+ ?;u
+merge
+ ?
+9: for each u2N(v),fujuv2Eg do
+10: u
+test
+ u[v . merge attempt
+11: if MSE(u
+test
+) < MSE(u
+merge
+) then
+12: u
+best
+ u;u
+merge
+ u
+test
+13: if MSE(u
+merge
+)>T
+MSE
+then . merge fail
+14: ifjvj>T
+NUM
+then . extract node v
+15: B B[fvg;  [PLANE(v)
+16: E EnE(v),fuvju2N(v)g
+17: V Vnfvg . reject small node
+18: else . merge success
+19: INSERT(Q;u
+merge
+)
+20: E E[fu
+merge
+wjw2N(v)[N(u
+best
+)n
+fv;u
+best
+ggnE(u
+best
+)nE(v) . edge contraction
+21: V V[fu
+merge
+gnfv;u
+best
+g
+22: return (B; )
+23: function PLANE(v)
+24: return plane equation ﬁtted from points inv by PCA
+practice. Figure 5 experimentally shows the average number
+of merging attempts during AHC per frame. As can be
+seen, irrespective of the initial node size (and thus the
+initial number of nodes), this number stays small. This may
+be explained by the fact that the graph constructed from
+Algorithm 2 is a planar graph. From graph theory one knows
+that the average node degree of a planar graph is strictly less
+than 6. Since our initial graph is planar and merging nodes
+by edge contraction does not change its planarity, during the
+whole process of AHC the average node degree is always
+less than 6. Also, the plane ﬁtting MSE of a large segment is
+larger than that of a smaller segment, if errors are drawn from
+the same Gaussian distribution. Thus the AHC process tends
+to balance the size of all the segments, because it always tries
+to grow the size of the node with the minimum plane ﬁtting
+MSE and then switches to other smaller nodes. Therefore,
+it will not stick to growing a large node (which implies
+large node degree since it has large boundary), otherwise the
+average number of merging tests will be much larger. Based
+on this observation, lines 6 to 21 in Algorithm 3 can be done
+in a constant time irrespective of the initial number of nodes.
+TheO(n logn) complexity only arises from maintaining the
+min-heap structure.
+C. Implementation Details
+There are several implementation details to improve the
+speed and accuracy for this fast coarse segmentation:
+Fig. 5. Average number of merging tests per frame during 2102 frames
+of 640480 Kinect point clouds. Three initial node sizes are tested.
+1) A disjoint set data structure is used for tracking the
+point membership of each initial node v
+i;j
+.
+2) As in the line regression, all nodes maintain the ﬁrst
+and second order statistics of all the belonging points,
+i.e.,
+X
+x
+i;j
+;
+X
+y
+i;j
+;
+X
+z
+i;j
+;
+X
+x
+2
+i;j
+;
+X
+y
+2
+i;j
+;
+X
+z
+2
+i;j
+;
+X
+x
+i;j
+y
+i;j
+;
+X
+y
+i;j
+z
+i;j
+;
+X
+z
+i;j
+x
+i;j
+;
+such that merging two nodes and calculating its plane
+equation and MSE through PCA is a constant time
+operation.
+3) The function for determining the depth discontinuity
+in REJECTNODE of Algorithm 2 depends on sensor
+noise characteristics. For Kinect sensors, we use the
+following function as suggested in [23] and Point
+Cloud Library (PCL)
+2
+:
+f(p
+a
+;p
+b
+) =
+(
+1 jz
+a
+ z
+b
+j> 2(jz
+a
+j + 0:5)
+0 otherwise
+(1)
+The unit of z here (and throughout the paper) is
+millimeter and the parameter  we used was between
+0:01 and 0:02.
+4) The threshold T
+MSE
+for extracting segments is also
+sensor dependent. For Kinect, we use the following
+equation adapted from [24]
+T
+MSE
+= (z
+2
++)
+2
+; (2)
+where we used  = 1:6 10
+ 6
+and  between 3 and
+8. Similarly, T
+ANG
+can also be changed depending on
+depth.
+5) The initial node should be close to a square shape in
+the image space, i.e., W H. If a strip-like shape is
+used, eitherWH (e.g.,W = 20;H = 2) orHW,
+the PCA on the initial node will result in wrong plane
+normal direction which is usually almost perpendicular
+to the line-of-sight direction. Consequently the follow-
+ing AHC will fail to segment planes correctly.
+IV. SEGMENTATION REFINEMENT
+For many applications, the coarse plane segmentation ob-
+tained in the previous section might not be enough, especially
+2
+http://www:pointclouds:org/
+6222
+Algorithm 4 Segmentation Reﬁnement
+1: function REFINE(B; )
+2: Q ? . initialize queue for boundary points
+3: R ? . points to be reﬁned
+4: G
+0
+ (V
+0
+ ?;E
+0
+ ?) . graph for ﬁnal merge
+5: for eachB
+k
+2B do . 1. erode each segment
+6: R
+k
+ ?;R R[R
+k
+7: for each initial node v
+i;j
+B
+k
+do
+8: ifv
+i 1;j
+[v
+i+1;j
+[v
+i;j 1
+[v
+i;j+1
+6B
+k
+then
+9: B
+k
+ B
+k
+nv
+i;j
+. erode border node
+10: for each point p
+s;t
+on the boundary ofB
+k
+do
+11: ENQUEUE(Q; (p
+s;t
+;k))
+12: ifB
+k
+6=? then
+13: V
+0
+ V
+0
+[fB
+k
+g
+14: while Q6=? do . 2. region grow from boundary
+15: (p
+s;t
+;k) DEQUEUE(Q)
+16: for p
+i;j
+2fp
+s 1;t
+;p
+s+1;t
+;p
+s;t 1
+;p
+s;t+1
+g do
+17: if p
+i;j
+2 (B
+k
+[R
+k
+)_ DIST(p
+i;j
+; 
+k
+)
+2
+>
+9MSE(B
+k
+) then continue
+18: if9l;p
+i;j
+2R
+l
+then
+19: E
+0
+ E
+0
+[fB
+k
+B
+l
+g . connect nodes
+20: if DIST(p
+i;j
+; 
+k
+)<DIST(p
+i;j
+; 
+l
+) then
+21: R
+l
+ R
+l
+nfp
+i;j
+g;R
+k
+ R
+k
+[fp
+i;j
+g
+22: ENQUEUE(Q; (p
+i;j
+;k))
+23: else
+24: R
+k
+ R
+k
+[fp
+i;j
+g
+25: ENQUEUE(Q; (p
+i;j
+;k))
+26: for eachR
+k
+2R do
+27: B
+k
+ B
+k
+[R
+k
+. update each coarse segment
+28: (C; 
+0
+) AHCLUSTER(G
+0
+) . 3. ﬁnal merge
+29: return (C; 
+0
+)
+if the applications use the boundaries of planes or require
+higher accuracy of the estimated plane equations. Thus we
+perform reﬁnement on the coarse segmentationB.
+Three types of artifacts are expected in the coarse segmen-
+tation, as shown in Figure 6:
+ Sawtooth: Usually at the boundary between two con-
+nected planes.
+ Unused Data Points: Usually at the boundary of oc-
+clusion or missing data node.
+ Over-Segmentation: Usually between two object’s oc-
+clusion boundary.
+Sawtooth artifacts cause small amount of outliers to be
+included in estimation, whereas unused data points and over-
+segmentation cause less inliers to be used. All of the artifacts
+produce inaccurate plane boundaries and slightly decrease
+the accuracy of the estimated plane equation.
+Our solution to them is described in Algorithm 4. Since
+sawtooth artifacts are almost always observed at the bound-
+ary regions of B, erosion of boundary regions of each
+segment can effectively eliminate them (lines 5 to 13). Then
+pixel-wise region growing is started from all new boundary
+points to assign all unused data points to its closest plane that
+Fig. 6. Top row shows several artifacts in coarse segmentations. Top-
+left: Sawtooth (e.g., purple and yellow segments). Top-right: Unused data
+points (e.g., between lamp and wall) and over-segmentation (e.g., purple and
+red segments). Bottom row shows the corresponding reﬁned segmentations.
+is extracted previously (lines 14 to 27). During the region
+growing the 4-connected neighborhoods are discovered for
+each segment B
+k
+, which form a new graph G
+0
+. Finally
+applying AHC again on this very small graph (usually less
+than 30 nodes) ﬁxes the over-segmentation artifact (line 28).
+V. EXPERIMENTS AND DISCUSSION
+To comprehensively evaluate our algorithm’s performance
+in terms of robustness, time, and accuracy, we conducted
+three sets of experiments described in the following subsec-
+tions. We implemented our algorithm in C/C++. For PCA,
+we used the efﬁcient 3 3 matrix eigenvalue decomposition
+routine described in [25]
+3
+. All experiments were conducted
+on an ordinary laptop with Intel Core i7-2760QM CPU
+of 2.4GHz and RAM of 8GB. No multi-threading or any
+other parallelism such as OpenMP or GPU was used in our
+implementation.
+A. Simulated Data
+Similar to the inﬂuence of noise simulation in [10], we
+tested our algorithm’s robustness on a simulated depth map
+with 20 different levels of uniformly distributed noise of
+magnitude E = 10l;l = 0;:::; 20 (noise unit: mm; ground
+truth depth ranges from 1396mm to 3704mm). After the
+noise is added to the depth map, we converted it to an
+organized point cloud and fed into our algorithm (W =H =
+20;T
+MSE
+= 50
+2
+). As shown in Figure 7, our algorithm can
+reliably detect all of the 4 planes forl = 0;:::; 14, and starts
+to over-segment after that. Yet even when E = 200 mm our
+algorithm was able to detect major planes in the scene.
+B. Real-World Kinect Data
+To measure the processing speed of our algorithm, 2102
+frames of 640 480 pixel real-world Kinect data were
+collected in an indoor scene, partly shown in Figures 1 and
+6. Then they were processed with our algorithm using 12
+different initial node sizes (T
+NUM
+= 800; = 0:02; =
+3
+Implementation available for download at http://www:mpi-
+hd:mpg:de/personalhomes/globes/3x3/
+6223
+E=150
+E=0
+E=200
+E=100
+Fig. 7. Plane extraction results on simulated data.
+Fig. 8. Average processing time over 2102 frames of 640 480 pixel
+Kinect data using different initial node sizes.
+8mm,T
+ANG
+increases linearly from 15
+
+at z = 500mm to
+90
+
+at z = 4000mm). As shown in Figure 8, with initial
+node size of 10 10, even with reﬁnement, our algorithm
+took only 27:36:9ms in average to process a frame of
+640480 pixel Kinect data, achieving more than 35Hz frame
+rate. To the best of our knowledge, this is much faster than
+other state-of-the-art algorithms.
+C. SegComp Datasets
+We evaluated the accuracy of our algorithm using the Seg-
+Comp datasets [26]. Both the ABW (W =H = 4;T
+MSE
+=
+1;T
+ANG
+= 60
+
+;T
+NUM
+= 160; = 0:1) and PERCEPTRON
+(W =H = 8;T
+MSE
+= 2:1;T
+ANG
+= 45
+
+;T
+NUM
+= 240; =
+0:03) datasets of planar scenes were experimented. Typi-
+cal segmentation results of ABW and PERCEPTRON test
+datasets are shown in Figure 9. The detailed benchmark
+results using the evaluation tool provided by SegComp
+are shown in Table V-C. As can be seen, our algorithm’s
+performance is comparable to the state-of-the-art in terms of
+segmentation accuracy as well as plane orientation estima-
+tion, especially considering the fact that our frame rate is
+much higher.
+VI. CONCLUSIONS
+We presented a novel fast plane extraction algorithm for
+organized point clouds, achieving more than 35Hz frame
+rate on 640 480 point clouds while providing accurate
+segmentation. In the future we wish to extend the algorithm
+to non-organized point clouds as well as to fast extraction of
+other primitives such as spheres and cylinders.
+ACKNOWLEDGMENT
+We thank Jay Thornton and Srikumar Ramalingam for
+valuable discussion. This work was supported by Mitsubishi
+Electric Research Labs.
+REFERENCES
+[1] R. Schnabel, R. Wahl, and R. Klein, “Efﬁcient RANSAC for point-
+cloud shape detection,” Computer Graphics Forum, vol. 26, no. 2, pp.
+214–226, June 2007.
+[2] B. Oehler, J. Stueckler, J. Welle, D. Schulz, and S. Behnke, “Efﬁcient
+multi-resolution plane segmentation of 3D point clouds,” in Proc. Int’l
+Conf. Intelligent Robotics and Applications (ICIRA), Dec. 2011, pp.
+145–156.
+[3] Y . Taguchi, Y .-D. Jian, S. Ramalingam, and C. Feng, “Point-plane
+SLAM for hand-held 3D sensors,” in Proc. IEEE Int’l Conf. Robotics
+and Automation (ICRA), May 2013, pp. 5182–5189.
+[4] R. Hulik, V . Beran, M. Spanel, P. Krsek, and P. Smrz, “Fast and
+accurate plane segmentation in depth maps for indoor scenes,” in
+Proc. IEEE/RSJ Int’l Conf. Intelligent Robots and Systems (IROS),
+Oct. 2012, pp. 1665–1670.
+[5] T. Lee, S. Lim, S. Lee, S. An, and S. Oh, “Indoor mapping using planes
+extracted from noisy RGB-D sensors,” in Proc. IEEE/RSJ Int’l Conf.
+Intelligent Robots and Systems (IROS), Oct. 2012, pp. 1727–1733.
+[6] D. H¨ ahnel, W. Burgard, and S. Thrun, “Learning compact 3D models
+of indoor and outdoor environments with a mobile robot,” Robotics
+and Autonomous Systems, vol. 44, no. 1, pp. 15–27, 2003.
+[7] J. Poppinga, N. Vaskevicius, A. Birk, and K. Pathak, “Fast plane
+detection and polygonalization in noisy 3D range images,” in Proc.
+IEEE/RSJ Int’l Conf. Intelligent Robots and Systems (IROS), Sept.
+2008, pp. 3378–3383.
+[8] D. Holz and S. Behnke, “Fast range image segmentation and smooth-
+ing using approximate surface reconstruction and region growing,” in
+Proc. Int’l Conf. Intelligent Autonomous Systems (IAS), June 2012, pp.
+61–73.
+[9] J.-E. Deschaud and F. Goulette, “A fast and accurate plane detection
+algorithm for large noisy point clouds using ﬁltered normals and voxel
+growing,” in Proc. Int’l Symp. 3D Data Processing, Visualization, and
+Transmission (3DPVT), 2010.
+[10] K. Georgiev, R. T. Creed, and R. Lakaemper, “Fast plane extraction in
+3D range data based on line segments,” in Proc. IEEE/RSJ Int’l Conf.
+Intelligent Robots and Systems (IROS), Sept. 2011, pp. 3808–3815.
+[11] D. Holz, S. Holzer, R. B. Rusu, and S. Behnke, “Real-time plane
+segmentation using RGB-D cameras,” in Proc. RoboCup Symposium,
+2011, pp. 306–317.
+[12] B. Enjarini and A. Graser, “Planar segmentation from depth images
+using gradient of depth feature,” in Proc. IEEE/RSJ Int’l Conf.
+Intelligent Robots and Systems (IROS), Oct. 2012, pp. 4668–4674.
+[13] J. Strom, A. Richardson, and E. Olson, “Graph-based segmentation
+for colored 3D laser point clouds,” in Proc. IEEE/RSJ Int’l Conf.
+Intelligent Robots and Systems (IROS), Oct. 2010, pp. 2131–2136.
+[14] T. Wang, L. Chen, and Q. Chen, “A graph-based plane segmentation
+approach for noisy point clouds,” in Proc. Chinese Control and
+Decision Conference (CCDC), May 2013, pp. 3770–3775.
+[15] G. Zhang, P. Karasev, I. Brilakis, and P. Vela, “A sparsity-inducing
+optimization algorithm for the extraction of planar structures in noisy
+point-cloud data,” inProc.ComputinginCivilEngineering, June 2012,
+pp. 317–324.
+[16] J. Weingarten and R. Siegwart, “3D SLAM using planar segments,”
+in Proc. IEEE/RSJ Int’l Conf. Intelligent Robots and Systems (IROS),
+Oct. 2006, pp. 3062–3067.
+[17] K. Pathak, A. Birk, N. Vaˇ skeviˇ cius, and J. Poppinga, “Fast registra-
+tion based on noisy planes with unknown correspondences for 3-D
+mapping,” IEEE Trans. Robotics, vol. 26, no. 3, pp. 424–441, June
+2010.
+[18] A. J. B. Trevor, J. G. Rogers III, and H. I. Christensen, “Planar surface
+SLAM with 3D and 2D sensors,” in Proc. IEEE Int’l Conf. Robotics
+and Automation (ICRA), May 2012, pp. 3041–3048.
+6224
+(a) 21/27, 1 under, 4 misses, 3 
+noises
+(b) 18/19, 1 miss (c) 14/17, 3 misses (d) 15/17, 2 misses (e) 10/10
+(e) 20/30, 1 over, 1 under, 7 
+misses, 3 noises
+(d) 12/13, 1 miss, 1 noise (c) 10/11, 1 over, 1 noise (b) 6/6 (a) 6/6
+Fig. 9. Plane extraction on SegComp datasets. The estimated plane normal deviated from the ground truth was (1:70:1)
+
+for ABW-TEST (top) and
+(2:41:2)
+
+for PERCEPTRON-TEST (bottom). Again, white dash lines are the segmentation boundary before the region-grow-based reﬁnement.
+TABLE I
+BENCHMARKING RESULTS ON THE SEGCOMP DATASETS. THE RESULTS OTHER THAN OURS WERE OBTAINED FROM [2], [8], [27].
+Approach Regions in Correctly Orientation Over- Under- Missed Noise
+ground truth detected deviation (
+
+) segmented segmented (not detected) (non-existent)
+SegComp ABW data set (30 test images) by Hoover et al. [26], assuming 80% pixel overlap as in [27]
+USF [27] 15.2 12.7 (83.5%) 1.6 0.2 0.1 2.1 1.2
+WSU [27] 15.2 9.7 (63.8%) 1.6 0.5 0.2 4.5 2.2
+UB [27] 15.2 12.8 (84.2%) 1.3 0.5 0.1 1.7 2.1
+UE [27] 15.2 13.4 (88.1%) 1.6 0.4 0.2 1.1 0.8
+OU [27] 15.2 9.8 (64.4%) – 0.2 0.4 4.4 3.2
+PPU [27] 15.2 6.8 (44.7%) – 0.1 2.1 3.4 2.0
+UA [27] 15.2 4.9 (32.2%) – 0.3 2.2 3.6 3.2
+UFPR [27] 15.2 13.0 (85.5%) 1.5 0.5 0.1 1.6 1.4
+Oehler et al. [2] 15.2 11.1 (73.0%) 1.4 0.2 0.7 2.2 0.8
+Holz et al. [8] 15.2 12.2 (80.1%) 1.9 1.8 0.1 0.9 1.3
+Ours 15.2 12.8 (84.2%) 1.7 0.1 0.0 2.4 0.7
+SegComp PERCEPTRON data set (30 test images) by Hoover et al. [26], assuming 80% pixel overlap as in [27]
+USF [27] 14.6 8.9 (60.9%) 2.7 0.4 0.0 5.3 3.6
+WSU [27] 14.6 5.9 (40.4%) 3.3 0.5 0.6 6.7 4.8
+UB [27] 14.6 9.6 (65.7%) 3.1 0.6 0.1 4.2 2.8
+UE [27] 14.6 10.0 (68.4%) 2.6 0.2 0.3 3.8 2.1
+UFPR [27] 14.6 11.0 (75.3%) 2.5 0.3 0.1 3.0 2.5
+Oehler et al. [2] 14.6 7.4 (50.1%) 5.2 0.3 0.4 6.2 3.9
+Holz et al. [8] 14.6 11.0 (75.3%) 2.6 0.4 0.2 2.7 0.3
+Ours 14.6 8.9 (60.9%) 2.4 0.2 0.2 5.1 2.1
+[19] E. Fern´ andez-Moral, W. Mayol-Cuevas, V . Ar´ evalo, and J. Gonz´ alez-
+Jim´ enez, “Fast place recognition with plane-based maps,” in Proc.
+IEEE Int’l Conf. Robotics and Automation (ICRA), May 2013, pp.
+2719–2724.
+[20] R. F. Salas-Moreno, R. A. Newcombe, H. Strasdat, P. H. J. Kelly, and
+A. J. Davison, “SLAM++: Simultaneous localisation and mapping at
+the level of objects,” in Proc. IEEE Conf. Computer Vision and Pattern
+Recognition (CVPR), June 2013, pp. 1352–1359.
+[21] V . Nguyen, A. Martinelli, N. Tomatis, and R. Siegwart, “A comparison
+of line extraction algorithms using 2D laser rangeﬁnder for indoor
+mobile robotics,” in Proc. IEEE/RSJ Int’l Conf. Intelligent Robots and
+Systems (IROS), Aug. 2005, pp. 1929–1934.
+[22] E. Olson, “The APRIL robotics toolkit,” http://april:eecs:umich:edu/
+wiki/index:php/Main Pagen#April Robotics Toolkit, 2010, accessed:
+2013-09-12.
+[23] S. Holzer, R. Rusu, M. Dixon, S. Gedikli, and N. Navab, “Adaptive
+neighborhood selection for real-time surface normal estimation from
+organized point cloud data using integral images,” in Proc. IEEE/RSJ
+Int’l Conf. Intelligent Robots and Systems (IROS), Oct. 2012, pp.
+2684–2689.
+[24] K. Khoshelham and S. O. Elberink, “Accuracy and resolution of Kinect
+depth data for indoor mapping applications,” Sensors, vol. 12, no. 2,
+pp. 1437–1454, 2012.
+[25] J. Kopp, “Efﬁcient numerical diagonalization of hermitian 33 ma-
+trices,” Int’l J. Modern Physics C, vol. 19, no. 03, pp. 523–548, Mar.
+2008.
+[26] A. Hoover, G. Jean-Baptiste, X. Jiang, P. Flynn, H. Bunke, D. Goldgof,
+K. Bowyer, D. Eggert, A. Fitzgibbon, and R. Fisher, “An experimental
+comparison of range image segmentation algorithms,” IEEE Trans.
+Pattern Anal. Mach. Intell., vol. 18, no. 7, pp. 673–689, July 1996.
+[27] P. F. U. Gotardo, O. R. P. Bellon, and L. Silva, “Range image segmen-
+tation by surface extraction using an improved robust estimator,” in
+Proc. IEEE Conf. Computer Vision and Pattern Recognition (CVPR),
+vol. 2, June 2003, pp. II–33–8.
+6225

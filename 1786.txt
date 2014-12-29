@@ -1,0 +1,1951 @@
+Area Coverage Planning that Accounts for Pose Uncertainty with an AUV
+Seabed Surveying Application
+Liam Paull
+1
+, Mae Seto
+2
+and Howard Li
+3
+Abstract—This paper presents an overview of our research
+on accounting for robot pose uncertainty in area coverage
+applications. In the vast majority of existing literature on
+robotics area coverage, the location uncertainty of the robot is
+not considered. An uncertain robot pose results in an uncertain
+sensor swath, which in turn creates uncertainty about the
+achieved coverage. Here, we present a general framework
+where pose estimates are mapped through the coverage sensor
+model to obtain a probability of coverage over the discretized
+workspace. This probabilistic representation can then be used
+to adaptively plan paths for coverage based on an entropy
+reduction formulation.
+This framework is particularly well-suited to autonomous
+underwater vehicles (AUVs) performing seabed surveying oper-
+ations.TheAUVpositionestimatedivergesfromtheactualAUV
+position while submerged due to the lack of a global position
+reference. This discrepancy can result in parts of the seabed
+being missed, which is unacceptable in safety-critical missions
+suchasminecountermeasures.Theproposedinformation-based
+path planning approach is able to guarantee area coverage
+even in the case of severe AUV position estimate drift. In-water
+experiments with an AUV show the effectiveness of the method.
+I. INTRODUCTION
+Coverage of an area is a common task for a robotic
+platform and has many applications. Different methods for
+generating provably complete coverage paths exist in the
+literature [1], [2]. However, as is noted in [3] “The term
+complete is used in the motion planning sense, not in the
+operating research ﬁeld sense.” While a deterministic planner
+might produce complete coverage plans there is no guarantee
+of actual area coverage in the ﬁeld.
+Seabed surveying by an autonomous underwater vehicle
+(AUV) can be considered as an area coverage problem [4].
+With the reduction in size and cost of AUVs, this mission is
+now being completely automated. Localization of an AUV
+when submerged without the use of pre-localized beacon
+hardware is a challenging task [5]. In this work we extend
+the capabilities of these low-cost vehicles with relatively
+poor navigation to safety-critical missions such as seabed
+surveying for mine countermeasures (MCM)
+As motivation, consider Fig. 1 which shows a real AUV
+attempting to cover (scan) an area of seabed with a sidescan
+*This work was supported by National Science and Engineering Research
+Council of Canada and Defense Research and Development Canada
+1
+Computer Science and AI Lab at Massachusetts Institute of Technology
+in Cambridge, Massachusetts, USA lpaull@mit.edu
+2
+Mine and Harbour Defense Group, Defense R&D Canada in Dartmouth,
+Nova Scotia, Canada mae.seto@drdc-rddc.gc.ca
+3
+Collaborative Based Robotics and Automation (COBRA) group in the
+Department of Electrical and Computer Engineering at the University of
+New Brunswick, Fredericton, New Brunswick Canadahoward@unb.ca
+(b)
+(c)
+(d)
+0 100 200
+100
+0
+100
+200
+metres
+metres
+(a)
+More
+Less
+Fig. 1. (a) Plot of workspace to be covered (yellow) with desired tracks
+(green), estimated path (red), and actual path (blue); (b) desired coverage;
+(c) estimated coverage from EKF, and (d) actual coverage based on GPS
+data.
+sonar (SSS). The mission was run on the surface for access
+to GPS for ground truth but the GPS measurements are
+not fused to generate the state estimate when the AUV
+is within the workspace (yellow box). This simulates the
+AUV submerging to perform the survey and then surfacing
+at the end of each leg for a GPS ﬁx. AUV position was
+estimated on-board using an extended Kalman ﬁlter (EKF)
+which fused velocity over ground measurements from the
+Doppler velocity log (DVL) and heading from the compass.
+Fig. 1-a shows the workspace (region to scan) in yellow,
+the pre-planned lawn mower style tracks to scan the area
+with the SSS in green, the AUV position estimates from the
+EKF in red, and the actual trajectory from the GPS data
+in blue. Fig. 1-b shows the desired coverage that would be
+achieved if the AUV were able to exactly follow its pre-
+planned lawn mower tracks, Fig. 1-c shows the believed
+coverage based on the EKF position estimates, and Fig. 1-
+d shows the coverage based on the GPS data. In this case
+the desired coverage was 96% (b), the estimated coverage
+was 80% (c), and the achieved coverage was 67% (d).
+When sonar seabed coverage is for a safety critical task
+such as mine counter-measures (MCM), this represents an
+unacceptably large discrepancy between the acceptable risk
+(b), the perceived risk (c), and the actual risk (d) associated
+with assets and personnel transiting over this seabed area.
+The actual AUV path can deviate from the planned path
+because: 1) the vehicle has insufﬁcient command authority
+to follow the path, 2) external disturbances such as currents
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 6592
+or sea states cause deviations, or 3) the AUV location
+estimate contains uncertainties and errors as a result of noisy
+sensor data. Path tracking errors have been considered in the
+general start-to-goal path planning literature (e.g. [6], [7],
+[8]), however, to a lesser extent in a coverage context. In
+[9], a heuristic method combines three types of behaviors:
+inward spiral, shifting spiral, and greedy. The application is
+a car-like robot that mows grass and the robot’s kinematic
+constraints are explicitly considered. The coverage map is
+maintained and after the initial pass with inward spiral and
+shifting spiral behaviors, the missing areas are covered using
+a greedy approach. Localization uncertainty is accounted
+for by explicitly planning paths to have overlap across
+neighbouring sensor swaths.
+In [10] a “probably approximately correct” measure of
+coverage performance is developed to account for sensor
+uncertainty. The authors correctly argue that once vehicle
+localization error is signiﬁcant, the deﬁnition of complete
+coverage must be adapted to become probabilistic. For ex-
+ample, “80% certainty that at least 90% of the workspace has
+been covered” could be a valid mission objective, whereas
+“cover at least 85% of the workspace” is not. However, the
+approach in [10] only considers uniform sensor characteris-
+tics and provides no adaptive approach to account for the
+robot’s pose uncertainty. Also, in [10] it is assumed that the
+localization error variance attains a steady-state. This is not
+a valid assumption for a dead-reckoning vehicle.
+In general, the methods in the literature propose adjusting
+existing heuristics so that the vehicle uncertainty may be
+accounted for (e.g. move tracks or spirals closer together).
+However this can produce paths with unnecessary sensor
+overlap in the case that path tracking error is low. Here,
+we maintain the probability of coverage over the discretized
+workspace by projecting the location estimate through the
+coverage sensor characteristic. This approach has the distinct
+advantage that we can now use the probability of coverage
+over the workspace to plan paths for coverage that adaptively
+account for the sensor location uncertainty. We propose that
+an entropy reduction approach is appropriate for planning
+these paths.
+The probabilistic coverage framework is generally appli-
+cable but particularly suited to the AUV seabed surveying
+mission.
+To summarize, the contributions of the presented work are
+as follows:
+1) A probabilistic coverage model that fuses state estima-
+tion with a sensor coverage model to obtain a stochas-
+tic representation of the coverage over the workspace.
+2) A coverage path planning algorithm based on the
+probabilistic coverage representation that adaptively
+accounts for robot location uncertainty. Coverage is
+posed as an entropy reduction problem and paths are
+planned to meet this objective.
+3) An application with in-water results of an AUV de-
+ployed for underwater seabed surveying for MCM.
+The probabilistic coverage framework is developed in
+general terms in Sec. II. This framework is then applied
+W
+c
+1
+c
+i
+g
+x
+r
+x
+s
+x
+g
+y
+r
+y
+s
+y
+S
+c
+2
+c
+3
+A
+Fig. 2. WorkspaceW is decomposed into cells. As the robot,A, moves,W
+becomes covered in a manner consistent with the coverage sensor geometry
+S.
+to the AUV seabed surveying problem in Sec. III with
+development of the information-based path planner in Sec.
+IV. In-water results are presented in Sec. V and ﬁnally the
+paper concludes in Sec. VI.
+II. THE PROBABILISTIC COVERAGE FRAMEWORK
+We ﬁrst formulate the area coverage problem with known
+poses. We then extend the formulation to consider uncertain
+poses and describe how to recursively update the probabilis-
+tic coverage map. Finally, we formally deﬁne new criteria
+for mission completion in the probabilistic case.
+A. Area Coverage Problem Formulation
+Consider a robot with platform geometryA and coverage
+sensor swathS (Fig. 2). Deﬁne the workspace,W, as the
+area that is to be covered by the sensor.
+The workspace is decomposed into N small grid cells
+where the size of the cells is sufﬁciently small that the
+coverage can be treated as uniform over the cell. Each cell
+is represented by its position in the workspace. For example,
+for the two-dimensional case,c
+i
+, [x
+i
+;y
+i
+]
+T
+such thatx
+i
+and
+y
+i
+are the x and y locations, respectively, of cell c
+i
+in the
+global frame
+1
+.
+If the robot takes a sensor measurement at timet, then the
+set of all cells that are somewhat covered by the measurement
+deﬁnes the coverage sensor swath,S
+t
+.
+The position of a celli in the sensor frame is obtained by
+performing a transformation from the global to the sensor
+frame through the robot body frame:
+s
+c
+i
+t
+, [
+s
+x
+i
+t
+;
+s
+y
+i
+t
+]
+T
+=
+s
+r
+T
+r
+g
+T
+t
+g
+c
+i
+=
+s
+g
+T
+t
+g
+c
+i
+(1)
+where
+s
+c
+i
+t
+and
+g
+c
+i
+are the location of the cell in the sensor
+and the global frame respectively and
+b
+a
+T is a homogeneous
+transformation from frame a to frame b. In the absence of
+any speciﬁed frame assume the global frame.
+We can associate with each cell a valuew
+i
+t
+that represents
+the level to which cell c
+i
+is covered at time t.
+1
+General notational convention: bold face indicates vector variable. Cap-
+ital letter indicates random variable. Preceding superscripts indicate frames.
+Proceeding superscripts indicate cell index. Proceeding subscripts indicate
+time.
+6593
+Based on a detailed investigation of the coverage sensor,
+such as ESPRESSO [11] for the case of AUV seabed
+surveying (See Sec. III), the cell coverage values are updated
+according to:
+w
+i
+t
+=H(
+s
+c
+i
+t
+); (2)
+where H(
+s
+c
+i
+) represents the coverage sensor model and
+deﬁnes how to update the coverage value of the cells based
+on their locations in the sensor frame.
+If we assume a uniform coverage sensor, cells are either
+completely covered or not at all, and w2f0:5; 1g
+2
+. This
+means that each cell is either covered (w = 1) or not (w =
+0:5). In this case we state the complete coverage objective
+as requiring
+w
+i
+t
+= 1;8i = 1::N: (3)
+However, with some sensors, such as the SSS, the coverage
+sensor performance is not uniform and w 2 [0:5; 1]. As
+a result, (3) can become difﬁcult or impossible to achieve
+depending on the model. The mission is generally considered
+complete either when a proportion of cells, P
+1
+, have been
+covered to a speciﬁed level w
+thresh
+:
+1
+N
+#fiji = 1::N;w
+i
+t
+>w
+thresh
+g>P
+1
+; (4)
+where #fg is the cardinality operator on a set, or when we
+have achieved a desired average coverage, w
+avg
+, over the
+entire workspace:
+1
+N
+N
+X
+i=1
+w
+i
+t
+>w
+avg
+; (5)
+B. Coverage with Uncertain Poses
+We now remove the assumption common to most cover-
+age algorithms that the coverage sensor is deterministically
+localized. As a result, (4) and (5) are not sufﬁcient criteria
+for mission completion because they do not encapsulate the
+uncertainty in the coverage induced by the uncertainty in
+robot pose.
+The ﬁltered posterior pose distribution at time t given all
+previous odometry and measurements is given by bel(x
+t
+)
+[12]:
+bel(x
+t
+),p(x
+t
+ju
+1:t
+;z
+1:t
+;x
+0
+) (6)
+The state at time t is recursively estimated through an ap-
+proximation of the Bayes’ ﬁlter which operates in a predict-
+update cycle. Prediction is done through [12]:
+
+bel(x
+t
+) =
+Z
+p(x
+t
+jx
+t 1
+;u
+t
+)bel(x
+t 1
+)dx
+t 1
+(7)
+and update is given by:
+bel(x
+t
+) =p(z
+t
+jx
+t
+)
+
+bel(x
+t
+): (8)
+The probabilistic process model p(x
+t
+jx
+t 1
+;u
+t
+) incorporates
+the noise associated with transitioning from x
+t 1
+to x
+t
+2
+For convenience and to unify coverage problems deﬁned by actuation
+and detection we deﬁne not covered as w = 0:5 and covered as w = 1. If
+the coverage sensor model is deﬁned over [0,1] we can easily map it to the
+range [0.5,1]
+and the measurement model p(z
+t
+jx
+t
+) incorporates noise
+associated with sensor updates.
+The pose belief at timet is used to generate a probability
+of coverage for all grid cells in the workspace. Now, instead
+of each cell having one value that represents its coverage, it
+has a distribution representing the probability of coverage
+to different levels. The position of cell i in the sensor
+frame is now uncertain and is represented by a random
+variable
+s
+C
+i
+t
+whose distribution is calculated by mapping the
+position of the cell in the global frame through the uncertain
+transformation from global to sensor frame:
+p(
+s
+C
+i
+t
+=
+s
+c
+i
+t
+) =p(
+s
+g
+T
+t
+g
+c
+i
+=
+s
+c
+i
+t
+),p(
+s
+c
+i
+t
+) (9)
+is the probability that celli sits at location
+s
+c
+i
+t
+in the sensor
+frame at time t.
+The uncertain location of the cell in the sensor frame
+results in an uncertain coverage. Consequently, the coverage
+is represented by a random variable W
+i
+t
+where p(W
+i
+t
+=w)
+represents the probability that celli is covered to a coverage
+level w at time t considering all past AUV states.
+It is useful to deﬁne a random variable
+
+W
+i
+t
+that represents
+the probability that cell i is covered to a level w resulting
+from only the sensor measurements at time t.
+C. Propagating Robot Pose Uncertainty to Coverage Distri-
+bution
+In this section we describe the process for estimating
+the coverage distribution due to a single coverage sensor
+measurement from an uncertain location. The distribution
+p(
+
+W
+i
+t
+=w), can be determined by propagating the uncertain
+cell location in the sensor frame through the coverage sensor
+model,H:
+
+W
+i
+t
+=H(
+s
+C
+i
+t
+): (10)
+The distribution of
+
+W
+i
+t
+can be found by mapping the
+random variable
+
+W
+i
+t
+through the functionH by extending
+the method in [13] to higher dimensions:
+p(
+
+W
+i
+t
+=w
+i
+t
+) =
+p(
+s
+C
+i
+t
+=
+s
+c
+i
+t
+[1])
+j(rH)s
+c
+i
+t
+[1]
+j
++::: +
+p(
+s
+C
+i
+t
+=
+s
+c
+i
+t
+[n])
+j(rH)s
+c
+i
+t
+[n]
+j
+(11)
+where
+s
+c
+i
+t
+[1];:::;
+s
+c
+i
+t
+[n] are the n solutions found when
+solving w
+i
+t
+=H(
+s
+c
+i
+t
+):
+w
+i
+t
+=H(
+s
+c
+i
+t
+[1]) =::: =H(
+s
+c
+i
+t
+[n]) (12)
+andj(rH)
+c
+j is the magnitude of the gradient ofH evaluated
+at c.
+Eq (11) provides an explicit method to evaluate the cov-
+erage distribution of each coverage grid cell from a single
+uncertain pose.H(
+s
+c
+i
+t
+) is evaluated from the coverage sensor
+model (2). p(
+s
+c
+i
+t
+) is generated by mapping the cell location
+in the global frame through the uncertain transformation
+s
+g
+T
+t
+deﬁned in (1).
+6594
+Algorithm 1 Iterative coverage distribution estimation
+1: p(W
+i
+0
+= 0:5) = 18i = 1:::N
+2: bel(x
+0
+) distribution of prior pose state estimate
+3: t 1
+4: repeat
+5:
+
+bel(x
+t
+) =
+R
+p(x
+t
+jx
+t 1
+;u
+t
+)bel(x
+t 1
+)dx
+t 1
+6: bel(x
+t
+) =p(z
+t
+jx
+t
+)
+
+bel(x
+t
+)
+7: for all i such that c
+i
+2S
+0
+t
+do
+8: p(
+s
+c
+i
+t
+) =p(
+s
+g
+T
+t
+g
+c
+i
+t
+=
+s
+c)
+9: p(
+
+W
+i
+t
+= w) =
+R
+p(
+
+W
+i
+t
+= wj
+s
+C
+i
+t
+=
+s
+c
+i
+t
+)p(
+s
+C
+i
+t
+=
+s
+c
+i
+t
+)d
+s
+c
+i
+t
+10: p(W
+i
+t
+=w) =p(
+
+W
+i
+t
+=w)
+R
+w
+0
+p(W
+i
+t 1
+=)d
++p(W
+i
+t 1
+=w)
+R
+w
+0
+p(
+
+W
+i
+t
+=)d
+11: end for
+12: t t + 1
+13: until mission completion
+D. Recursive Coverage Estimation
+Equation (11) provides a means to propagate the AUV
+pose uncertainty through the sensor characteristic to obtain
+an estimate of the coverage distribution from a single sensor
+pose. Over the course of a coverage mission, the AUV will
+move around the workspace and may cover cells multiple
+times. A means is needed to combine the coverage distribu-
+tion from time t with all previous coverage instances at the
+same location from times 0 to t  1.
+It is motivated in [4] and [12] that the most pessimistic
+way to fuse measurements of the same location, but at differ-
+ent times, is to assume that they are statistically dependent,
+in which case the maximum function is applied (the coverage
+can be no less than the greatest value it was covered to in
+all of the previous passes). Furthermore, it is argued that
+subsequent SSS measurements of one location for an MCM
+mission are statistically dependent in [14].
+Using the statistical dependance assumption, we can recur-
+sively deﬁne the coverage distribution using the maximum
+function on random variables:
+W
+i
+t
+= max(
+
+W
+i
+t
+;W
+i
+t 1
+) (13)
+where the distribution of W
+i
+t
+can be determined using [13]:
+p(W
+i
+t
+=w) =p(
+
+W
+i
+t
+=w)
+Z
+w
+0
+p(W
+i
+t 1
+=)d
++p(W
+i
+t 1
+=w)
+Z
+w
+0
+p(
+
+W
+i
+t
+=)d
+(14)
+As a result, the coverage distribution at time t for cell i
+is based only on the pose at time t (used to generate
+
+W
+i
+t
+)
+and the coverage distribution at time t  1, W
+i
+t 1
+. As a
+result, the Markov assumption can be applied to the coverage
+sensor measurements and sensor data can be discarded once
+the coverage distribution at time t has been updated. An
+overview of the iterative coverage estimation process is
+summarized in Algorithm 1.
+E. Full Trajectory Estimation for Coverage
+This framework as proposed thus far is independent of
+the type of state estimation algorithm used. Coverage over
+the workspace is dependent on the entire sensor trajectory,
+therefore to obtain the best estimate of the coverage belief,
+we require the best estimate of the entire vehicle trajectory as
+opposed to just the present state. We update (6) to estimate
+the posterior of the entire vehicle trajectory:
+bel(x
+1:t
+),p(x
+t
+ju
+1:t
+;z
+1:t
+;x
+0
+): (15)
+This approach is particularly applicable to the case when a
+vehicle is receiving intermittent global position updates such
+as an AUV surfacing for GPS ﬁxes. Each time the vehicle
+receives a global update, the trajectory is re-optimized and
+the coverage map is recalculated based on the updated state
+beliefs. In practice, a sliding window approach can be used
+to maintain constant time scalability.
+F . New Deﬁnition of Mission Completion
+As argued previously, the deterministic mission comple-
+tion criteria (4) and (5) must now be updated to reﬂect the
+fact that the coverage is probabilistic.
+The ﬁrst completion criterion (4) requires that a proportion
+P
+1
+of the area be covered up to at least level w
+thresh
+. This
+is updated to require that the proportion,P
+1
+, of the area has
+a probability of being covered to at least a level w
+thresh
+of
+at least P
+2
+:
+1
+N
+#fijp(W
+i
+t
+w
+thresh
+)P
+2
+;i = 1::Ng>P
+1
+: (16)
+The second mission criterion criterion (5) is to have
+achieved a desired average coverage, w
+avg
+, over the entire
+workspace. This is updated to require an expected average
+coverage greater than w
+avg
+1
+N
+N
+X
+i=1
+E[W
+i
+t
+] =E[
+1
+N
+N
+X
+i=1
+W
+i
+]>w
+avg
+: (17)
+In the case where the coverage sensor characteristic is
+uniform, P
+2
+= 1 and (16) reduces to the “probably ap-
+proximately complete” measure of completeness presented
+in [10].
+III. APPLYING THE PROBABILISTIC COVERAGE
+FRAMEWORK TO AUV SEABED SURVEYING
+Some underwater seabed survey missions use sidescan
+sonar as the payload sensor. The SSS processes high fre-
+quency sonar echoes to generate an image of the seabed. An
+object on the seabed will cast a sonar shadow that can be
+analyzed to determine if it is potentially a mine. The on-
+board SSS gathers data as the AUV transits along rectilinear
+paths as shown in Fig. 3.
+In 2006, the NATO Undersea Research Centre (now Centre
+for Marine Research and Experimentation) created a model
+to quantify minehunting sonar performance that incorporates
+physical parameters that inﬂuence the probability of detect-
+ing a target in sonar data called the Extensible Performance
+and Evaluation Suite for Sonar (ESPRESSO) [11], [15].
+6595
+Lateral 
+Range
+Altitude
+AUV Trajectory
+Fig. 3. An example of the AUV trajectory and corresponding area covered
+by its SSS.
+0 10 20 30 40 50 60 70
+0.5
+0.6
+0.7
+0.8
+0.9
+1
+Lateral Range (m)
+Confidence
+ 
+ 
+Sand
+Clay
+Cobble
+Fig. 4. Three sample lateral range P(y) curves generated by ESPRESSO
+[11]. The AUV is equipped with sonar sensors on both sides of the vehicle,
+the plot shows only one side.
+The output of the model is a lateral range curve, P (y),
+that deﬁnes the probability that a target at lateral distance
+y from the AUV’s track will be detected along that track
+and subsequently correctly classiﬁed as being suggestive of
+a mine (referred to as conﬁdence). Parameters that affect
+the lateral range curve fall into four general categories:
+environmental, target, sonar, and platform (AUV).
+Fig. 4 shows the lateral range curves generated by
+ESPRESSO for three different seabed types: cobble, sand,
+and clay, all at a water depth of 10 m.
+Localization error is not negligible in AUV surveys since
+the AUV has no access to a global position reference when
+it is submerged. It is in this mode that the iterative coverage
+estimation process described by Algorithm 1 is performed.
+Since the SSS can only generate useful mosaicked data
+when the AUV is in rectilinear motion, we simplify the
+problem by only considering the cross-track uncertainty in
+the AUV location. As a result, the pose distribution is
+projected onto the line orthogonal to the direction of AUV
+travel as shown in Fig. 5.
+It is assumed that DVL, GPS, and compass noise are
+normally distributed (for a deeper investigation on the noise
+characteristics of these sensors and the Gaussian assumption
+see [16]) so that the AUV position is estimated as a bivariate
+Gaussian distribution of the random variables (X
+t
+;Y
+t
+):
+
+x
+t
+y
+t
+
+N (
+
+
+xt
+
+yt
+
+;
+
+
+2
+xtxt
+
+t
+
+xtxt
+
+ytyt
+
+t
+
+xtxt
+
+ytyt
+
+2
+ytyt
+
+) (18)
+where 
+t
+is the bivariate correlation coefﬁcient between X
+t
+and Y
+t
+,  values are means and  values are covariances.
+c
+i
+g
+x
+g
+y
+s
+x
+s
+y
+ 
+Fig. 5. Projection of 2D position distribution onto 1D line orthogonal to
+AUV motion.
+Fig. 6. The distribution of the cell in the sensor frame (bottom right) is
+mapped through theP(y) curve (top right) to obtain a coverage distribution
+(top left).
+The cell location in the global frame is transformed
+through
+s
+g
+T
+t
+into a distribution in the sensor frame p(
+s
+C
+i
+t
+=
+s
+c
+i
+t
+) and then the along-track (direction of
+s
+x
+i
+t
+) uncertainty is
+marginalized out to yield a distribution for celli in the cross-
+track direction: p(
+s
+Y
+i
+t
+=
+s
+y
+i
+t
+)N (s
+y
+i
+t
+;
+2
+s
+y
+i
+t
+s
+y
+i
+t
+) with:
+s
+y
+i
+t
+= (x
+i
+ 
+xt
+) sin 
+t
++ (y
+i
+ 
+yt
+) cos 
+t
+; (19)
+and:
+s
+y
+i
+t
+s
+y
+i
+t
+=
+2
+xtxt
+sin
+2
+ 
+t
++
+t
+
+xtxt
+
+ytyt
+sin 2 
+t
++
+2
+ytyt
+cos
+2
+ 
+t
+;
+(20)
+The coverage sensor model,H, originally deﬁned in (2)
+is now given by the lateral range characteristic, P :
+
+W
+i
+t
+=H(
+s
+C
+i
+t
+) =P (
+s
+Y
+i
+t
+): (21)
+Fig. 6 shows how the distribution of
+
+W
+i
+t
+is generated
+by mapping an uncertain cell location through the sensor
+characteristic. The distribution of the orthogonal distance of
+the cell from the sensor is shown in red (bottom right). The
+sonar coverage sensor model (ESPRESSO) is shown in blue
+(top right). The cell location distribution is mapped through
+the coverage sensor model to obtain the coverage distribution
+resulting from this one single measurement (top left).
+6596
+A lower bound on the coverage can be obtained recursively
+by applying the maximum function on random variables
+deﬁned in (14) to determine the coverage distribution W
+i
+t
+.
+Each time the vehicle surfaces for GPS, the trajectory is re-
+optimized and the coverage distributions are recalculated in
+a batch process. In practice there is no need to re-optimize
+the entire vehicle trajectory, only the parts that are still being
+appreciably changed by new GPS updates.
+IV. COVERAGE PATH PLANNING WITHIN THE
+PROBABILISTIC FRAMEWORK
+Past approaches to AUV seabed surveying have planned
+structured (lawn mower or zig-zag) paths off-line and as-
+sumed that the tracks are followed exactly. We propose
+an information-based approach which extends our previous
+work [4] by accounting for uncertainty in the AUV pose.
+A. The Conﬁdence Map
+Deﬁne a binary random variable
+
+T
+i
+t
+2f0; 1g that repre-
+sents whether cell c
+i
+will be correctly classiﬁed as either
+containing a mine, or not, at time t:
+p(
+
+T
+i
+t
+= 1) =p(detection) +p(correct no detection)
+p(
+
+T
+i
+t
+= 0) =p(false alarm) +p(missed target)
+(22)
+For each
+
+T
+i
+t
+, p(
+
+T
+i
+t
+= 1)2 [0:5; 1] represents the conﬁdence,
+or probability of correct classiﬁcation, of cell c
+i
+as either
+containing a target or not, and p(
+
+T
+i
+t
+= 0) = 1 p(T
+i
+t
+= 1)
+is the probability of incorrect classiﬁcation.
+Additionally, for each cell, i, associate a binary random
+variable, T
+i
+t
+, where p(T
+i
+t
+= 1) represents the conﬁdence by
+combining all the “looks” of celli from the start of the survey
+until timet. This collection of random variables,T
+1:N
+t
+is the
+conﬁdence map.
+At the start of the mission the conﬁdence values are all
+initialized to 0.5: p(T
+i
+t0
+= 1) = 0:5; 8i = 1::N.
+B. Updating the Conﬁdence Map
+As the AUV navigates around the workspace the conﬁ-
+dence map is updated based on the current AUV pose and
+the parameters that affect sonar performance: environment,
+target, sonar, and platform.
+The target detection event can be represented by the
+Bayes’ network shown in Fig. 7. Any variable with the
+superscript i varies across the workspace and any variable
+with the subscript t varies with time.
+Deﬁne E
+i
+t
+= fE
+i
+;S;F;V
+t
+g as the set of all random
+variables that affect the generation of the lateral range
+characteristic at cell i and time t. We can express the joint
+probability of conﬁdence based on a single observation and
+combination of sensor, environment, and AUV pose as:
+p(
+
+T
+i
+t
+= 1jE
+i
+t
+= "
+i
+t
+;X
+t
+=x
+t
+)p(E
+i
+t
+= "
+i
+t
+)p(X
+t
+=x
+t
+) (23)
+Denote the sonar lateral range characteristic generated by
+the ESPRESSO model with parameters "
+i
+t
+as P
+"
+i
+t
+(y) where
+Fig. 7. Bayes’ network representing target detection similar to [17]. Arrows
+represent conditional probabilities.
+y is the lateral range. p(
+
+T
+i
+t
+= 1jE
+i
+t
+= "
+i
+t
+;X
+t
+= x
+t
+) is read
+directly from the lateral range curve:
+p(
+
+T
+i
+t
+= 1jE
+i
+t
+= "
+i
+t
+;X
+t
+=x
+t
+) =
+(
+P
+"
+i
+t
+(
+s
+y
+i
+t
+) if c
+i
+2S
+t
+0:5 otherwise
+(24)
+where
+s
+y
+i
+t
+is the orthogonal distance from the AUV track
+to the cell i at time t. For simplicity of formulation, we
+assume here that the environmental parametersE
+i
+t
+are known
+(p(E
+i
+t
+= "
+i
+t
+) = 1) however the extension to the case where
+both the environmental parameters and pose are uncertain is
+straightforward. For a more detailed investigation of the case
+of uncertain parameters see [4].
+We can evaluate the conﬁdence resulting from a single
+sonar sensor measurement at time t for cell i by marginal-
+izing over all poses:
+p(
+
+T
+i
+t
+= 1) =
+X
+xt
+p(
+
+T
+i
+t
+= 1;E
+i
+t
+= "
+i
+t
+;X
+t
+=x
+t
+)
+=E
+Xt
+[p(
+
+T
+i
+t
+= 1jE
+i
+t
+= "
+i
+t
+;X
+t
+=x
+t
+)]
+=
+(
+Es
+Y
+i
+t
+[P
+"
+i
+t
+(
+s
+Y
+i
+t
+)] if cell c
+i
+2S
+t
+0:5 otherwise
+(25)
+The sonar lateral range curve is a speciﬁc example of the
+general coverage sensor functionH deﬁned in (2). So (25)
+can be rewritten using the general framework of Sec. II as:
+Es
+Y
+i
+t
+[P
+"
+i
+t
+(
+s
+Y
+i
+t
+)] =Es
+C
+i
+t
+[H(
+s
+C
+i
+t
+)] =E[
+
+W
+i
+t
+]: (26)
+Consequently, the conﬁdence from one look p(
+
+T
+i
+t
+= 1) in
+the case of the AUV seabed coverage problem is evaluated as
+the mean of the coverage distribution from the probabilistic
+framework. For the cells that are in the sensor swath:
+p(
+
+T
+i
+t
+= 1) =E[
+
+W
+i
+t
+] (27)
+The ﬁnal conﬁdence after combining n looks can be
+expressed as:
+p(T
+i
+t
+= 1) =E[W
+i
+t
+] =E[maxf
+
+W
+i
+t1
+;
+
+W
+i
+t2
+;:::;
+
+W
+i
+tn
+g] (28)
+where the necessity to maintain the entire coverage distri-
+butions as opposed to just the distribution means is due
+to the fact that the expectation operator, E, cannot be dis-
+tributed across the maximum operator:E[maxf
+
+W
+i
+t1
+;
+
+W
+i
+t2
+g6=
+maxfE[
+
+W
+i
+t1
+];E[
+
+W
+i
+t2
+]g.
+6597
+W
+A
+d
+Survey Direction
+(d;x
+min
+)
+(d;x
+max
+)
+Fig. 8. The value of d should be optimized such that the portion of the
+map deﬁned by A satisﬁes the mission completion criterion
+C. Information-Based Coverage Path Planning
+It is proposed here that Shannon entropy reduction of
+the conﬁdence map variables is an appropriate and novel
+way of adaptively achieving coverage. The expected entropy
+reduction (EER) is given by:
+H(T
+i
+t
+jE
+i
+t
+;X
+t
+),H(T
+i
+t
+) E
+Xt
+[H(T
+i
+t
+jE
+i
+t
+;X
+t
+)]; (29)
+where H(T ) = E[logp(T )] is the Shannon entropy. The
+EER deﬁnes a scalar quantity that represents the a priori
+expected amount of information that will be gained about
+T
+i
+t
+by making the sonar measurement from the uncertain
+pose X
+t
+at time t with environmental parameters E
+i
+t
+.
+The EERs specify a way of combining the potential
+beneﬁts of sensor observations additively. We can compute
+the total EER at timet as the sum of the EERs of every cell
+in the sensor swath:
+H(T
+t
+jE
+1:N
+t
+;X
+t
+) =
+X
+i:c
+i
+2St
+H(T
+i
+t
+jE
+i
+t
+;X
+t
+) (30)
+where T
+t
+, [T
+1
+t
+;T
+2
+t
+;:::;T
+N
+t
+].
+In order to plan a path, we perform a search over a set
+of potential next poses and evaluate their beneﬁt. In this
+ﬂexible framework we can specify any meaningful domain
+of next poses to be searched over in order to ﬁnd a locally
+optimal path. Here we propose one possible domain that is
+particularly well-suited to the seabed surveying application.
+We optimize the location of each subsequent track after each
+previous track is completed. The placement of the next track
+to be followed should maximize the information to be gained
+subject to the constraint that no gaps are left to guarantee
+actual coverage in the ﬁeld.
+From Fig. 8, the optimization takes place over the domain
+of d subject to the constraint that the area A satisfy mission
+completion. Deﬁne the next track as 
+d
+parameterized by s:
+
+d
+: [0; 1]!Q
+free
+;s!
+d
+(s)
+
+d
+(0) = (d;x
+min
+); 
+d
+(1) = (d;x
+max
+)
+(31)
+where x
+min
+and x
+max
+are the minimum and maximum x
+values of the track, andQ
+free
+is the free conﬁguration space,
+or set of all possible poses in the environment that will not
+collide with obstacles [18].
+In this case we select (17), which is the probabilistic
+version of (5), as the criterion for mission completion since
+average conﬁdence is an accurate representation of the risk
+associated with moving an asset and personnel over the area.
+The average conﬁdence objective is used and motivated in
+other work on AUV MCM, such as [14].
+The optimization to select the value d that maximizes the
+information gained is:
+B(d),
+Z
+1
+0
+H(T
+t
+jE
+1:N
+t
+;
+d
+(s))ds (32)
+subject to the constraint:
+1
+A
+N
+X
+i:c
+i
+2A
+E[W
+i
+t
+] =
+1
+A
+N
+X
+i:c
+i
+2A
+p(T
+i
+t
+) = 1>w
+avg
+(33)
+V. IN-WATER RESULTS
+In-water tests were performed to test the proposed meth-
+ods. Example results are shown in Fig. 9 and Fig. 10. This
+was performed in the same workspace as Fig. 1, which is
+a square box approximately 200m by 300m. The AUV runs
+on the surface but the GPS data is not fused into the state
+estimate unless the AUV is at the beginning or end of a track
+(where a GPS ﬁx might normally occur). Each time a track is
+completed, the optimization (32) is re-run until convergence.
+In some cases acquiring the GPS ﬁx and computing the
+optimal track takes time, so the AUV executes a loiter pattern
+while this is ongoing. The mission completion criterion is:
+1
+N
+N
+X
+i=1
+E[W
+i
+t
+] =
+1
+A
+N
+X
+i:c
+i
+2A
+p(T
+i
+t
+) = 1> 0:985 (34)
+or a mean average probability of 98.5% coverage.
+The ﬁnal trajectory and achieved coverage map from the
+GPS data are shown in Fig. 10, where the blue dot indicates
+the moment at which the coverage objective was met. The
+essential new capability here is that even though the AUV has
+very poor path tracking capability, it is still able to achieve
+its coverage objective.
+VI. CONCLUDING REMARKS
+This paper presents a probabilistic framework within
+which paths can be generated that guarantee coverage based
+on new probabilistic coverage criteria. The pose belief is
+used to generate a coverage estimate that is maintained as
+the robot navigates around its workspace. This is applied
+to the example of autonomous underwater vehicle seabed
+coverage for mine counter-measures. A path planning frame-
+work within the probabilistic coverage space is proposed
+based on information theory. It is shown that with this
+adaptive approach it can be guaranteed that mission coverage
+objectives are met.
+6598
+0 100 200
+?100
+0
+100
+200
+0 100 200
+?100
+0
+100
+200
+0 100 200
+?100
+0
+100
+200
+0 100 200
+?100
+0
+100
+200
+0 100 200
+?100
+0
+100
+200
+0 100 200
+?100
+0
+100
+200
+0 100 200
+?100
+0
+100
+200
+0 100 200
+?100
+0
+100
+200
+Fig. 9. The 8 plots show the state of the system after GPS updates are
+obtained nearing the end of each track. Time progresses from left to right
+and top to bottom. Units are in meters. The sensor characteristic used is the
+10m depth cobble seabed type of Fig. 5. In each plot: yellow: workspace
+to be covered; green: track that has just been followed, and red: achieved
+trajectory that has been followed to that point based on the GPS data. Each
+time a track is ﬁnished the location of the next track is optimized based on
+(34) so that the workspace is guaranteed to be covered. The AUV is able
+to cover the area to 98.9% even though it is drifting more than 20m over a
+200m track.
+0 50 100 150 200
+0
+100
+200
+300
+meters
+metres
+Fig. 10. The ﬁnal estimated trajectory overlaid on the coverage map
+(darker area indicates higher coverage). Final mean conﬁdence is 98.9%
+and required 9 tracks to complete.
+This is the ﬁrst known method that explicitly accounts
+for robot uncertainty for area coverage and a path plan-
+ning approach is presented that exploits this probabilistic
+representation to achieve coverage even in the case that
+localization is poor.
+In the case of a safety critical application such as AUV
+MCM, it is motivated that having the most accurate estimate
+possible of the state of the coverage over the workspace is
+important, since overconﬁdence or missed areas are espe-
+cially undesirable.
+REFERENCES
+[1] Ercan U. Acar and Howie Choset, “Sensor-based coverage of unknown
+environments: Incremental construction of Morse decompositions,”
+International Journal of Robotics Research, vol. 21, pp. 345–367,
+2002.
+[2] Ercan U. Acar, Howie Choset, Yangang Zhang, and Mark J. Schervish,
+“Path planning for robotic demining: Robust sensor-based coverage of
+unstructured environments and probabilistic methods,” I. J. Robotic
+Res., vol. 22, no. 7-8, pp. 441–466, 2003.
+[3] Howie Choset, “Coverage of known spaces: the Boustrophedon
+cellular decomposition,” Autonomous Robots, vol. 9, pp. 247–253,
+2000.
+[4] L. Paull, S. Saeedi, M. Seto, and H. Li, “Sensor-driven online cov-
+erage planning for autonomous underwater vehicles,” Mechatronics,
+IEEE/ASME Transactions on, vol. 18, no. 6, pp. 1827–1838, Dec 2013.
+[5] L. Paull, S. Saeedi, M. Seto, and H. Li, “AUV navigation and
+localization: A review,” Oceanic Engineering, IEEE Journal of, vol.
+39, no. 1, pp. 131–149, Jan. 2014.
+[6] Alain Lambert and Nadine Le Fort-Piat, “Safe task planning integrat-
+ing uncertainties and local maps federations,” I. J. Robotic Res., vol.
+19, no. 6, pp. 597–611, 2000.
+[7] Samuel Prentice and Nicholas Roy, “The belief roadmap: Efﬁcient
+planning in belief space by factoring the covariance,” The International
+Journal of Robotics Research, vol. 28, no. 11-12, pp. 1448–1465,
+2009.
+[8] L. Blackmore, M. Ono, and B.C. Williams, “Chance-constrained
+optimal path planning with obstacles,” Robotics, IEEE Transactions
+on, vol. 27, no. 6, pp. 1080–1094, dec. 2011.
+[9] M. Bosse, N. Nourani-Vatani, and J. Roberts, “Coverage algorithms
+for an under-actuated car-like vehicle in an uncertain environment,”
+in Robotics and Automation, 2007 IEEE International Conference on,
+april 2007, pp. 698–703.
+[10] Colin Das, Aaron Becker, and Timothy Bretl, “Probably approximately
+correct coverage for robots with uncertainty,” in Intelligent Robots and
+Systems (IROS), 2011 IEEE/RSJ International Conference on, sept.
+2011, pp. 1160–1166.
+[11] G. Davies and E. Signell, “ESPRESSO scientiﬁc user guide,” NURC-
+SP-2006-003, NATO Underwater Research Centre, 2006.
+[12] Sebastian Thrun, Wolfram Burgard, and Dieter Fox, Probabilistic
+Robotics, The MIT press, Cambridge, Massachusetts, USA, 2005.
+[13] Athanasios Papoulis and S. Unnikrishna Pillai, Probability, Random
+Variables and Stochastic Processes, McGraw Hill, fourth edition,
+2002.
+[14] D.P. Williams, “On optimal AUV track-spacing for underwater
+mine detection,” in Robotics and Automation (ICRA), 2010 IEEE
+International Conference on, May 2010, pp. 4755–4762.
+[15] V . Myers and M. Pinto, “Bounding the performance of sidescan sonar
+automatic target recognition algorithms using information theory,” IET
+Radar Sonar Navig., vol. 1, no. 4, pp. 266–273, 2007.
+[16] Sarah E Webster, Ryan M Eustice, Hanumant Singh, and Louis L
+Whitcomb, “Advances in single-beacon one-way-travel-time acoustic
+navigation for underwater vehicles,” The International Journal of
+Robotics Research, vol. 31, no. 8, pp. 935–950, 2012.
+[17] Cheghui Cai and Silvia Ferrari, “Information-driven sensor path
+planning by approximate cell decomposition,” IEEE Transactions on
+Systems, Man, and Cybernetics - Part B: Cybernetics, vol. 39, no. 3,
+pp. 672–689, June 2009.
+[18] H. Choset, W. Burgard, S. Hutchinson, G. Kantor, L. E. Kavraki,
+K. Lynch, and S. Thrun, Principles of robot motion: Theory,
+agorithms, and implementation, MIT Press, June 2005.
+6599

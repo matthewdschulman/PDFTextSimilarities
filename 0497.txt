@@ -1,0 +1,943 @@
+Autonomous MA V guidance with a lightweight
+omnidirectional vision sensor
+Richard J. D. Moore, Karthik Dantu, Geoffrey L. Barrows & Radhika Nagpal
+Abstract— This study describes the design and implementa-
+tion of several bioinspired algorithms for providing guidance to
+an ultra-lightweight micro-aerial vehicle (MA V) using a 2.6 g
+omnidirectional vision sensor. Using this visual guidance sys-
+tem we demonstrate autonomous speed control, centring, and
+heading stabilisation on board a 30 g MA V ﬂying in a corridor-
+like environment. In addition to the computation of wide-ﬁeld
+optic ﬂow, the comparatively high-resolution omnidirectional
+imagery provided by this sensor also offers the potential for
+image-based algorithms such as landmark recognition to be
+implemented in the future.
+I. INTRODUCTION
+Recent advances in airframe construction, ﬂight dynamics
+and control, and sensor design are quickly driving insect-
+scale micro-aerial vehicles (MA Vs) closer to mass production
+(e.g. the RoboBee [1], [2]). Ultra-lightweight MA Vs could
+operate indoors and around humans more safely than heavier
+vehicles, and swarms of low-cost autonomous MA Vs could
+perform tasks such as aerial micro-manipulation (e.g. crop
+pollination) or exploration of hazardous environments with
+greater efﬁciency than a more capable single agent acting
+alone [2]. However, due to the extreme resource contraints
+of the platform, novel guidance systems must be designed for
+such lightweight MA Vs to navigate and perform their duties
+autonomously.
+In prior work, we have described how wide-ﬁeld optic
+ﬂow, computed with a novel 2:6 g omnidirectional vision
+sensor, may be used to enable a lightweight upright-ﬂying
+MA V (Fig. 1a) to hover in-place [3]. Here, we have re-
+designed the processing pathway to investigate visual guid-
+ance in an ofﬁce-like environment. Using several simple
+bioinspired guidance algorithms we demonstrate autonomous
+speed control, centring, and heading stabilisation with our
+MA V in a corridor. Image processing, computation of optic
+ﬂow, and low-level heading stabilisation are all performed on
+board at 10 Hz, although control commands are computed
+at a ground station to simplify development and logging.
+Our research platform serves as a development proxy for
+the RoboBee, and our eventual goal is to transition these
+This work was partially supported by the National Science Foundation
+(award number CCF-0926148).
+Correspondence via rjdmoore@seas.harvard.edu
+R. J. D. Moore is with the School of Engineering and Applied Sciences,
+Harvard University, Cambridge, MA 02138, USA.
+K. Dantu is with the Department of Computer Science and Engineering,
+University at Buffalo, The State University of New York, Buffalo, NY
+14260, USA.
+G. L. Barrows is with Centeye Inc., Washington, DC 20008, USA.
+R. Nagpal is with the School of Engineering and Applied Sciences and
+the Wyss Institute for Biologically Inspired Engineering, Harvard University,
+Cambridge, MA 02138, USA.
+(a) Custom Blade mCX2 with sensor ring.
+S 1
+S 2
+S 3
+S 4
+S 5
+S 6
+S 7
+S 8
+Direction
+of travel
+60
+o
+36
+o
+(b) Sensor ring plan view.
+0
+o
+90
+o
+180
+o
+-90
+o
+-180
+o
+t
+t+0.5s
+t+1.0s
+t+1.5s
+(c) Sensor ring imagery during a traverse of an ofﬁce corridor.
+Fig. 1. (a) Our research platform, comprising a miniature coaxial helicopter,
+custom processing and control boards, and vision sensor ring; (b) a diagram
+of the sensor ring, showing the positions of the vision sensors, Sn , and
+their ﬁelds of view (blue), including overlapping regions (dark blue); and
+(c) omnidirectional imagery captured from the sensor ring at approximately
+0:5 s intervals during a traverse of an ofﬁce corridor.
+guidance algorithms to a miniaturised omnidirectional vision
+system [4] on board the RoboBee.
+II. RELATED WORK
+The advantages of vision-based sensors over competing
+active sensing technologies has led to a plethora of studies
+on visual guidance for autonomous aircraft. Traditional com-
+puter vision-based approaches such as stereo vision or visual
+odometry can give the vehicle a detailed understanding of
+the surrounding environment and its own motion through it.
+However, such approaches are often burdened by signiﬁcant
+computational overheads and thus require either aircraft
+capable of carrying substantial payloads [5]–[7], or that the
+raw sensor data be transmitted off-board for processing and
+computation of control signals [8].
+Over the past several decades, much research has shown
+that biological vision systems can inspire novel strategies
+for aircraft guidance that can offer dramatically improved
+sensing and control efﬁciencies over more complex computer
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 3856
+vision-based approaches [9]. The discovery of optic ﬂow-
+based guidance heuristics in honeybees [10] inspired a num-
+ber of implementations of those algorithms for autonomous
+regulation of aircraft speed and height [11], avoidance of
+obstacles [12], and landing [13]. Specialised optic ﬂow
+sensors have enabled the development of a new class of
+ultra-lightweight (< 50 g) autonomous aerial platforms that
+are capable of performing simple behaviours [14], [15] and
+reactive navigation within enclosed environments [16]. The
+guidance system for the 10 g ﬁxed-wing aircraft described
+by [16] was inspired by the saccadic ﬂight patterns of fruit
+ﬂies and relied on two 1D lateral optic ﬂow sensors, which
+were used to detect imbalances and frontal expansion in the
+optic ﬂow ﬁeld to generate appropriate steering commands.
+Our system also falls into the class of ultra-lightweight
+autonomous MA Vs, but we expect it to be more capable
+than other previously described platforms (e.g. [16]) due
+to the ability of our system to capture comparatively high-
+resolution (128 px16 px) omnidirectional images at a high
+frame rate ( 100 Hz). Thus, in addition to the computation
+of wide-ﬁeld optic ﬂow for reactive guidance, which is
+the extent of the present study, our vision system should
+also be capable of supporting image-based algorithms for
+proactive navigation, such as landmark recognition, relative
+heading determination, or visual servoing. At a total weight
+of approximately30 g, we believe that this system represents
+one of the smallest autonomous aerial platforms described to
+date with this range of capabilities.
+III. PLATFORM & HARDWARE
+The research platform for this work was the Blade mCX2
+1
+(Fig. 1a) – a low-cost (< $100 USD), micro-scale (max.
+dimension 19 cm), radio-controlled, coaxial helicopter. Our
+customised prototype weighed approximately 30 g and had
+a ﬂight time of the order of 5 – 10 minutes. Roll and pitch
+axes were stabilised mechanically via the ﬂybar.
+For this study we removed the proprietary control board
+and replaced it with two custom boards
+2
+, the heliboard
+and procboard, which both incorporated a low-power 32-bit
+Atmel microcontroller (AT32UC3B1256). The procboard
+processed image data captured by the vision sensors to
+extract wide-ﬁeld optic ﬂow, which was then transferred to
+the heliboard via an I
+2
+C interface and fused with rotation
+rate data from a 3-axis gyroscope. De-rotated optic ﬂow
+measurements were transmitted wirelessly to a ground station
+where control commands were computed and transmitted
+back to the helicopter (Fig. 2). We used the Simbeeotic
+[17] test-bed to design ﬂight tests and synchronise control
+commands and logging.
+A. Vision sensor ring
+The vision sensor ring (Fig. 1) comprised eight Centeye
+Faraya
+3
+64 px 64 px vision chips arranged around the
+1
+http://www.e-fliterc.com/Products/Default.aspx?
+ProdID=EFLH2480
+2
+Designed by Centeye, Inc.
+3
+http://centeye.com/products/current-vision-chips
+Control
+RC
+Gyros
+Heliboard
+Procboard
+Optic
+ﬂow
+Vision
+sensors
+VICON
+RC
+Control
+&
+logging
+(Simbeeotic)
+Helicopter Ground station
+Fig. 2. Our system architecture enables sensing or processing to be
+switched between on-board and ground-based components for modular
+development and testing. Details in text.
+circumference of a  10 cm diameter ring of ﬂexible
+interconnect. The sensor ring and sensors weighed a total
+of 2:6 g. Each vision chip had a square ﬁeld of view (FOV)
+of approximately 60
+
+60
+
+, which gave a combined FOV in
+excess of 360
+
+60
+
+azimuth and elevation respectively. The
+spacings between vision chips on the sensor ring (Fig. 1b)
+were chosen to give a greater density of azimuthal optic ﬂow
+measurements lateral to the helicopter, where the optic ﬂow
+signals were expected to be strongest, whilst maintaining
+an omnidirectional FOV . Pixel binning was performed on
+the vision chips so that 16 px 16 px images at a bit
+depth of 10 bpp could be read out from all vision chips
+simultaneously (Fig. 1c).
+B. Optic ﬂow
+Azimuthal optic ﬂow was computed on the procboard
+using a simple block matching algorithm based on the sum of
+absolute disparity (SAD) [18] between blocks of pixels in the
+current and previous image frames from each vision sensor.
+We found this approach to be more robust to image noise
+than other methods (I2A [19] and LK [20]). Image motion
+was estimated for two horizontally adjacent subregions per
+sensor image, giving a total of 16 one-dimensional azimuthal
+optic ﬂow vectors. We used a search range of 3 px
+and applied an equiangular ﬁt [21] to the minimum and
+neighbouring SAD scores to estimate the true image offset
+in each subregion with sub-pixel accuracy. We determined
+empirically that a time lag between image frames of 100 ms
+maximised the sensitivity of our optic ﬂow measurements
+while ensuring that the expected image velocities measured
+by the sensor ring did not result in displacements greater
+than our3 px search range. Our measurement and control
+loop on board the helicopter was thus executed at 10 Hz.
+IV. MODELLING ON-BOARD OPTIC FLOW
+In the horizontal plane, optic ﬂow, , measured at an
+azimuthal viewing direction, , can be stated simply as
+ =v
+sin
+d
++!; (1)
+wherev and! are respectively the observer’s speed and yaw
+rate, and d is the range to the viewed object.
+3857
+The rotational component of optic ﬂow does not encode
+range and was discarded by subtracting the gyroscopically
+measured yaw rate of the helicopter from the azimuthal optic
+ﬂow measured by the sensor ring. The residual optic ﬂow
+therefore encodes both the magnitude and direction of the
+translation of the helicopter, as well as the range to objects
+within the environment, and thus provides useful guidance
+information for small autonomous agents such as insects
+or MA Vs, where the inter-ocular separation is too small to
+provide useful stereoscopic range information during ﬂight.
+A. Characterising sensor performance
+The performance of the sensor ring was analysed by man-
+ually translating it along the centre line of a representative
+ofﬁce corridor at constant speed. A corridor represents a
+simpliﬁed indoor environment, which enabled the expected
+distribution of optic ﬂow to be characterised easily. In the
+horizontal plane, range to a wall, d, at an azimuthal angle,
+, is given by d =
+r
+sin
+, where r is the half-width of the
+corridor. Substituting into (1) gives the expected distribution
+of azimuthal optic ﬂow in a corridor as a function of the
+viewing angle,
+ =
+v
+r
+sin
+2
+: (2)
+The median image displacements recorded in each subre-
+gion during the pass of the corridor correlated well with the
+expected distribution (Fig. 3e). However, the instantaneous
+optic ﬂow measurements were affected by the uncontrolled
+lighting and texture conditions in the ofﬁce corridor. There-
+fore, several noise processes that could affect the computa-
+tion of optic ﬂow were explored with the aim of improving
+the robustness of the instantaneous measurements to varying
+environmental conditions.
+1) Image noise: Each frame, four images were captured
+at the maximum transfer rate of the vision chips ( 100 Hz),
+accumulated, and averaged to give a single image with
+reduced random pixel noise (Fig. 3b).
+2) Varying illumination: A 33 horizontal Sobel ﬁlter
+kernel was convolved with the accumulated sensor images
+(Fig. 3c) to reduce spurious measurements of image motion
+caused by brightness differences between frames.
+3) Unmodelled motion: Finally, the ﬁltered images were
+compressed vertically by summing and combining multiple
+image rows at a ratio of 4:1 (Fig. 3d) to reduce the deleterious
+effects of unmodelled rolling or pitching motions on the
+computation of azimuthal optic ﬂow.
+V. OPTIC FLOW-BASED FLIGHT CONTROL
+The optic ﬂow that is produced by stable and centred ﬂight
+in a corridor is predicted for all azimuthal viewing angles
+by (2). Similarly, deviations from this ideal scenario – either
+large-scale variations in the environment, or disturbances to
+the helicopter’s position or orientation – cause predictable
+variations in the measured distribution of wide-ﬁeld optic
+ﬂow. We used three simple and bio-inspired algorithms to
+map various deviations in the distribution of azimuthal optic
+ﬂow to roll, pitch, and yaw control commands for the MA V .
+(a) Cropped raw image. (b) 4 accumulated frames.
+(c) Filtered with horizontal Sobel. (d) Compressed vertically 4 : 1.
+-30
+-20
+-10
+0
+10
+20
+30
+-180 -120 -60 0 60 120 180
+Optic flow (deg/s)
+Viewing direction (degrees)
+sin
+2
+raw
+acc
+sobel
+row
+(e) Median optic ﬂow in corridor.
+0.4
+0.45
+0.5
+0.55
+raw acc sobel row
+CV ratio
+CV
+(f) Coefﬁcient of variation vs ﬁltering.
+Fig. 3. Three image processing steps were applied successively to the raw
+sensor ring image each frame to improve the robustness of the computed
+optic ﬂow to varying environmental conditions. (a) A 32 px16 px region
+cropped from the raw 128 px16 px omnidirectional image; (b) four raw
+frames accumulated and averaged; (c) accumulated image convolved with
+a 3 3 horizontal Sobel kernel; and (d) Sobel ﬁltered image compressed
+vertically by a ratio of 4 : 1. (e) The image processing steps preserved the
+expected distribution (best ﬁt of (2) to ﬁltered data recorded from ofﬁce
+corridor) of median optic ﬂow magnitudes at each viewing angle (circles),
+and (f) also reduced by 25% the average coefﬁcient of variation (CV),
+
+
+, of optic ﬂow measured at each viewing angle.
+A. Flow-based speed control
+Translational optic ﬂow encodes both the speed of the
+observer as well as the range to objects in the environment.
+Thus, by controlling pitch, or forwards speed, based on the
+total sum of observed translational optic ﬂow, the helicopter
+is ensured to slow down in the presence of obstacles and to
+speed up in uncluttered spaces [10].
+We computed a signed sum of optic ﬂow to detect both
+forwards and backwards motion. Under pure translation,
+optic ﬂow vectors in opposing visual hemispheres have
+opposite signs, due to the orientation of the sensors’ image
+planes with respect to the direction of motion. Thus, the
+total translational optic ﬂow was computed by summing the
+difference between translational optic ﬂow measured from
+diametrically opposite subregions,
+F
+speed
+=
+8
+X
+i=1
+()
+T;i+8
+ ()
+T;i
+; (3)
+where()
+T;i
+represents the translational component of optic
+ﬂow measured in the i
+th
+subregion (Fig. 4a). An integral-
+derivative controller (k
+i
+= 2:0;k
+d
+= 0:5) was used to derive
+a pitch control command that minimised the error between
+the total translational optic ﬂow, F
+speed
+, and the set point
+3858
+(
+
+F
+speed
+= 0:2 for closed-loop experiments). Integrated error
+gain dominated the pitch controller to permit a variable
+mapping between actual forwards speed and observed F
+speed
+,
+depending on the scale of the environment.
+S
+1
+S
+2
+S
+3
+S
+4 S
+5
+S
+6
+S
+7
+S
+8
+Direction
+of travel
+R
+1
+R
+2
+R
+3
+R
+4
+R
+5
+R
+6
+R
+7
+R
+8
+R
+9
+R
+10
+R
+11
+R
+12
+R
+13
+R
+14
+R
+15
+R
+16
+(a) Centring and speed control.
+S
+1
+S
+2
+S
+3
+S
+4 S
+5
+S
+6
+S
+7
+S
+8
+Direction
+of travel
+R
+1
+R
+2
+R
+3
+R
+4
+R
+5
+R
+6
+R
+7
+R
+8
+R
+9
+R
+10
+R
+11
+R
+12
+R
+13
+R
+14
+R
+15
+R
+16
+Q
+1
+Q
+2 Q
+3
+Q
+4
+(b) Heading control.
+Fig. 4. Subdivision of azimuthal subregions for optic ﬂow-based control,
+showing corresponding sensors,Sn , and subregions,Rn , as well as oppos-
+ing subregions (red/blue) for (a) centring and speed control, and (b) heading
+control. Quadrants, Qn , for heading control are labelled. Details in text.
+B. Flow-based centring
+Balancing the translational optic ﬂow measured in each
+visual hemisphere enables the helicopter to maintain an even
+clearance to objects on both sides of its body simultane-
+ously [10]. We computed a centring metric by summing the
+difference between the absolute translational optic ﬂow in
+opposing hemispheres,
+F
+centring
+=
+8
+X
+i=1
+j()
+T;i+8
+j j()
+T;i
+j; (4)
+wherej()
+T;i
+j is the absolute magnitude of the i
+th
+trans-
+lational optic ﬂow vector (Fig. 4a). A proportional-integral
+controller (k
+p
+= 2:0;k
+i
+= 0:05) was used to derive a
+roll control command that minimised the error between the
+differential optic ﬂow, F
+centring
+, and the set point (
+
+F
+centring
+=
+0 for closed-loop experiments). The small integrating error
+term was used to estimate the roll trim automatically during
+optic ﬂow-controlled ﬂight.
+C. Flow-based heading control
+For the centring algorithm to be most effective, the he-
+licopter must maintain its heading such that the closest
+obstacle lies laterally (e.g. the MA V should maintain its
+heading parallel with a corridor’s long axis). To realise this
+control strategy, the absolute translational optic ﬂow was
+integrated according to
+F
+heading
+=
+16
+X
+i=1
+
+j()
+T;i
+j
+sin
+2
+
+; 
+8
+>
+<
+>
+:
++1; i2fQ
+1
+;Q
+3
+g
+ 1; i2fQ
+2
+;Q
+4
+g
+0; otherwise
+; (5)
+whereQ
+n
+represents then
+th
+view sphere quadrant (Fig. 4b).
+Absolute translational optic ﬂow was negated in alternating
+quadrants so that a zero net yaw torque was generated
+when the distributions of measured optic ﬂow magnitudes
+in the front and rear quandrants were symmetric for both the
+left and right hemispheres, regardless of which hemisphere
+experienced the greater optic ﬂow (i.e. proximity to one wall
+should not necessarily generate a yawing torque). Optic ﬂow
+components were scaled by
+1
+sin
+2
+
+so that each component
+contributed equally to the sum under ideal conditions, i.e.
+(2). This heuristic was empirically determined to increase
+sensitivity to heading deviations. Optic ﬂow vectors closest to
+the longitudinal axis of the helicopter were discarded ( = 0)
+because their small viewing angle, , with respect to the
+helicopter’s presumed direction of translation led to large
+variations in scaled ﬂow magnitude.
+A proportional controller (k
+p
+= 0:3) was used to derive
+a yaw control command that minimised the error between
+the scaled translational optic ﬂow, F
+heading
+, and the set point
+(
+
+F
+heading
+= 0 for closed-loop experiments). Additionally, on
+the heliboard, the helicopter’s gyroscopically measured yaw
+rate was used to dampen the vehicle’s turn rate and also to
+estimate the vehicle’s yaw rate trim.
+VI. FLIGHT TEST RESULTS
+A mock corridor was set up inside our indoor ﬂight arena
+to analyse the performance of the sensor ring during ﬂight
+(Fig. 5). A Vicon
+4
+motion capture system was used to record
+the position and orientation of the helicopter during the ﬂight
+tests. Data from both the Vicon system and on-board optic
+ﬂow measurements were processed at the base station to
+generate control commands, which were communicated to
+the helicopter via the wireless link (Fig. 2). This experimental
+conﬁguration permitted partial Vicon control and partial optic
+ﬂow control during development of the system.
+Fig. 5. A photograph of the corridor-like environment within the Vicon
+arena during an experiment. The dimensions of the corridor were approxi-
+mately 5:0 m 2:6 m 1:5 m (LWH).
+In order to analyse the optic ﬂow signals generated during
+both rotational and translational motion, a simple ﬂight plan
+was devised in which the helicopter traversed the length of
+the corridor and made two 180
+
+turns.
+A. Closed-loop ﬂight using a motion capture system
+During initial ﬂight testing, the helicopter was controlled
+automatically using position and heading information from
+the Vicon system and an independent control system; optic
+4
+http://www.vicon.com
+3859
+ﬂow data was recorded. Rotation induced an approximately
+equal component of raw optic ﬂow in each sensor in ac-
+cordance with (1) and was discarded by subtracting the heli-
+copter’s gyroscoptically measured yaw rate (Fig. 6). Residual
+optic ﬂow was due only to the translational motion of the
+helicopter and closely matched the distribution predicted by
+(2) for ﬂight in a corridor-like environment.
+-60
+-40
+-20
+0
+20
+40
+60
+10 14 18 22 26 30 34
+Optic flow (deg/s)
+Time (s)
+(a) Raw optic ﬂow.
+-60
+-40
+-20
+0
+20
+40
+60
+10 14 18 22 26 30 34
+Optic flow (deg/s)
+Time (s)
+(b) De-rotated optic ﬂow.
+Fig. 6. (a) Raw optic ﬂow recorded during the Vicon ﬂight test, and (b)
+after de-rotation using gyroscopic yaw rate. Thick red bars correspond to
+the three translational ﬂight segments, including a single long traverse of
+the length of the corridor (19 s 25 s).
+B. Closed-loop ﬂight using on-board optic ﬂow
+The optic ﬂow-based guidance algorithms were used to
+demonstrate autonomous and simultaneous control of the
+helictoper’s forwards speed, lateral position, and heading
+direction while traversing the corridor. Optic ﬂow-based
+control was engaged while the helicopter hovered at one end
+of the corridor. The evolution of the helicopter’s ﬂight path
+during each of the trials was then tracked using the Vicon
+motion capture system (Fig. 7a). The position and orientation
+of the helicopter at the start of the traverse were varied
+between trials to provide a range of initial conditions (0:5m
+lateral offset and20
+
+angular offset from the centre line).
+It was expected that the guidance algorithms would enable
+the helicopter to accelerate to an approximately constant
+cruise speed and to eventually obtain a stable trajectory
+down the centre line of the corridor. During the traverse,
+the helicopter ﬂew autonomously using only sensory input
+from the vision sensors and gyroscope to control roll, pitch,
+and yaw, whilst the throttle was controlled using the Vicon
+system to maintain a height above ground of 0:75 m.
+Once optic ﬂow-based control was engaged, the helicopter
+accelerated forwards and took an average of 2:2 s to reach
+85% of the total optic ﬂow set point, F
+speed
+= 0:2 (Fig. 7b
+centre). In some trials, the helicopter initially drifted back-
+wards because the integral-dominant pitch controller took a
+ﬁnite time to overcome the negative pitch trim. Estimates
+of the steady-state performances of the guidance algorithms
+were achieved by arbitrarily considering just the ﬁnal quarter
+of each closed-loop traverse (i.e. y > 1 m in Fig. 7). Using
+this metric, the average steady-state total optic ﬂow was
+F
+speed
+= 0:19 0:08 (2), which enabled the helicopter
+to hold an average forwards speed of 0:52 ms
+ 1
+.
+Differential optic ﬂow was driven towards zero by the
+centring algorithm (Fig. 7b upper), which resulted in an
+-1.5
+-1
+-0.5
+0
+0.5
+1
+1.5
+-2 -1 0 1 2
+X position (m)
+Y position (m)
+ 
+ 
+VICON control
+(a) 2D position (solid coloured lines) and heading (coloured tabs) of the
+helicopter, measured via Vicon motion capture during six closed-loop trials
+under optic ﬂow-based control. Also shown are the corridor walls (thick
+black lines) as well as the path of the helicopter under pure Vicon control
+(dashed black line) for comparison. Heading tabs are drawn at 30 ms
+intervals.
+-0.2
+-0.1
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+Pitch metric (a.u.)
+Pitch metric set point
+Mean response from 5 successful trials
+-0.16
+-0.08
+0
+0.08
+0.16
+0.24
+Roll metric (a.u.)
+Roll metric set point
+Mean response from 5 successful trials
+70
+80
+90
+100
+110
+120
+-2 -1 0 1 2
+Heading (degrees)
+Y position (m)
+Ideal heading
+Mean response from 5 successful trials
+(b) Plots of the individual roll,F
+centring
+(upper), and pitch,F
+speed
+(centre),
+optic ﬂow metrics used for centring and speed control respectively during
+the six closed-loop trials; as well as the heading direction (lower) measured
+via Vicon motion capture. Also shown are the respective optic ﬂow set
+points (red dashed lines) and mean responses (solid black lines) from the
+ﬁve successful trials. Roll and pitch metrics are given in arbitrary units.
+Fig. 7. Optic ﬂow-based closed-loop control. Individual closed-loop trials
+are represented by corresponding solid coloured lines in (a) and (b). The
+beginning (circle) and end (cross) of the optic ﬂow-based control segment is
+indicated for each trial. All data are plotted against the helicopter’s position
+along they axis during each trial to simplify comparison. Positive yaw rate
+corresponded to an anticlockwise rotation of the helicopter’s heading angle,
+due to the orientation of the Vicon coordinate frame.
+average unsigned steady-state centring (x position) error of
+0:34 m0:27 m from the centreline of the 2:6 m-wide cor-
+ridor. The relatively large variance in steady-statex position
+between trials compared to the centring performance under
+Vicon control (Fig. 7a) was attributed to the optic ﬂow-based
+centring PI controller, which was tuned to accomodate the
+large and non-linear range of F
+centring
+as a function of the
+helicopter’s lateral position. However, the centring metric,
+F
+centring
+(Fig. 7b upper), did correspond well with the actual
+x position of the helicopter throughout each trial (Fig. 7a),
+3860
+thereby validating the guidance algorithm.
+The helicopter maintained its heading direction approx-
+imately in line with the longitudinal axis of the corridor
+(Fig. 7b lower), as governed by (5). However, heading direc-
+tion was also attracted towards the helicopter’s instantaneous
+direction of translation, which was unexpected. The sharpest
+changes in heading direction corresponded to periods of
+highly transverse ﬂight (Fig. 7a), when the helicopter’s
+direction of translation was not aligned with its forwards
+axis. This behaviour likely contributed to the failure of one of
+the closed-loop optic ﬂow trials by increasing the helicopter’s
+angle of approach to the wall of the corridor.
+VII. DISCUSSION
+The inherent design constraints for small-scale MA Vs
+generally restrict autonomy to speciﬁc behaviours, making
+direct comparisons between different platforms difﬁcult. Of
+those that have demonstrated autonomous centring, the ap-
+proach most similar to ours is that described by [22], who
+described a wide-ﬁeld azimuthal optic ﬂow-based guidance
+system and demonstrated centring and heading stabilisation
+on board a 680 g quadrotor, which incorporated a 500 MHz
+microprocessor and a wide-angle camera-mirror assembly.
+From published raw data, their platform was able to remain
+within 0:4 m of the centreline of their corridor over
+repeated trials. For comparison, we computed the maximum
+(2) steady-state centring error for our MA V to be 0:61 m.
+A. Limitations
+We did not evaluate our platform’s ability to avoid front-
+on collisions. However, the failure of one of the optic ﬂow-
+based closed-loop trials showed that our centring and speed
+control behaviours were only able to prevent a collision up
+to some maximum angle of approach to an obstacle. From
+our experimental data, the lower bound on this maximum
+angle of approach was 25
+
+(Fig. 7a). A simple collision
+avoidance strategy might be to detect patterns of expanding
+optic ﬂow and steer accordingly (as in [23]).
+A second limitation to the present system stems from
+our implicit assumption that the helicopter travels approx-
+imately forwards (pitch affects speed, roll affects centring).
+During highly transverse ﬂight, coupling occurs between
+the wide-ﬁeld azimuthal optic ﬂow distributions caused by
+lateral translation and the vehicle’s orientation with respect
+to the corridor [24]. This coupling would have reduced
+the efﬁcacies of the described control algorithms and was
+likely responsible for the failure of the MA V’s heading to
+converge to 90
+
+(Fig. 7b lower). To resolve this issue, the
+MA V’s direction of translation could be estimated from the
+wide-ﬁeld distribution of azimuthal optic ﬂow or from a
+downwards-facing 2D optic ﬂow sensor.
+VIII. CONCLUSION
+Our 2:6 g omnidirectional vision sensor enables the com-
+putation of wide-ﬁeld optic ﬂow on board a MA V weighing
+approximately 30 g in total. We have implemented this
+system and described three simple guidance algorithms that
+enable autonomous and simultaneous control of the MA V’s
+ﬂight speed, lateral position, and heading direction with
+respect to a corridor-like environment. All sensing and all
+signiﬁcant processing was performed on board at 10 Hz.
+Future work includes studying goal-oriented navigation by
+a MA V using this vision system in ofﬁce-like environments.
+ACKNOWLEDGMENT
+Travis Young (Centeye Inc.) for initial development of
+the embedded hardware and software, and Raphael Cherney
+(Harvard) for assisting with initial system characterisation.
+REFERENCES
+[1] Ma, Chirarattananon, Fuller, and Wood, “Controlled ﬂight of a bio-
+logically inspired, insect-scale robot,” Science, 2013.
+[2] Wood, Nagpal, and Wei, “Flight of the robobees,” Sci. Am., 2013.
+[3] Barrows, Young, Neely, Leonard, and Humbert, “Vision based hover
+in place,” in Proc. Aerospace Sciences Meeting. AIAA, 2012.
+[4] Koppal, Gkioulekas, Young, Park, Crozier, Barrows, and Zickler,
+“Towards wide-angle micro vision sensors,” Trans. Pattern Anal.
+Mach. Intell., 2013.
+[5] Fraundorfer, Heng, Honegger, Lee, Meier, Tanskanen, and Pollefeys,
+“Vision-based autonomous mapping and exploration using a quadrotor
+MA V,” in Proc. IROS. IEEE/RSJ, 2012.
+[6] Shen, Mulgaonkar, Michael, and Kumar, “Vision-based state estima-
+tion for autonomous rotorcraft MA Vs in complex environments,” in
+Proc. ICRA. IEEE/RAS, 2013.
+[7] Weiss, Scaramuzza, and Siegwart, “Monocular-SLAM–based naviga-
+tion for autonomous micro helicopters in GPS-denied environments,”
+J. Field Rob., 2011.
+[8] Ahrens, Levine, Andrews, and How, “Vision-based guidance and
+control of a hovering vehicle in unknown, GPS-denied environments,”
+in Proc. ICRA. IEEE/RAS, 2009.
+[9] Moore, “Vision systems for autonomous aircraft guidance,” Ph.D.
+dissertation, 2012.
+[10] Srinivasan, Zhang, Lehrer, and Collett, “Honeybee navigation en route
+to the goal: visual ﬂight control and odometry,” J. Exp. Biol., 1996.
+[11] Srinivasan, Moore, Thurrowgood, Soccol, and Bland, “From biology
+to engineering: Insect vision and applications to robotics,” in Frontiers
+in Sensing. Springer, 2012.
+[12] Beyeler, Zufferey, and Floreano, “Vision-based control of near-
+obstacle ﬂight,” Auton. Rob., 2009.
+[13] Green, Oh, Sevcik, and Barrows, “Autonomous landing for indoor
+ﬂying robots using optic ﬂow,” in Proc. IMECE. ASME, 2003.
+[14] G. Bermudez and Fearing, “Optical ﬂow on a ﬂapping wing robot,”
+in Proc. IROS. IEEE/RSJ, 2009.
+[15] Duhamel, P´ erez-Arancibia, Barrows, and Wood, “Altitude feedback
+control of a ﬂapping-wing microrobot using an on-board biologically
+inspired optical ﬂow sensor,” in Proc. ICRA. IEEE/RAS, 2012.
+[16] Zufferey, Klaptocz, Beyeler, Nicoud, and Floreano, “A 10-gram vision-
+based ﬂying robot,” Adv. Robot., 2007.
+[17] Kate, Waterman, Dantu, and Welsh, “Simbeeotic: A simulator and
+testbed for micro-aerial vehicle swarm experiments,” in Proc. IPSN.
+ACM, 2012.
+[18] Hartley and Zisserman, Multiple view geometry in computer vision.
+Cambridge University Press, 2003.
+[19] Srinivasan, “An image-interpolation technique for the computation of
+optic ﬂow and egomotion,” Biol. Cybern., 1994.
+[20] Lucas and Kanade, “An iterative image registration technique with an
+application to stereo vision.” in Proc. IJCAI, 1981.
+[21] Shimizu and Okutomi, “Signiﬁcance and attributes of subpixel esti-
+mation on area-based matching,” Sys. Comp. Japan, 2003.
+[22] Conroy, Gremillion, Ranganathan, and Humbert, “Implementation
+of wide-ﬁeld integration of optic ﬂow for autonomous quadrotor
+navigation,” Auton. Rob., 2009.
+[23] Zufferey and Floreano, “Fly-inspired visual steering of an ultralight
+indoor aircraft,” Trans. Rob., 2006.
+[24] Humbert, Murray, and Dickinson, “Sensorimotor convergence in visual
+navigation and ﬂight control systems,” in Proc. IFAC World Congress,
+2005.
+3861

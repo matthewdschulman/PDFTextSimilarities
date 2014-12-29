@@ -1,0 +1,1120 @@
+Automated Assembly Skill Acquisition through Human Demonstration
+Ye Gu, Weihua Sheng, and Yongsheng Ou
+Abstract—Acquiring robot assembly skills through human
+demonstration is a challenging problem. To achieve this goal,
+not only the actions and objects have to be shown to the
+robot, but also the effect of the action needs to be estimated.
+Recognizing the subtle assembly actions is a non-trivial task,
+and it is difﬁcult to estimate the effect of the action on the
+assembly parts due to the small part sizes. In this paper, with
+a RGB-D camera, we build a Portable Assembly Demonstration
+(PAD) system which can recognize the part/tool used, the
+action applied and the assembly state characterizing the spatial
+relationship between the parts. The experiment results proved
+that this PAD system can generate an assembly script with good
+accuracy in object and action recognition as well as assembly
+state estimation.
+I. INTRODUCTION
+A. Motivation
+As more and more advanced robots enter our life, the
+demand for teaching robot complex skills increases. If a
+robot can replace a human doing complex assembly tasks,
+the expense of labor force can be reduced dramatically. For
+example, Foxconn Technology Group has already deployed
+their own assembly robot called “Foxbot” in their factories
+[1]. Currently these robots can only perform simple and
+repetitive tasks like picking and placing a part. Many of
+the complicated processes still require human labors. Teach-
+ing a robot such delicate assembly skills through human
+demonstration can avoid lengthy robot programming, while
+no technical expertise is required for the operator. However,
+a complex assembly task usually involves many parts and
+tools and is conducted in many steps, which introduces some
+challenges. First, recognizing small parts and tools using
+computer vision is not an easy task. Second, it is hard to rec-
+ognize ﬁne actions using motion based features only. Third,
+to obtain the relative position and orientation information
+between the parts is challenging, since occlusion frequently
+occurs between assembled parts, which may affect the ef-
+ﬁciency of traditional object pose estimation algorithms.
+Finally, to capture the information of both the objects (parts
+and tools) and human movement, traditional approaches use
+multiple sophisticated sensors, which is costly and not easy
+to use.
+Existing human based demonstration systems focus on
+extracting either human motion information or object in-
+formation from the demonstration. In [2] and [3], object
+This project is supported by NSF grant CISE/IIS 1231671.
+Ye Gu and Weihua Sheng (contacting author) are with the School of
+Electrical and Computer Engineering, Oklahoma State University, Stillwater,
+OK 74078, USA e-mail: weihua.sheng@okstate.edu.
+Yongsheng Ou is with the Shenzhen Institutes of Advanced Technology,
+Chinese Academy of Sciences, Shenzhen, Guangdong 518055, China and
+The Chinese University of Hong Kong, China
+information is extracted from the demonstration to create
+high-level knowledge. In [4] humans are tracked by multiple
+calibrated stereo cameras for human motion imitation. How-
+ever, for assembly skill learning, both the objects and human
+motion in the demonstration are important clues. The human
+motion can tell how to do a task while the object information
+can tell what parts are being manipulated or what tools are
+being used. Dillmann [5] built a human-based demonstra-
+tion platform using data gloves to capture human motion
+while using multiple cameras for object recognition. On the
+contrary, we adopt a single RGB-D camera to develop a
+Portable Assembly Demonstration (PAD) system. This PAD
+system can capture the information about human motion,
+the tools used, and the parts manipulated during human
+demonstration to generate the skill scripts. The features of
+the PAD system are as follows. First, it can recognize small
+assembly parts and tools used. Second, with the parts and
+tools as the contextual information, the assembly action
+can be recognized. Third, the ﬁnal state (post-condition)
+of the assembled parts can be estimated which represents
+the effect of the action. The state describes the relative
+position and orientation between the parts. With the PAD
+system, for example, it is possible to estimate how deep a
+bolt is hammered into a hole in the demonstration, which is
+important for the robotic assembly process.
+B. Related work
+The ways to demonstrate skills to robots fall into two cate-
+gories: robot-based demonstration and human-based demon-
+stration. Robot-based demonstration uses robots as the
+demonstrator. This method mainly includes teleoperation [6]
+and kinesthetic teaching which is also called scaffolding [7].
+On the contrary, human-based demonstration employs hu-
+mans as the demonstrator. Compared to robot-based demon-
+stration, human-based demonstration is more convenient for
+the operators since they do not need to control the robot. Two
+kinds of sensors are widely used for collecting the human
+demonstration data: wearable sensors and vision sensors.
+Wearable sensors include inertial measurement units (IMUs)
+[8] and data gloves [5], [9]. In robot learning, it is also
+called the “sensor on teacher” approach. Wearable sensors
+are usually used along with vision sensors that extract the
+information of the involved objects. On the other hand,
+vision-based human motion tracking systems are regarded as
+a natural way to capture demonstration since no sensors need
+to be attached to the demonstrator. There have been some
+works on vision-based assembly skill learning from human
+demonstration. Dantam et al. [10] developed a method to
+transfer human demonstration to robots. The demonstration
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 6313
+is interpreted as a sequence of object connection symbols
+which can be further transformed into the task language.
+The assembly task they handled is simple and only the
+location of the part is required. Takamatsu et al. [2] aimed
+to recognize assembly tasks through human demonstration.
+Two rigid polyhedral objects are recognized from noisy
+data obtained by a conventional 6 degree-of-freedom (DOF)
+object-tracking system. Assembly tasks can be basically
+expressed as chains of two-object relationships. Aleotti et
+al. [3] demonstrated the assembly task through simulation,
+which does not address the action recognition and object
+recognition problems. A task planner is designed to analyze
+the demonstration and segment it into a sequence of action
+primitives.
+In this paper, we aim to develop a single Kinect based
+human skill demonstration system which recognizes the
+parts, the tools, the assembly actions and the assembly state.
+The rest of the paper is organized as follows: Section II
+introduces the PAD system setup and formulates the problem
+to be solved. Section III presents the proposed methodology.
+Section IV describes the experimental procedures and gives
+the experimental results. In Section V, the conclusion is
+drawn and future work is proposed.
+II. SYSTEM OVERVIEW
+A. PAD System Setup
+The PAD system is shown in Fig. 1. A single Kinect sensor
+is used to capture the information about the objects and the
+human motion. The PAD system has three operation modes:
+object modeling mode, object recognition mode and human
+tracking mode. To model and recognize objects, the Kinect
+faces downward 45 degree at the objects. To track human
+skeleton, the Kinect looks horizontally at the demonstrator.
+The pose of the Kinect can be controlled through the
+motor embedded in it. The 3D modeling subsystem, or 3D
+scanner, consists of a rotational Lazy Susan and a Kinect
+sensor. To create the 3D model of an object, we adopt the
+RoboEarth package [11]. Instead of manually rotating the
+marker template, we attach the marker template to the Lazy
+Susan and use a step motor to control its rotation. The 3D
+model can be built after the Lazy Susan rotates 360
+?
+at a
+proper speed.
+Before the skill demonstration, the 3D models for all the
+parts and tools will be created. The 3D models of the tools
+will be used for tool recognition while the 3D models of
+the parts will be used for part recognition and assembly
+state estimation. The procedure for the demonstration is as
+follows. First, the tools and the parts used in the assembly
+will be put on the 3D scanner for recognition. Second, the
+parts will be assembled through certain actions, possibly with
+the help of a tool. Third, the assembled part will be put on
+the 3D scanner for modeling and assembly state estimation.
+This process is repeated until all the parts are assembled into
+the ﬁnal product.
+Fig. 1. The hardware setup of the PAD system.
+B. Formulation of the problem
+Generally a complex assembly task which involves n parts
+can be represented as a sequence of subtasks as follows:
+final product = p
+1
+
+M1
+1
+? p
+2
+
+M2
+1
+  
+M1
+2
+? p
+3
+
+M2
+2
+?...
+  
+M1
+n?1
+? p
+n
+
+M
+n?1
+2
+(1)
+where p
+n
+is the nth part. ? is the assembly action on the
+two parts. It can be considered as two-part assembly tasks
+recursively. In a two-part assembly task, the models for each
+part are deﬁned as M
+1
+and M
+2
+. First, take p
+1
+’s model as
+M
+1
+1
+, p
+2
+’s model as M
+2
+1
+. The superscript denotes the index
+of the subtask. Then, M
+1
+2
+and M
+2
+2
+will be used to denote
+p
+1
+?p
+2
+and p
+3
+respectively. This will continue until the last
+part. In this work, we only consider the two parts case.
+Given the above setup, two problems need to be solved.
+The ﬁrst is to recognize the action and all the parts and tools
+involved, the second is to estimate the assembly state which
+represents the effect of the action.
+The input to the action recognition system has two parts:
+the observation of the objects and the observation of the
+human action. The observation of the objects has two parts:
+?
+p
+is the decision of the part recognition which is one of
+the parts in the assembly sets. ?
+t
+is the decision of the tool
+recognition which is one of the tools in the tool set. If the
+action does not involve any tool then ?
+t
+= null. The obser-
+vation of the action ?
+a
+is a sequence of skeleton data of the
+human subject {?
+1
+,?
+2
+...?
+t
+}, where ?
+t
+= {?
+1
+,?
+2
+...?
+k
+},
+?
+i
+is the angle of joint i and k is the number of joints.
+We assume the part set P = {P
+1
+,P
+2
+...P
+m
+}, the tool set
+T = {T
+1
+,T
+2
+...T
+n
+}, and the action set A = {A
+1
+,A
+2
+...A
+q
+}.
+The problem is to develop an algorithm to decide on A
+i
+? A
+given the above observation. In other words, the goal of the
+action recognition is to ﬁnd a mapping function f
+1
+,
+A
+i
+= f
+1
+(?
+a
+,?
+p
+,?
+t
+) (2)
+6314
+To obtain the assembly state, the input includes the 3D
+models of each individual part and the 3D model of the
+assembled part after each action. The goal of the assembly
+state estimation is to ﬁnd a mapping function f
+2
+S = f
+2
+(M
+1
+,M
+2
+,M
+1
+?M
+2
+) (3)
+Here, S is assembly state. M
+1
+and M
+2
+are the 3D models
+of the two parts involved. M
+1
+?M
+2
+is the 3D model of the
+assembled part which includes parts M
+1
+and M
+2
+. For state
+estimation, M
+2
+is treated as the reference part. Then the state
+S is the pose of the non-reference part with respect to the
+reference part.
+Based on the solutions to the two problems mentioned, we
+can generate a sequence of skill scripts ? as follows
+?=(?
+1
+,?
+2
+,?
+3
+...?
+n
+) (4)
+where each skill script ?
+i
+is a 5-tuple symbolic description
+deﬁned as
+?
+i
+=<A
+i
+,T
+i
+,P
+1i
+,P
+2i
+,S
+i
+> (5)
+III. METHODOLOGY
+In this section, the approaches to object recognition, action
+recognition and assembly state estimation are introduced.
+A. Object recognition
+With the emergence of RGB-D cameras, color and depth
+based object recognition has been receiving more attention
+recently [12]. With RGB-D cameras, not only the object
+type but also its location and orientation can be obtained
+efﬁciently, which is helpful for object manipulation. By
+recognizing the parts to be assembled and the tool to be
+used, we can have better recognition of the assembly action.
+The challenge is that the size of the parts and tools are
+usually small and traditional 2D feature based recognition
+algorithms are not effective due to the limited number of
+features. Therefore we adopt a 3D feature based recognition
+algorithm.
+We ﬁrst create the 3D object models based on the 3D scan-
+ner we described. Then 3D object recognition is performed
+based on the recognition module in Point Cloud Library
+(PCL) [13]. First, the normals of both the model and the
+scene clouds are computed using the 10 nearest neighbors
+of each point. Second, each point cloud is downsampled
+in order to ﬁnd a small number of keypoints, which will
+then be associated to a 3D descriptor in order to per-
+form keypoint matching and determine point-to-point corre-
+spondences. Third, point-to-point correspondences between
+model descriptors and scene descriptors are determined. The
+last stage is to cluster the previously found correspondences.
+Two correspondence grouping algorithms [14], [15] are used.
+For more details about the object recognition, please see [13].
+B. Action recognition
+We aim to build an accurate action recognition system
+by considering the object/action correlation. A two level
+probabilistic approach is proposed to achieve this goal. At
+the low level, Hidden Markov Models (HMMs) [16] are
+Fig. 2. The action recognition framework.
+employed to model the dynamics of the actions. At the
+high level, a Bayesian model is used to capture action-object
+dependencies. The framework is shown in Fig. 2.
+1) HMMs for low-level action recognition: Modeling the
+low-level dynamics of human motion is important for human
+motion recognition. It serves as a quantitative representation
+of simple movements so that those simple movements can
+be recognized in a reduced space by the trajectories of
+motion parameters [17]. We propose a single-step HMM
+based approach to perform real-time action spotting and
+classiﬁcation of continuous user motion.
+The raw right arm joint angles can be accessed with the
+support of the Openni driver [18] and the skeleton tracker
+function as shown in Fig. 3. After segmentation and sym-
+bolization, the data can be fed into HMMs for training and
+recognition. For the low-level HMMs, each model is trained
+with ﬁfteen sets of training data at a sampling rate of 20 Hz.
+A rule-based method is adopted for data segmentation. The
+starting pose is deﬁned, and each training data set consists
+of twenty data points after the starting point. Then K-means
+clustering algorithm is used to convert the vectors into the
+observable symbols for HMMs. The centroids from K-means
+are saved for use in testing. To balance the computational
+complexity, efﬁciency and accuracy, we set up parameters
+for each HMM as follows: the number of states in the
+model is 10; the number of distinct observation symbols is
+8. For further details about the low-level HMM please see
+our previous work [19].
+2) Bayesian network for modeling object action depen-
+dencies: There are two kinds of objects, the tools and the
+parts. They both have correlation with the action. Manip-
+ulating action is denoted by A
+j
+. ?
+p
+is the decision of the
+part recognition. ?
+t
+is the decision of the tool recognition.
+?
+a
+is the observation of the action, where ?
+p
+? ?
+p
+,
+?
+t
+? ?
+t
+and ?
+a
+? ?
+a
+. At this level, the goal is to
+ﬁnd the maximum posterior likelihood (MAP) estimation,
+max
+Aj
+P(A
+j
+|?
+a
+,?
+p
+,?
+t
+). According to Bayesian rule,
+P(A
+j
+|?
+a
+,?
+p
+,?
+t
+) ? P(?
+a
+|A
+j
+,?
+p
+,?
+t
+)·P(A
+j
+|?
+p
+,?
+t
+) (6)
+P(?
+a
+|A
+j
+,?
+p
+,?
+t
+)= P(?
+a
+|A
+j
+), because according to the
+6315
+Fig. 3. Human skeleton tracking using a Kinect sensor.
+Bayesian network, ?
+a
+is independent of ?
+p
+and ?
+t
+given
+A
+j
+. P(?
+a
+|A
+j
+) is the action recognition output in terms
+of probability from the low-level HMMs. On the other
+hand, according to the Bayesian network, P(A
+j
+|?
+p
+,?
+t
+) ?
+P(A
+j
+|?
+p
+)·P(A
+j
+|?
+t
+). Applying the total probability theorem,
+we have
+P(A
+j
+|?
+p
+)=
+
+i
+P(A
+j
+|P
+i
+,?
+p
+)·P(P
+i
+|?
+p
+) (7)
+P(A
+j
+|?
+t
+)=
+
+i
+P(A
+j
+|T
+i
+,?
+t
+)·P(T
+i
+|?
+t
+) (8)
+If part P
+i
+and tool T
+i
+are not used, the dominant factor in
+Equation (7) and (8) are P(A
+j
+|P
+s
+,?
+p
+) and P(A
+j
+|T
+s
+,?
+p
+)
+where P
+s
+and T
+s
+indicate the involved part and the tool
+respectively. P(A
+j
+|P
+s
+,?
+p
+)= P(A
+j
+|P
+s
+), since A
+j
+and ?
+p
+are independent given P
+s
+. P(A
+j
+|P
+s
+) is the prior probability
+characterizing the action that is applied on this part, which
+can be calculated based on the occurrence of A
+j
+given
+P
+s
+in the training set. On the other hand, P(P
+s
+|?
+p
+) is
+the part classiﬁcation accuracy. Similarly, P(A
+j
+|T
+s
+,?
+t
+)=
+P(A
+j
+|T
+s
+), P(A
+j
+|T
+s
+) is the prior probability characterizing
+the action that occurs when this tool is used, which can
+be calculated based on the occurrence of A
+j
+given T
+s
+in
+the training set. P(T
+s
+|?
+t
+) is the tool classiﬁcation accuracy.
+Therefore, we have
+P(A
+j
+|?
+p
+,?
+t
+)=
+P(A
+j
+|P
+s
+)·P(P
+s
+|?
+p
+)·P(A
+j
+|T
+s
+)·P(T
+s
+|?
+t
+)
+(9)
+If the action does not involve any tool, we have
+P(A
+j
+|?
+p
+)= P(A
+j
+|P
+s
+)·P(P
+s
+|?
+p
+) (10)
+Fig. 4. State estimation for a two-step assembly task. M
+1
+and M
+1
+are the
+3D model of the base board and the bolt. CM
+1
+is the 3D model after the
+ﬁrst action. CM
+2
+is the 3D model after the second action.
+Fig. 5. The parts and the associated model. The images on top show the
+parts. (a) base board, (b) bolt, (c) after “insertion”, (d) after “hammering”.
+(e) after “wrenching”. The images on bottom shows the corresponding 3D
+models (f) M
+1
+. (g) M
+2
+. (h) CM
+1
+. (i) CM
+2
+. (j) CM
+3
+.
+C. Assembly state estimation
+All the models have the same coordinate frame deﬁned
+by the 3D scanner, since all the parts are scanned using the
+same camera pose. One of the two parts will be treated as
+the reference part. Therefore the state is the pose of the non-
+reference part with respect to the reference part.
+Fig. 4 shows a two-step assembly task that inserts and
+hammers a square bolt into a hole on the base board. With the
+3D scanner, ﬁrst we create the 3D models for these two parts.
+Since they have the same frame, the initial state S
+0
+can be
+represented as a 4 by 4 identity matrix. The 3D model for the
+assembled part is created once the action is applied to these
+two parts. The 3D models for each part will be registered
+to the 3D model of the assembled part respectively. Iterative
+Closest Point (ICP) [20] algorithm is adopted to calculate
+the transformation.
+We obtain two transformation matrices. T
+ri
+represents the
+pose change of the reference part after registration; while
+T
+pi
+represents the pose change of the non-reference part
+after registration. The assembly state S
+i
+after action i can
+be calculated as.
+S
+i
+=(T
+r(i?1)
+)
+?1
+·S
+i?1
+·T
+p(i?1)
+(11)
+IV. EXPERIMENT AND RESULTS
+In this section, the design of the experiments is introduced
+ﬁrst, then the experimental results are presented.
+A. Experiment procedure
+We use some toy parts and tools to conduct the assembly
+task. The parts are a bolt and a base board with holes. The
+tools include a screw driver, a hammer and a wrench. The
+associated actions are screwing, hammering and wrenching.
+6316
+Fig. 6. Results of tool and part recognition, where the recognized objects,
+the recognized objects are highlighted in red. (a) recognition of the screw
+driver. (b) recognition of the hammer. (c) recognition of the base board. (d)
+recognition of the screw.
+In the ﬁrst experiment, a bolt is inserted and then ham-
+mered into a hole on a base board. Then, it is wrenched by
+30
+?
+with respect to the base board. Fig. 5 shows the parts
+and the corresponding 3D models. The second experiment
+is to ﬁnd an appropriate point cloud downsampling rate
+to accelerate the ICP computation without sacriﬁcing the
+performance. The bolt is wrenched around the Z axis with
+a step of 30
+?
+from 0
+?
+to 180
+?
+. At each step, we create a
+3D model for the assembled part. Then the state S after
+each wrenching action is estimated. Due to the small size of
+the part, the scanner can not capture the details very clearly.
+However, it does not affect the registration results, since only
+the outline of each point cloud matters.
+B. Experiment Results
+1) Part recognition: The top row in Fig. 6 shows the
+recognition of the screw driver and the hammer respectively.
+In the bottom row, it shows the recognition of the base board
+and the screw. The recognized objects are highlighted in red.
+In order to recognize small objects like the screw which
+has small size in the scene, the down sampling radius for
+the scene has to be small so that enough keypoints can be
+extracted. The average recognition accuracy for the parts and
+tools is above 85%.
+2) Action recognition: For action recognition, we com-
+pare the low-level HMM output with the Bayesian model
+output. Based on the motion features only, the recognition
+accuracy is poor, since the motion features of these three
+actions are very similar to each other. With the object context,
+the actions can be differentiated effectively. To evaluate the
+action recognition system, each action is conducted 50 times.
+The accuracy of these two models are shown in Table I and
+Table II respectively.
+3) Assembly state estimation: The state can be repre-
+sented by a transformation matrix, from which the position
+and orientation can be calculated as {D
+x
+,D
+y
+,D
+z
+,?,?,?},
+TABLE I
+ACTION RECOGNITION ACCURACY OF THE LOW-LEVEL HMMS
+test type
+decision type
+accuracy
+hammering screwing wrenching not detected
+hammering 0.44 0.31 0.21 0.04 0.44
+screwing 0.25 0.46 0.22 0.07 0.46
+wrenching 0.17 0.28 0.52 0.03 0.52
+TABLE II
+ACTION RECOGNITION ACCURACY OF THE BAYESIAN MODEL
+test type
+decision type
+accuracy
+hammering screwing wrenching not detected
+hammering 0.95 0 0 0.05 0.95
+screwing 0.04 0.92 0 0.04 0.92
+wrenching 0.05 0 0.91 0.04 0.91
+where D
+x
+,D
+y
+,D
+y
+are the x, y, z positions and ?,?,? are
+the roll, pitch and yaw angles. The initial state S
+0
+is
+S
+0
+= {0m,0m,0m,0
+?
+,0
+?
+,0
+?
+} (12)
+Fig. 7 gives the results of registering M
+1
+and M
+2
+to CM
+1
+after the “insertion” action. The state S
+1
+which represents
+the pose of M
+1
+with respect to M
+2
+can be estimated as:
+ˆ
+S
+1
+= {0.0010m,0.0028m,?0.0029m,0.00
+?
+,0.00
+?
+,0.01
+?
+}
+(13)
+The result shows that
+ˆ
+S
+1
+is almost the same as S
+0
+.Itis
+because the pose of each individual model almost overlaps
+with its counterpart in CM
+1
+. Therefore, T
+p1
+and T
+r1
+are
+both close to an identity matrix. Fig. 8(a) and 8(b) show the
+result of the registration of M
+1
+and M
+2
+in CM
+1
+to their
+poses in CM
+2
+. The movement of M
+1
+is mainly translation
+along the vertical axis (Z axis). The ground truth of S
+2
+is
+{0m,0m,0.034m,0
+?
+,0
+?
+,0
+?
+}. The estimated S
+2
+is shown
+below
+ˆ
+S
+2
+= {?0.0014m,0.0031m,0.0350m,0.95
+?
+,?0.74
+?
+,1.41
+?
+}
+(14)
+After wrenching, the bolt is rotated anticlockwise by 30
+?
+about the base board. Fig. 8(c) and 8(d) show the registration
+result of M
+1
+and M
+2
+in CM
+2
+to CM
+3
+. The ground truth of
+S
+3
+is {0m,0m,0.034mm,0
+?
+,0
+?
+,30
+?
+}. The estimated S
+3
+is
+ˆ
+S
+3
+= {0.0023m,?0.0011m,0.0350m,2.21
+?
+,1.36
+?
+,31.47
+?
+}
+(15)
+This assembly process is repeated 10 times. The average
+error for translation and rotation is within 5 mm and 5
+?
+respectively. Finally, after the human demonstration, the
+following script can be generated automatically:
+? ?? ?? ?
+1
+=< insertion,null,bolt,baseboard,S
+1
+>
+?
+2
+=< hammering,hammer,bolt,baseboard,S
+2
+>
+?
+3
+=< wrenching,wrench,bolt,baseboard,S
+3
+>
+(16)
+V. CONCLUSION
+In this paper, we propose a PAD system for automated
+assembly skill acquisition. With the recognition of the tools
+and parts used, we can effectively recognize assembly ac-
+tions. To estimate the assembly state, we build 3D models of
+6317
+Fig. 7. Registration of the parts after “insertion”. 3D model of the
+assembled part CM
+1
+is shown on top. The model on bottom is composed
+of the M
+1
+and M
+2
+after registering to CM
+1
+.
+Fig. 8. Registration of the parts after “hammering” and “wrenching”. (a)
+poses of M
+1
+, M
+2
+in CM
+1
+and CM
+2
+. (b) result of registering M
+1
+, M
+2
+to
+CM
+2
+. (c) poses of M
+1
+, M
+2
+and CM
+3
+. (d) result of registering M
+1
+, M
+2
+in CM
+2
+to CM
+3
+.
+the individual parts and the assembled parts. ICP algorithm
+is used to obtain the spatial relationship between the parts.
+This method is robust to minor occlusions and works for
+small parts. Our PAD system can be used for robots to
+acquire assembly skills. The limited accuracy of the created
+3D model limits the current PAD system to only simple parts.
+In future work, we will explore the use of more accurate 3D
+modeling methods and also try on more complicated parts.
+REFERENCES
+[1] Robohub. [Online]. Available: http://robohub.org/foxbots-being-
+deployed-in-china/
+[2] J. Takamatsu, K. Ogawara, H. Kimura, and K. Ikeuchi, “Recognizing
+assembly tasks through human demonstration,” Int. J. Rob. Res.,
+vol. 26, no. 7, pp. 641–659, July 2007.
+[3] J. Aleotti, S. Caselli, and M. Reggiani, “Toward programming of
+assembly tasks by demonstration in virtual environments,” in IEEE
+International Workshop on Robot and Human Interactive Communi-
+cation, 2003, pp. 309–314.
+[4] P. Azad, T. Asfour, and R. Dillmann, “Toward an uniﬁed representation
+for imitation of human motion on humanoids,” in IEEE International
+Conference on Robotics and Automation, 2007, pp. 2558–2563.
+[5] R. Dillmann, “Teaching and learning of robot tasks via observation of
+human performance,” Robotics and Autonomous Systems, vol. 47, no.
+2-3, pp. 109–116, 2004.
+[6] H. Friedrich, S. M¨ unch, R. Dillmann, S. Bocionek, and M. Sassin,
+“Robot programming by demonstration (rpd): Supporting the induction
+by human interaction,” Machine Learning, vol. 23, no. 2-3, pp. 163–
+189, 1996.
+[7] S. Calinon and A. Billard, “A probabilistic programming by demon-
+stration framework handling constraints in joint space and task space,”
+in IEEE/RSJ International Conference on Intelligent Robots and
+Systems, 2008, pp. 367–372.
+[8] C. Zhu and W. Sheng, “Realtime human daily activity recognition
+through fusion of motion and location data,” in 2010 IEEE Interna-
+tional Conference on Information and Automation, june 2010, pp. 846
+–851.
+[9] R. Zollner, O. Rogalla, and R. Dillmann, “Integration of tactile sensors
+in a programming by demonstration system,” in IEEE International
+Conference on Robotics and Automation, vol. 3, 2001, pp. 2578–2583.
+[10] N. Dantam, I. Essa, and M. Stilman, “Linguistic transfer of human
+assembly tasks to robots,” in International Conference on Intelligent
+Robots and Systems (IROS), 2012, pp. 237–242.
+[11] D. Di Marco, A. Koch, O. Zweigle, K. Haussermann, B. Schiessle,
+P. Levi, D. Galvez-Lopez, L. Riazuelo, J. Civera, J. Montiel,
+M. Tenorth, A. Perzylo, M. Waibel, and R. van de Molengraft,
+“Creating and using roboearth object models,” in IEEE International
+Conference on Robotics and Automation (ICRA), May 2012, pp. 3549
+–3550.
+[12] K. Lai, L. Bo, X. Ren, and D. Fox, “Detection-based Object Labeling
+in 3D Scenes,” in IEEE International Conference on on Robotics and
+Automation, 2012.
+[13] R. B. Rusu and S. Cousins, “3D is here: Point Cloud Library (PCL),” in
+IEEE International Conference on Robotics and Automation (ICRA),
+Shanghai, China, May 2011.
+[14] F. Tombari and L. Di Stefano, “Object recognition in 3d scenes
+with occlusions and clutter by hough voting,” in Fourth Paciﬁc-Rim
+Symposium on Image and Video Technology (PSIVT), 2010, pp. 349–
+355.
+[15] H. Chen and B. Bhanu, “3d free-form object recognition in range
+images using local surface patches,” in Proceedings of the 17th
+International Conference on Pattern Recognition, vol. 3, 2004, pp.
+136–139.
+[16] L. R. Rabiner, “A tutorial on hidden markov models and selected
+applications in speech recognition,” in Proceedings of the IEEE, 1989,
+pp. 257–286.
+[17] Y. Wu, T. S. Huang, and N. Mathews, “Vision-based gesture recogni-
+tion: A review,” in Lecture Notes in Computer Science, pp. 103–115.
+[18] Openni. [Online]. Available: http://www.openni.org/Documentation/
+[19] Y. Gu, H. Do, J. Evert, and W. Sheng, “Human gesture recogni-
+tion through a kinect sensor,” in IEEE International Conference on
+Robotics and Biomimetics, Dec. 2012.
+[20] P. Besl and N. D. McKay, “A method for registration of 3-d shapes,”
+IEEE Transactions on Pattern Analysis and Machine Intelligence,
+vol. 14, no. 2, pp. 239–256, 1992.
+6318

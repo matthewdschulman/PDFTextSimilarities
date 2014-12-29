@@ -1,0 +1,821 @@
+Long-Term Exploration & Tours for Energy Constrained Robots with Online
+Proprioceptive Traversability Estimation
+Steven Martin and Peter Corke
+Abstract— This paper is concerned with how a localised and
+energy-constrained robot can maximise its time in the ﬁeld by
+taking paths and tours that minimise its energy expenditure.
+A signiﬁcant component of a robot’s energy is expended on
+mobility and is a function of terrain traversability. We estimate
+traversability online from data sensed by the robot as it moves,
+and use this to generate maps, explore and ultimately converge
+on minimum energy tours of the environment. We provide
+results of detailed simulations and parameter studies that
+show the efﬁcacy of this approach for a robot moving over
+terrain with unknown traversability as well as a number of a
+priori unknown hard obstacles. We also present preliminary
+experimental results to show the feasibility of this approach in
+natural terrain.
+I. INTRODUCTION
+Mobile ground robots have the potential to perform many
+of the routine tasks currently undertaken by scientists study-
+ing the environment. Currently the cost of data collection is
+a signiﬁcant factor that limits both the spatial and temporal
+resolution and extent of measurements. In order for robots to
+undertake such missions they must be able to maximise their
+time in the ﬁeld and minimise the time spent recharging or
+refuelling.
+A mobile outdoor robot expends the bulk of its limited
+energy on mobility and the rate of expenditure is a function
+of the terrain over which the robot is driving, for example
+the local slope and the terra-mechanical properties of the
+ground. The challenge in planning energy efﬁcient routes is
+that the terrain characteristics are generally a priori unknown,
+particularly the terra-mechanical properties. This necessi-
+tates methods for estimating the terrain characteristics of
+the ground over which the robot is driving and also for
+exploration of the environment.
+Much previous work has focused on mapping obsta-
+cles and efﬁciently planning, and replanning, optimal paths
+around them. This approach is very effective in indoor
+environments but outdoors in unstructured terrain, with a
+sufﬁciently capable robot, most locations can be traversed
+with the expenditure of sufﬁcient energy. Therefore we need
+to do more than simply classify obstacles in a binary sense
+— we require a more continuous estimate of the cost of
+moving over a patch of terrain to improve the quality of
+planned paths. For example Howard and Seraji [1] consider
+two classes of obstacles: hard and soft hazards. Hard hazards
+The authors are with the CyPhy Laboratory, School of Electrical
+Engineering and Computer Science, Queensland University
+of Technology, Australia. steven.martin@qut.edu.au,
+peter.corke@qut.edu.au
+This work was supported by the CSIRO: Minerals Down Under Flagship
+and the Autonomous Systems Lab.
+(a) Ground truth traversiblity
+map
+(b) Reconstructed traversiblity
+after 1 tour
+(c) Reconstructed traversiblity
+after 3 tours
+(d) Reconstructed traversiblity
+after 5 tours
+Fig. 1: The underlying traversiblity is reconstructed using
+a Gaussian Process regression from proprioceptive mea-
+surements. By the ﬁfth tour the traversability is a good
+approximation of the ground truth. The terrain is coloured
+by instantaneous power usage (W) during traversal. The red
+regions indicate a priori unknown obstacles that are detected
+by a planar laser scanner.
+are obstacles that can never be traversed, for example a wall.
+Methods for detecting and avoiding these obstacles is well
+covered by prior literature [2], [3], [4]. The second class is
+soft hazards, which are regions that the robot can drive over
+but at increased cost in terms of tractive power.
+In this paper we propose a novel approach to this problem
+that we show is capable of energy efﬁcient exploration
+and touring of environments with smooth or discontinuous
+traversilibity cost maps that are unknown a priori. We also
+consider that the environments contain a priori unknown hard
+obstacles or untraversable cells. Leveraging existing work on
+online traversability estimation we can build spatial maps of
+traversability, based on the robot’s experience, which can be
+used for planning minimal-energy cost paths. Direct experi-
+ence however is limited to the paths actually driven so we use
+Gaussian process (GP) regression to extrapolate traversability
+estimates, and we use this to determine prospective regions
+for exploration. Our vehicle energy model includes two com-
+ponents: mobility that is a function of terrain, and a constant
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 Crown 5778
+(hotel load). The key contribution of this work is showing
+how explicit consideration of hotel load in combination with
+appropriate GP initialisation leads naturally to a simple and
+energy-efﬁcient exploration strategy. Our motivating scenario
+is a robot performing repeated tours of a set of a priori known
+waypoints within a bounded region, and we provide extensive
+simulation results and statistics generated using Monte-Carlo
+techniques to show the efﬁcacy of this scheme. The next
+section presents relevant prior work, and Section III describes
+our proposed technique for estimating the underlying ter-
+rain, exploring the terrain and planning tours. Section IV
+details the simulation environment and presents results and
+discussion of mapping traversability in natural and urban
+terrain. Section V presents some preliminary experimental
+results to demonstrate the efﬁcacy of this approach on a robot
+platform in natural terrain. Finally, Section VI summarises
+our conclusions and discusses directions for future work.
+II. RELATED WORK
+The cost of driving through a region is the traversability
+cost, or more in this paper simply traversability. This metric
+can be estimated directly from robot low-level sensor data or
+by classifying the type of terrain the vehicle is driving over
+into one of a number of known classes (eg. concrete, grass,
+gravel, etc) of a priori known traversability. In this section
+we provide an overview of current methods for estimating
+traversability and discuss why methods using proprioceptive
+sensing are beneﬁcial for long term deployments.
+A. Direct Traversability Metrics
+The most common method of calculating traversability is
+to use the 3D structure of the surface. This can be gathered
+locally using common robotic sensors such as nodding or
+spinning LIDAR, stereo, structured light cameras or globally
+from aerial LIDAR.
+A simple surface roughness-based traversability metric
+was used by Castelnovi et al. [5] to adapt the speed of mobile
+robot to the terrain immediately in front of it. In Molino et
+al.[6] several traversability metrics were developed that use
+roughness to determine the robot’s ability to cross regions.
+Roughness has also been used by rover style robots, for
+example Singh et al. [7] used stereo vision to determine
+local roughness as well as terrain slope in order to plan
+paths that avoided rocky and sloped areas. The 3D surface
+structure can also be predicted from the conﬁguration of the
+robot on the surface [8], [9] where the vehicle’s stability or
+tractive force was equated to traversability. This approach
+is applicable to reconﬁgurable robots that can adapt their
+suspension or geometry to optimize the traversability in
+different regions [8].
+B. Classiﬁcation
+Another approach has been to classify terrain. Robots
+often work in structured environments where the surfaces
+belong to one of a small number of classes with known
+properties. Once the class is identiﬁed its assumed properties
+can be used to inform a path planner.
+Fig. 2: In many cases the traversability of terrain can be
+visually ambiguous. From left to right the loose gravel and
+exposed aggregate concrete, sand and concrete are both very
+similar in appearance however one has a high cost and one
+low cost in terms of traversability.
+The primary sensor modality for classiﬁcation has been
+imagery, for instance terrain color analysis [10], but this
+makes strong assumptions about the association between
+color and terrain and hence traversability. Learning tech-
+niques can be applied but the use of imagery usually requires
+some form of pixel-based terrain classiﬁcation [11]. Attempts
+have also been made to link a priori information from
+satellite images with local classiﬁcations to improve long
+distance traversability estimates [12].
+Classiﬁcation is often simpliﬁed to a binary problem of
+whether terrain is locally traversable or not, leading to the
+well known occupancy grid world representation. This type
+of traversability classiﬁcation has been demonstrated using
+a neural-network-based approach [13], [14], [15]. A binary
+classiﬁcation is valuable for hazard avoidance but does not
+provide more nuanced information about the cost of moving
+across regions.
+Classiﬁcation of satellite and aerial LIDAR images into
+ground structure such as buildings, road and vegetation and
+then to a global traversability has been shown by Sofman et
+al. [16] and demonstrated on the Crusher platform [12].
+A pure classiﬁcation-based assessment has the disad-
+vantages of relying completely on training data or expert
+knowledge of the traversability cost of each terrain class,
+and ignoring intra-class variation. The classiﬁcation approach
+could be augmented to use proprioceptive sensors such as the
+wheel slip, vibration, energy consumption to infer whether
+or not the classiﬁcation is successful and possibly to update
+the cost associated with the terrain class.
+C. Self-supervised classiﬁcation
+A novel approach to self-supervised classiﬁcation was
+demonstrated by Angelova et al. [17] that used onboard
+stereo imagery to determine a local traversability map and
+used estimated vehicle slip to supervise learning of the terrain
+classiﬁcation. The work of Bagnell et al.[18] extends Silver
+et al. [12] to include online learning of the association
+between local traversability from onboard sensors and the
+classiﬁcation of terrain from satellite imagery. A similar
+approach was applied to a lunar rover platform by Brooks
+et al. [19]. By using additional sensors to provide a better
+connection to the experienced terrain self-supervised learning
+is able to perform better classiﬁcation and reduce the reliance
+on training and expert knowledge.
+5779
+D. Proprioceptive sensing
+The techniques summarised above have individual weak-
+nesses. Sensors such as 3D laser for roughness estimation
+are expensive, bulky, heavy and power hungry that can
+be problematic for small, low cost and long endurance
+robots. Assumptions that rely on a strong a priori correlation
+between sensor measurements and terrain cost can be prob-
+lematic, for example Figure 2 shows some cases where this
+assumption is invalid.
+Proprioceptive sensors, which directly reﬂect the robot’s
+experience of the terrain, avoid the assumptions and infer-
+ence required for the approaches above. In prior work [20]
+proprioceptive sensors such as wheel slip, vehicle orienta-
+tion, vibration and power consumption were used to map
+instantaneous traversability and a GP was used to estimate
+global traversability based on sparse sampling of locations
+selected by a random exploration. In this paper we use a
+similar technique and leverage the underlying properties of
+GPs to explore and map terrain while visiting waypoints
+within a region.
+III. TECHNICAL APPROACH
+Our problem is deﬁned as visiting a set of desired way-
+points, a tour, as often as possible given ﬁnite onboard energy
+— this requires us to minimize the energy used per tour. The
+traversability of the terrain is unknown in advance and the
+terrain also contains a number of untraversable obstacles that
+are unknown in advance. The robot must incrementally learn
+the relationship between location and motive power usage,
+and ﬁnd an optimal path for visiting the goals. Assumptions
+made include: the robot is always localised; the waypoints
+can be visited in any order; the robot has sufﬁcient sensors
+to measure local traversability online (eg. as described by
+Martin et al. [20]); the robot is equipped with a sensor that
+can detect untraversable obstacles (eg. a scanning laser).
+Formally we express our problem as ﬁnding the path x that
+minimises the total energy consumption, E
+t
+, for the tour
+x
+
+= arg min
+x
+E
+t
+subject to visiting a set of N waypoints X
+w
+= x
+1
+; x
+2
+ x
+N
+so that X
+w
+2 x(t); 0  t  T . The energy consumed
+has two terms: motive energy that is a function of the
+path, the velocity proﬁle, slope and traversability; and the
+hotel load that is the continuous power consumption of
+onboard computers, sensors and communications gear. The
+total energy is therefore
+E
+t
+=
+Z
+T
+0
+fP
+m
+(v(x(t));(x(t));(x(t)) +P
+h
+gdt
+where t2 R, 0 t T is time along the path, x(t)2 R
+2
+is the coordinate of the point along the trajectory; v(x)2R
+is the instantaneous velocity of the robot;(x)2R
+3
+;jj = 1
+is a unit vector normal to the surface, ie. slope; (x)2R is
+the local traversability metric; P
+m
+()2 R is motive power;
+P
+h
+2R is the hotel load power, andT is the total tour time.
+In this paper we further assume that the terrain is ﬂat
+and that the robot is moving at constant velocity (regardless
+of terrain) which simpliﬁes the mobility energy term to
+E
+m
+((x(t)).
+A. Gaussian Process Regression
+As the robot traverses the region it gathers samples of
+motive power usage. We utilize GPs to integrate the sparse
+samples at locations along the path into an estimated global
+cost map that can be used for planning. We use a ho-
+moscedastic regression with a squared exponential kernel
+k (x; x
+0
+) =
+f
+exp
+
+ 
+1
+2l
+jx  x
+0
+j
+2
+
+(1)
+wherek describes the relationship between observations at x
+and x
+0
+, and where
+f
+andl are learnt hyper-parameters of the
+GP. The GP is assumed to have a zero mean that is equivalent
+to assuming that in the presence of no information the
+estimate will approach zero. We will exploit this assumption
+to bias the path planning algorithm towards exploration.
+The squared exponential kernel is also called the Gaussian
+kernel and in practise has the effect of smoothing the data
+with a correlation proportional to distance. This is useful for
+natural environments that we assume are smooth but it does
+not handle discontinuous or rapidly changed scenarios well
+and can produce oversmoothed data [21].
+In the scenario considered in this paper all training points,
+power measurements, will be positive but the regression
+could potentially estimate a negative cost in regions of high
+variance. This is unrealistic (perhaps possible with downhill
+regenerative braking) and also problematic for planning, so
+we clamp any negative motive costs from the regression to
+zero for planning.
+In order to compare the known terrain model and the GP
+estimate, we sample both on a regularly-spaced grid and
+calculate the probabilistic log likelihood
+PLL = 
+1
+2n
+n
+X
+j=1
+log 2
+2
+j
++
+ 
+
+j
+ 
+0
+j
+
+2
+
+2
+j
+(2)
+where n is the number of sampled points from the GP and
+ is the true traversability value and 
+0
+is the estimated
+traversability with variance. This measure accounts for the
+variance and gives a succinct indication of how well the GP
+predicts the entire distribution.
+The computational complexity of Gaussian processes typ-
+ically scales asO(n
+3
+) [22]. Despite approximations that can
+improve upon this the unbounded increase in the number of
+data points gathered during long term operations will even-
+tually make recomputing the costmaps with GPs intractable.
+Therefore we bin the data points into terrain cells similar to
+the method proposed by Plonski et al. [23] that constrains the
+upper computational bound of the GP to being proportional
+to the number of cells in the terrain map rather than the
+robot’s run time.
+B. Path Planning
+We use the D* algorithm [24] that allows distance
+costmaps to be precomputed before traversal and updated
+online if obstacles are encountered. The D* distance cost
+5780
+maps are also updated at the end of a tour when new
+traversability information becomes available.
+The D* cost maps are used to estimate the cost of travel
+between all pairs of waypoints from that we solve the
+travelling salesman problem [25] to determine the best order
+to visit the waypoints. An exact solution to the travelling
+salesman problem was computed here that is reasonable
+given a low number (less than 50) waypoints and the
+computation can be performed at the base station rather
+than onboard the robot. For a high number of waypoints
+approximate solutions, such as those in Russel & Norvig [26]
+could be used.
+IV. SIMULATION
+In order to evaluate the effectiveness of this approach we
+simulated an area of synthetic “natural” terrain. The terrain
+was generated using a fractal pattern with motive power
+requirement varying fromP
+m
+min
+toP
+m
+max
+and an average
+value of
+
+P
+m
+, and a fractal roughness parameter . Non-
+fractal environments are considered in Section IV-C.
+The patch of terrain has dimensions of 150 by 150 m. We
+also randomly placen hard obstacles, sizedO
+x
+byO
+y
+, within
+the environment. The robot has a simulated hotel load ofP
+h
+,
+records its instantaneous motive power usage at 10 Hz, and
+the simulated planar laser scanner for obstacle detection has
+a range of 10 m.
+A. Simulated Monitoring Task
+Using this detailed simulated environment we evaluated
+the system performance for a monitoring task: the robot was
+deployed on a tour to visit four locations and then return to
+base.
+At the base, motive power information gathered during the
+tour was used to generate a new estimate of the traversability
+map using the GP regression. D* distance maps for each
+waypoint were updated with the new cell traversability. The
+cost and path to travel between each pair of waypoints was
+computed and the travelling salesman problem resolved to
+determine the best order to visit the waypoints given current
+terrain knowledge.
+The robot used the precomputed path information to
+execute its next tour and the process was repeated until the
+robot ﬁnished 25 tours or the energy cost E
+t
+converged to
+a constant. For all examined scenarios E
+t
+converged within
+15 tours.
+This simulation was repeated 100 times in order to provide
+a statistically signiﬁcant analysis of the performance of this
+algorithm. The location of obstacles and underlying terrain
+was varied for each simulation, with the location of the
+waypoints held constant. A summary of the parameters used
+in this simulation can be seen in Table I and Figure 3 shows
+a summary of a typical simulation example. An example of
+the evolution of the terrain map is shown in Figure 1.
+B. Results
+On its ﬁrst tour the robot takes the shortest distance path
+since the estimated traversability is zero everywhere (the
+Simulation Parameters
+n 25
+Ox 10 m
+Oy 10 m
+P
+h
+50 W
+
+Pm 250 W
+Pm
+min
+0 W
+Pm
+max
+500 W
+ 0.8
+TABLE I: Baseline Parameters for Simulation
+GP’s initial condition), and the hotel load term, a constant
+energy burn rate, turns this into a minimum distance problem.
+On subsequent tours the traversability of previously visited
+cells is known whereas for unvisited cells the assumed
+traversability is initially optimistically low. The lower bound
+of the tour energy cost is the hotel load of the robot over the
+tour time, drawing the robot into those unexplored regions.
+The robot will therefore explore different routes until
+converging to some (locally) optimal path. The estimated
+traversability map converges towards the true map after
+several exploratory tours, see Figure 5, but will never reach
+it as some areas are never explored. Terrain is optimistically
+assumed to have low traversability but areas will not be
+explored if the cost due to hotel load and the estimated travel
+cost will not provide a reduced energy cost.
+We see this behaviour reﬂected in Figure 3e where there
+is an initial increase in the path cost as the robot explores,
+but as the map used for planning converges to a sufﬁciently
+good estimate of the terrain we see that the cost falls below
+that of the initial shortest distance path. The cost falls
+close to the minimal possible energy cost (computed using
+full knowledge of the ground truth traversability map and
+obstacles) — using exploration and online estimation the
+robot has found the energy optimal path.
+98 out of 100 simulation runs showed improved per-
+formance when compared with the initial shortest distance
+path and the performance over all 100 scenarios improved
+by 15.4% on average. Of the scenarios that improved the
+average time to recoup the additional cost of the exploration
+was 8.8 tours. This is summarized in Figure 4 that shows a
+box and whisker plot of the energy cost to perform a traversal
+when compared with the known optimal tour cost. We can
+see there is a strong tendency to converge towards the optimal
+path energy cost. On average the cost of the converged path
+when compared to the optimal path was only 1.5% greater,
+with the worst case scenario being 12.5% greater.
+The two cases that did not show improvement over the
+initial path occurred when the initial, shortest distance path,
+was coincidently also the minimum energy path. However
+the algorithm did return to the optimal path, but the energy
+wasted on exploration could never be recouped.
+The hotel load is a realistic element of the robot’s energy
+model but we have shown that it plays a key role in
+determining the robot’s enthusiasm for exploration, which is,
+how far it will travel in the search for a lower cost path. For
+example, when the hotel load is high relative to the average
+5781
+(a) Underlying fractal terrain model (b) Reconstructed map (c) Map conﬁdence
+(d) Explored paths and obstacles. (e) Tour energy costEt vs tour number. The
+energy cost of the optimal path (given full
+knowledge) is shown in red.
+(f) Map PLL vs tour number
+Fig. 3: Simulated exploration in natural terrain after 15 tours.
+Fig. 4: Energy cost relative to the optimal path vs number
+of tours.
+traversability cost, any deviation from the shortest-distance
+path will incur a high energy cost due to the extra travel
+time. We see this clearly in Figure 6 where the simulation
+was run for the same underlying terrain while only the hotel
+load was varied — there is a marked reduction in exploration
+as the hotel load increases.
+The reduction in exploration implies that there is a reduced
+beneﬁt to exploration for robots with a high hotel load. To
+explore this behaviour further, as well as to discover corner
+cases and failure modes we conducted a sweep of parameters
+that we expected to inﬂuence performance and navigation
+behaviour. The ﬁrst parameter was the terrain roughness,
+, which controls how far the robot needs to travel in
+Fig. 5: Probablistic log likelihood vs tour number for 100
+simulated scenarios, more positive indicates better ﬁt to
+model.
+Fig. 6: Area explored vs hotel load.
+5782
+TABLE II: The average reduction in tour cost with varying
+parameters.
+TABLE III: The average number of tours required to break
+even with varying parameters.
+order to encounter a certain level of change in traversability.
+The second was hotel load, P
+h
+, which as described above
+inﬂuences the robot’s enthusiasm for exploration.
+For each set of parameters we perform 100 simulations of
+the same terrain environments and the results are summarised
+in Table II and Table III.
+Table II shows the average reduction in tour cost of the ﬁ-
+nal tour cost relative to the initial tour cost. The improvement
+was approximately 15% for the entire sweep, and did not
+show any strong trend when varying roughness or hotel load
+— a relatively constant opportunity for improvement. For
+high roughness and low hotel loads there is slightly greater
+scope for exploration reducing energy cost since excursions
+have lower energy penalty and a greater likelihood of ﬁnding
+regions with lower traversability cost.
+Table III shows the average number of tours until energy
+break even. We see that high roughness and low hotel loads
+scenarios require fewer tours than low roughness and high
+hotel loads scenarios.
+Based on these results the time for that a robot is operating
+in a region is more important than the traversability cost. If
+required number of tours is high and there is variation within
+the terrain it is worthwhile to explore.
+C. Urban Terrain
+In the previous sections we examined the performance of
+our novel sensing and planning strategy for simulated natural
+terrain. However robots often need to operate in urban areas
+where the terrain is discrete and not described well by the
+fractal statistics we used for the natural environment, nor well
+describe by the squared exponential kernel. Here we present
+some initial investigations into applying our algorithm as is
+to a simulated urban environment constructed as shown in
+Figure 7a. The obstacles (buildings) are shown in red with
+low cost paths (roads) linking them in blue, between these
+regions there is sections of varying terrain cost (grass, gravel,
+gardens, etc.) that are coloured accordingly. These sections
+all had constant values and crisp boundaries.
+Despite the world being poorly described by the kernel
+the exploration strategy was again able to converge to an
+optimal plan. A summary of this experiment is shown in Fig-
+ure 7 and shows the exploration approximately reconstructs
+the underlying costmap. In this single case the exploration
+increased performance by 30% and anecdotally it shows that
+this approach could be applied to urban environments.
+V. EXPERIMENTAL RESULTS
+To validate the feasibility of the simulated approach some
+preliminary experiments were conducted. In this section we
+examine generating a map from proprioceptive sensors, in
+this case current sensors, and if there is sufﬁcient variation
+in traversability to warrant exploration. Figure 8a shows
+the test platform, a Clearpath Robotics Husky rover. The
+robot is ﬁtted with current sensors on drive motors and
+sensor/processing payload and it is localised using GPS fused
+with IMU and odometry using a particle ﬁlter.
+For this experiment the robot was driven at constant
+velocity, we assumed the terrain was ﬂat and did not model
+the affects of skid steering on power usage. Throughout the
+tests the average current consumed by the onboard computer
+and sensors was 1.5A and the drive motors approximately
+8A, this is a comparable the the hotel load in the simulated
+scenarios.
+The experiment was conducted on a beach as it offered a
+location with predictable terrain variation and was approx-
+imately ﬂat. As the distance from the water increases the
+sand is drier, softer and more difﬁcult to traverse. To map
+the traversability, the experimental platform trawled a region,
+see ﬁgure 8b, at different distances from the water. This
+information was then used with the same GP regression to
+generate a traversability map.
+Figure 8c shows the resulting traversability map from
+this experiment, it shows current varies from approximately
+7A near the waterline up to 10A higher on the beach. We
+acknowledge this may be problematic as it biases the robot
+to drive towards water however this experiment focuses on
+demonstrating the feasibility of this approach on natural
+terrain whether this be grassland, desert, beach, etc. not
+avoiding water hazards.
+The second experiment was to test if there is sufﬁcient
+variation in terrain in order to warrant exploration. Three can-
+didate paths were chosen as shown in ﬁgure 8d between two
+points in the mapped area. Path A was the shortest distance
+path (black) and paths B and C were two exploration paths
+5783
+(a) Underlying discontinuous terrain model (b) Reconstructed map (c) Map conﬁdence
+(d) Explored paths and obstacles. (e) Robot cost vs tours (f) Map PLL vs tours
+Fig. 7: Simulated exploration in urban terrain after 15 tours.
+(a) Robot Platform (b) Aerial View
+(c) Reconstructed map (d) Experiment Paths
+Fig. 8: Traversability Mapping Experiment
+one further from the waterline (red) and one closer (green)
+to examine if driving a longer path could be beneﬁcial.
+Table IV summarise the results from this experiment. The
+average motor current usage, C
+M
+, shows that the regions
+further from the water were more difﬁcult to traverse. The
+path times, t
+p
+, for A & B were similar while path C was
+Path A Path B Path C
+C
+M
+8.7A 8.9A 7.3A
+tp 118s 116s 133s
+E
+M
+2480J 2500J 2340J
+E
+H
++E
+M
+2900J 2920J 2820J
+TABLE IV: Path traversal results.
+longer. Despite this the total motor energy, E
+M
+used in the
+longest path C was still lower than paths A or B. However
+once the hotel load,E
+H
+, was accounted for the performance
+gained by taking the longer path was small.
+This experiment demonstrates it is possible to reconstruct
+the terrain and that there is potential beneﬁts for taking
+longer more traversable paths. This is a simple test with
+signiﬁcant assumptions but we believe it demonstrates that
+this approach is feasible and warrants future work.
+VI. CONCLUSION
+We have described a system that can explore a terrain with
+a priori unknown traversability and obstacles and achieve
+a minimum energy tour of a set of waypoints. Online
+estimation of local traversability, from motive power, is
+used to update a GP regression of a global cost map that
+is used for planning optimal tours. We demonstrated the
+performance of the algorithm through detailed simulation
+and evaluated the potential for improved performance when
+compared with naive obstacle avoidance. We also considered
+how variation in the terrain may affect performance and
+when it is advantageous to explore. Our vehicle energy
+model includes a term for hotel load that we have shown
+is an implicit control on exploration: a high value penalizes
+exploration and tends toward minimum distance paths.
+The exploration strategy was able to reduce energy cost
+5784
+relative to the ﬁrst tour in 98% of the simulated scenarios.
+We have also demonstrated that the paths converge to an ap-
+proximately optimal value and that for a long term operation
+the exploration cost can be recovered in relatively few tours.
+A very small number of cases were encountered in which
+the initial path was also the optimal path but the algorithm
+returned to optimal path but the exploration cost was never
+recouped — this is always the risk with exploration.
+When considering a sweep of important parameters the
+simulation showed that, on average tour, the energy cost is
+reduced for all scenarios. It also highlighted that scenarios
+where the terrain has highly varying traversability costs and
+where the robot has a low hotel loads will beneﬁt the most
+from exploration. Overall the simulation indicated that the
+time spent in a scenario, the number of tours, may be
+the dominant factor in determining whether exploration is
+beneﬁcial from an energy perspective.
+We believe these results make a strong argument for the
+use of exploration in long term deployments. Implement-
+ing this type of exploration requires minimal computation
+onboard the robot and the required proprioception can be
+achieved using very common robotic sensors. Utilising robot
+experience avoids the problems associated with misclas-
+siﬁcation of terrain and could be applied in variety of
+environments and scenarios.
+A. Future Work
+Our next step is deploying the system in a long term
+experiment and observing how the performance is improved
+in a variety of environments including the urban terrain. To
+achieve this practical extensions need to be made to relax
+the constraints used in this work, particularly ﬂat terrain
+and constant velocity motion. We also need to consider the
+energy cost of turning that is not insigniﬁcant for a skid-
+steered vehicle.
+The current planning and exploration strategy does not use
+the variance information from the GP and incorrect estimates
+in high variance areas may never be corrected. Incorporating
+this conﬁdence into planning may increase the ﬁdelity of the
+reconstructed costmap and avoid potential local minima. We
+also are interested in better understanding how the system
+copes with sudden or gradual changes in the environment,
+such as those due to weather, obstacles coming and going
+and changing waypoints.
+Finally investigations into how traversability information
+can be incorporated into a traversability map online are
+planned with an emphasis on whether this shorter term
+adaptation shows signiﬁcant improvement over the batch
+approach presented here.
+REFERENCES
+[1] S. Karumanchi, “Off-road mobility analysis from proprioceptive feed-
+back,” Ph.D. dissertation, The University of Sydney, 2010.
+[2] J. Borenstein and Y . Koren, “Real-time obstacle avoidance for fast
+mobile robots,” Systems, Man and Cybernetics, IEEE Transactions
+on, vol. 19, no. 5, pp. 1179–1187, 1989.
+[3] O. Khatib, “Real-time obstacle avoidance for manipulators and mobile
+robots,” The international journal of robotics research, vol. 5, no. 1,
+pp. 90–98, 1986.
+[4] A. Stentz, “Optimal and efﬁcient path planning for partially known
+environments,” Intelligent Unmanned Ground Vehicles, pp. 203–220,
+1997.
+[5] M. Castelnovi, R. Arkin, and T. Collins, “Reactive speed control
+system based on terrain roughness detection,” pp. 891–896, 2005.
+[6] V . Molino, R. Madhavan, E. Messina, T. Downs, A. Jacoff, and
+S. Balakirsky, “Traversability Metrics For Urban Search and Rescue
+Robots On Rough Terrain,” Proceedings of the Performance Metrics
+for Intelligent Systems, 2006.
+[7] S. Singh, R. Simmons, T. Smith, A. Stentz, V . Verma, A. Yahja, and
+K. Schwehr, “Recent progress in local and global traversability for
+planetary rovers,” in Robotics and Automation, 2000. Proceedings.
+ICRA ’00. IEEE International Conference on, vol. 2, 2000, pp. 1194
+–1200 vol.2.
+[8] K. Iagnemma and S. Dubowsky, Mobile Robots in Rough Terrain.
+Springer, 2004.
+[9] G. Ishigami, K. Nagatani, and K. Yoshida, “Path planning and eval-
+uation for planetary rovers based on dynamic mobility index,” in
+Intelligent Robots and Systems (IROS), 2011 IEEE/RSJ International
+Conference on. IEEE, 2011, pp. 601–606.
+[10] I. Ulrich and I. Nourbakhsh, “Appearance-based obstacle detection
+with monocular color vision,” in Proceedings of the National Confer-
+ence on Artiﬁcial Intelligence. Menlo Park, CA; Cambridge, MA;
+London; AAAI Press; MIT Press; 1999, 2000, pp. 866–871.
+[11] A. Howard and H. Seraji, “Vision-based terrain characterization
+and traversability assessment,” Journal of Robotic Systems, vol. 18,
+no. 10, pp. 577–587, 2001. [Online]. Available: http://dx.doi.org/10.
+1002/rob.1046
+[12] D. Silver, B. Sofman, N. Vandapel, J. Bagnell, and A. Stentz, “Ex-
+perimental analysis of overhead data processing to support long range
+navigation,” pp. 2443–2450, 2006.
+[13] K. Konolige, M. Agrawal, M. Blas, R. Bolles, B. Gerkey, J. Sol` a,
+and A. Sundaresan, “Mapping, navigation, and learning for off-road
+traversal,” Journal of Field Robotics, vol. 26, no. 1, pp. 88–113, 2009.
+[14] M. Shneier, W. Shackleford, T. Hong, and T. Chang, “Performance
+evaluation of a terrain traversability learning algorithm in the DARPA
+LAGR program,” National Inst Of Standards and Technology Gaithers-
+burg Md, Tech. Rep., 2009.
+[15] A. Talukder, R. Manduchi, R. Castano, K. Owens, L. Matthies,
+A. Castano, and R. Hogg, “Autonomous terrain characterisation and
+modelling for dynamic control of unmanned vehicles,” in Intelligent
+Robots and Systems, 2002. IEEE/RSJ International Conference on,
+vol. 1. IEEE, 2002, pp. 708–713.
+[16] B. Sofman, J. Bagnell, A. Stentz, and N. Vandapel, “Terrain classiﬁca-
+tion from aerial data to support ground vehicle navigation,” Robotics
+Institute, Carnegie Mellon University, Tech. Rep., 2005.
+[17] A. Angelova, L. Matthies, D. Helmick, and P. Perona, “Learning slip
+behavior using automatic mechanical supervision,” in Robotics and
+Automation, 2007 IEEE International Conference on. IEEE, 2007,
+pp. 1741–1748.
+[18] J. A. Bagnell, D. Bradley, D. Silver, B. Sofman, and A. Stentz,
+“Learning for autonomous navigation,” IEEE Robotics & Automation
+Magazine, vol. 17, pp. 74–84, 2010.
+[19] C. Brooks and K. Iagnemma, “Self-supervised terrain classiﬁcation
+for planetary surface exploration rovers,” Journal of Field Robotics.
+[20] S. Martin, L. Murphy, and P. Corke, “Building large scale traversabil-
+ity maps using vehicle experience,” in International Symposium on
+Experimental Robotics, 2012.
+[21] S. Vasudevan, F. Ramos, E. Nettleton, and H. Durrant-Whyte,
+“Gaussian process modeling of large-scale terrain,” Journal of Field
+Robotics, vol. 26, no. 10, pp. 812–840, 2009.
+[22] C. Rasmussen and C. Williams, Gaussian processes for machine
+learning. MIT press Cambridge, MA, 2006, vol. 1.
+[23] P. Plonski, P. Tokekar, and V . Isler, “Energy-efﬁcient path planning
+for solar-powered mobile robots,” 2012.
+[24] A. Stentz, “The D* algorithm for real-time planning of optimal
+traverses.” Robotics Institute, Carnegie Mellon University, Tech. Rep.,
+1994.
+[25] E. Lawler, J. Lenstra, A. Kan, and D. Shmoys, The traveling salesman
+problem: a guided tour of combinatorial optimization. Wiley New
+York, 1985, vol. 3.
+[26] S. Russell and P. Norvig, Artiﬁcial intelligence: a modern approach.
+Prentice hall, 2010.
+5785

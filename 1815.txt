@@ -1,0 +1,1238 @@
+An EfÞciently Solvable Quadratic Program for Stabilizing
+Dynamic Locomotion
+Scott Kuindersma, Frank Permenter, and Russ Tedrake
+AbstractÑWe describe a whole-body dynamic walking con-
+troller implemented as a convex quadratic program. The con-
+troller solves an optimal control problem using an approximate
+value function derived from a simple walking model while
+respecting the dynamic, input, and contact constraints of the full
+robot dynamics. By exploiting sparsity and temporal structure
+in the optimization with a custom active-set algorithm, we
+surpass the performance of the best available off-the-shelf
+solvers and achieve 1kHz control rates for a 34-DOF humanoid.
+We describe applications to balancing and walking tasks using
+the simulated Atlas robot in the DARPA Virtual Robotics
+Challenge.
+I. INTRODUCTION
+Achieving dynamically-stable locomotion in complex
+legged systems is a problem at the heart of modern robotics
+research. For humanoid systems in particular, nonlinear,
+underactuated, and high-dimensional dynamics conspire to
+make the control problem challenging. Optimization-based
+techniques must simultaneously reason about the dynamics,
+actuation limits, and contact constraints of the walking sys-
+tem. Model predictive control (MPC) is a popular approach
+to performing this type of constrained optimization iteratively
+over Þxed horizons, but its computational complexity has
+hindered applications to high-dimensional systems. Further-
+more, the hybrid dynamics of walking robots makes multi-
+step optimization difÞcult [1]. Successful examples of using
+MPC for humanoid control have therefore relied upon the
+use of low-dimensional linear models [2], [3] or relaxation
+of constraints to permit smooth optimization through discon-
+tinuous dynamics [4].
+Several researchers have recently explored using quadratic
+programs (QPs) to control bipedal systems by exploiting the
+fact that the instantaneous dynamics and contact constraints
+can be expressed linearly (effectively solving a horizon-
+1 MPC problem) [5], [6], [7], [8], [9], [10], [11], [12].
+A key observation about these approaches in the context
+of balancing and locomotion tasks is that, during typical
+operation, the set of active inequality constraints changes
+very infrequently between consecutive control steps. We give
+a problem formulation and solution technique that explicitly
+take advantage of this observation.
+We describe a QP that exploits optimal control solutions
+for a simple unconstrained model of the walking system.
+Using time-varying LQR design, we compute the optimal
+This work was supported by AFRL contract FA8750-12-1-0321 and NSF
+contract ERC-1028725, IIS-1161909, and IIS-0746194.
+The authors are with the Computer Science and ArtiÞcial Intelligence
+Laboratory at the Massachusetts Institute of Technology, Cambridge, MA,
+USA. {scottk,fpermenter,russt}@csail.mit.edu
+cost-to-go for the simple model and use it as part of the
+objective function in a constrained optimization to compute
+inputs for the full robot. We describe the approach concretely
+in terms of a simulated bipedal system and zero-moment
+point (ZMP) dynamics. In addition to providing a principled
+and reliable way to stabilize walking trajectories, we show
+the resulting QP cost function contains low-dimensional
+structure that can be exploited to reduce solution time.
+To achieve real-time control rates, we designed a custom
+active-set solver that exploits consistency between subse-
+quent solutions and outperforms the best available off-the-
+shelf solvers such as CVXGEN and Gurobi by a factor of 5
+or more. Our analysis of solver performance during typical
+walking experiments suggests that the active set remains
+constant between consecutive control steps approximately
+97% of the time, requiring only a single linear system solve
+per step. In our tests, we were able to achieve average control
+rates of 1kHz for a 34-DOF humanoid. We brießy summarize
+extensive simulation testing done with the Atlas robot as part
+of the DARPA Virtual Robotics Challenge.
+II. LQR DESIGN FOR ZMP DYNAMICS
+The planar center of mass (COM) and ZMP dynamics of
+a fully actuated rigid body system can be written in state
+space form as
+ú x = Ax+Bu
+=
+
+0 I
+00
+
+x+
+
+0
+I
+
+u (1)
+y = Cx?b(x, ú x)u
+=
+
+I 0
+
+x?
+z
+com
+¬ z
+com
++g
+Iu, (2)
+where x=[x
+com
+,y
+com
+, ú x
+com
+, ú y
+com
+]
+T
+, u=[¬ x
+com
+,¬ y
+com
+]
+T
+,
+y=[x
+zmp
+,y
+zmp
+]
+T
+, g is a constant gravitational acceleration,
+and z
+com
+is the COM height. The ZMP is a well-studied
+quantity in the bipedal walking literature that deÞnes the
+point on the ground plane at which the moment produced
+by inertial and gravitational forces is parallel to the surface
+normal (i.e., the robot is not tipping) [13]. Since dynamic
+balance is achieved when the contact forces directly oppose
+the gravitational and inertial forces, maintaining the ZMP
+within the contact support polygon can be an effective strat-
+egy for maintaining dynamic stability in legged locomotion.
+Given desired ZMP trajectory, y
+d
+(t), we would like to
+compute an optimal tracking controller that takes into ac-
+count the time- and state-varying constraints on u imposed
+by the dynamics, input limits, and contacts of the full walking
+system. Due to the prohibitive computational requirements of
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 2589
+solving nonlinearly constrained optimal control problems of
+this scale, we instead solve an unconstrained time-varying
+LQR problem to compute the optimal cost-to-go, J
+?
+, which
+provides a control-Lyapunov function (CLF) for the ZMP
+dynamics. On each iteration, we select the control inputs to
+descend this ZMP CLF while reasoning about the instanta-
+neous constraints of the full system.
+We begin by specifying a cost functional of the form
+J = ø y(t
+f
+)
+T
+Q
+f
+ø y(t
+f
+)+
+
+t
+f
+0
+ø y(t)
+T
+Qø y(t)dt, (3)
+where the coordinates ø y(t)= y(t) ? y
+d
+(t), Q  0, and
+Q
+f
+ 0. In practice the COM height, z
+com
+, is often assumed
+to be constant, making the ZMP dynamics (2) linear [14].
+More generally, if the COM height trajectory is constrained
+to be a known function of time, (z
+com
+(t), ú z
+com
+(t),¬ z
+com
+(t)),
+the ZMP dynamics are time-varying linear,
+y(t)= C(t)x(t)+D(t)u(t), (4)
+and therefore amenable to TVLQR design without explicit
+linearization.
+Solving the Riccati equation yields the optimal cost-to-go
+for the time-varying linear system,
+J
+?
+(ø x,t)= ø x
+T
+S(t)ø x+s
+1
+(t)
+T
+ø x+s
+0
+(t),
+and the linear optimal controller,
+ø u
+?
+= ?K(t)ø x
+=argmin
+ø u
+ø y(t)
+T
+Qø y(t)+
+¶J
+?
+¶ø x
+
+
+
+
+ø x
+ú
+ø x, (5)
+where ø x(t)= x(t)?x
+d
+(t) and ø u(t)= u(t)?u
+d
+(t). In gen-
+eral, achieving ø u
+?
+is not possible due to constraints imposed
+by the robot dynamics. For example, actuator saturations and
+contact friction properties can limit the possible magnitudes
+and directions of COM accelerations. Therefore, to compute
+control inputs we perform a constrained minimization using
+V(ø x,ø u,t)= ø y(t)
+T
+Qø y(t)+
+¶J
+?
+¶ø x
+
+
+
+
+ø x
+ú
+ø x (6)
+as a surrogate value function.
+III. QP FORMULATION
+Given the stabilizing solution for the ZMP dynamics, we
+design a QP to solve for control inputs for the full robot
+dynamics that minimizes (6) and a quadratic motion cost for
+walking subject to the instantaneous constraints.
+Consider the familiar rigid body dynamics,
+H(q)¬ q+C(q, ú q)= B(q, ú q)? +?(q)
+T
+?, (7)
+where H(q) is the system inertia matrix, C(q, ú q) captures
+the gravitational and Coriolis terms, B(q, ú q) is the control
+input map, and ?(q)
+T
+transforms external forces, ?, into
+generalized forces. In our case, ?=[ ?
+T
+1
+... ?
+T
+Nc
+]
+T
+is
+a vector of ground-contact forces acting at N
+c
+contact points.
+The set of active contacts are determined by kinematic or
+force measurement classiÞcation at each control step.
+For ßoating-base systems such as humanoids, the dynam-
+ics can be partitioned into actuated and unactuated degrees
+of freedom [9],
+H
+f
+¬ q+C
+f
+= ?
+T
+f
+? (8)
+H
+a
+¬ q+C
+a
+= B
+a
+? +?
+T
+a
+?,
+where we have dropped the explicit dependence on q, ú q
+from our notation for conciseness. This separation permits
+the removal of ? as a decision variable by including (8) as
+a constraint expressing ? in terms of ¬ q and ?:
+? = B
+?1
+a
+
+H
+a
+¬ q+C
+a
+??
+T
+a
+?
+
+.
+We use a standard, conservative polyhedral approximation
+of the friction cone,
+ö
+K
+j
+, for each contact point, c
+j
+,
+ö
+K
+j
+=
+
+N
+d
+	
+i=1
+?
+ij
+v
+ij
+: ?
+ij
+³ 0
+
+
+. (9)
+The generating vectors, v
+ij
+, are computed as v
+ij
+= n
+j
++
+?
+j
+d
+ij
+, where n
+j
+and d
+ij
+are the contact-surface normal and
+i
+th
+tangent vector for the j
+th
+contact point, respectively, ?
+j
+is the Coulomb friction coefÞcient, and N
+d
+is the number of
+tangent vectors used in the approximation [15].
+Given the robot state, q, ú q, at time t, we solve the
+following quadratic program:
+Quadratic Program 1:
+min
+¬ q,?,?,?
+V(ø x,ø u,t)+w
+¬ q
+||¬ q
+des
+? ¬ q||
+2
++?
+	
+ij
+?
+2
+ij
++||?||
+2
+(10)
+subject to
+H
+f
+¬ q+C
+f
+= ?
+T
+f
+? (11)
+J¬ q+
+ú
+Jú q = ??Jú q+? (12)
+B
+?1
+a
+(H
+a
+¬ q+C
+a
+??
+T
+a
+?) ? [?
+min
+,?
+max
+] (13)
+?
+j={1...Nc}
+?
+j
+=
+N
+d
+	
+i=1
+?
+ij
+v
+ij
+(14)
+?
+i,j
+?
+ij
+³ 0 (15)
+? ? [?
+min
+,?
+max
+]. (16)
+The constraints (11) and (13) ensure that the dynamics
+and input limits are respected, (12) is a no-slip constraint
+on the foot contacts requiring that their acceleration be
+negatively proportional to the velocity, and the constraints
+(14,15) together ensure that contact forces remain within
+ö
+K.
+The parameter vector? allows bounded violations of the no-
+slip constraint to reduce the likelihood of infeasibility, ? is
+a regularization constant typically set to a small value, e.g.,
+?=10
+?8
+, and J = ¶c/¶q is the Jacobian matrix for the
+vector of all contact points, c=[ c
+T
+1
+... c
+T
+Nc
+]
+T
+.
+The weight parameter, w
+¬ q
+, is used to balance the rela-
+tive contribution of the desired motion cost with the ZMP
+tracking cost. To respect joint limits, the bounds ¬ q
+i
+³ 0
+and ¬ q
+i
+² 0 are added for all i such that q
+i
+= q
+MIN
+i
+and
+q
+i
+= q
+MAX
+i
+, respectively.
+2590
+IV. OPTIMIZATION
+We solve QP 1 at each control step using a simple active-
+set method. The method assumes the set of active inequality
+constraints remains constant for consecutive solutions. It then
+produces a candidate solution by solving a partial set of
+optimality conditions derived from the assumed active set.
+If the candidate solution satisÞes the full set of optimality
+conditions, the assumption is correct and the algorithm
+terminates. Otherwise, the method updates the active set and
+repeats until a solution is found or a maximum number of
+iterations is reached.
+On rare occasions when no solution is found, the algorithm
+fails over to a more reliable (but on average slower) interior
+point solver. In our experiments, this lead to infrequent
+single-step input delays on the order of 3ms, which had no
+signiÞcant effect on walking performance. This contingency
+is required since Þnite termination cannot be guaranteed for
+the proposed method. In practice, however, instances of QP 1
+are almost always solved in one iteration. The computational
+cost of each iteration is also very small. A candidate solution
+is produced by solving a structured system of linear equations
+and constraints are evaluated only once.
+A. Active-set method
+The QP solved at each control step can be written in the
+standard form,
+min
+z
+1
+2
+z
+T
+Wz+g
+T
+z
+subject to Az = b
+Pz ² f,
+(17)
+where the inequalities are deÞned by P=(p
+1
+,p
+2
+,...,p
+n
+)
+T
+and f =(f
+1
+,f
+2
+,...,f
+n
+)
+T
+. To solve this problem, it is
+assumed that p
+T
+i
+z = f
+i
+at optimality for each i in a subset
+A?{1...n} called the active set.Fort> 0, this subset
+equals the indices of the active inequalities from time t?1.
+With this assumption, the KKT conditions for the QP can be
+written in terms of z, ?, and ?:
+Wz+A
+T
+?+
+
+i?A
+?
+i
+p
+i
+= ?g
+Az = b
+p
+T
+i
+z = f
+i
+?i?A
+?
+i
+=0 ?i = A
+(18)
+Pz ² f
+?
+i
+³ 0 ?i?A.
+(19)
+Our method solves the linear equations (18) and checks
+if the solution (z,?,?) satisÞes the inequalities (19). If the
+inequalities are satisÞed, z solves the QP and the algorithm
+terminates. Otherwise, the algorithm adds index i to A if
+p
+T
+i
+z>f
+i
+or removes indexi if?
+i
+< 0 and resolves (18). The
+algorithm repeats this process until the inequalities (19) are
+satisÞed or a until a speciÞed maximum number of iterations
+is reached. The method is outline in Algorithm 1.
+B. EfÞciently computing a candidate solution
+The structure of QP 1 admits an efÞcient solution of the
+linear system (18). In particular, one can cheaply compute
+W
+?1
+and construct a smaller system for ? and ?. Using a
+Data: A QP of form (17) where the cost matrix W has
+the structure (22). A set of constraints A
+assumed to be active at optimality.
+Result: An optimal solution z with active set A or a
+ßag indicating failure.
+1 iter ? 0
+2 repeat
+3 Compute candidate solution z,?,? from (20,21)
+4 if p
+T
+i
+z>f
+i
+then
+5 add i to A
+6 end
+7 if ?
+i
+< 0 then
+8 remove i from A
+9 end
+10 iter ? iter+1
+11 if iter > iter
+MAX
+then
+12 return Failure
+13 end
+14 until z and ? satisfy (19)
+15 return A and z
+Algorithm 1: Active-set method for solving (17). The setA
+passed to the algorithm at timet equals the set of constraints
+active at optimality for time t?1.
+solution to this smaller system, one can then easily recover
+z. To see this, Þrst let P
+act
+and f
+act
+denote the rows of
+P and f indexed by A and let R = [A
+T
+P
+T
+act
+]
+T
+and
+e=[ b
+T
+f
+T
+act
+]
+T
+. A solution to (18) can be found by Þrst
+solving the following system of equations for ? and ?:
+?RW
+?1
+R
+T
+
+?
+?
+
+= e+ RW
+?1
+g (20)
+Using a solution to this system, z can be recovered via
+z = ?W
+?1
+
+g+R
+T
+
+?
+?
+
+. (21)
+EfÞcient computation of W
+?1
+arises from its block diagonal
+structure,
+W =
+
+W
+11
+0
+0 W
+22
+
+, (22)
+where W
+22
+is diagonal and W
+11
+= w
+¬ q
+I + U
+T
+QU.For
+the ZMP dynamics, U = D(t)J ? R
+2?n
+, where J is
+the COM(x,y) Jacobian and D(t) is the input mapping
+deÞned in (4). Applying the matrix inversion lemma yields
+an expression for W
+?1
+11
+that involves computing the inverse
+of 2?2 matrices:
+W
+?1
+11
+=
+1
+w
+¬ q
+I?
+1
+w
+2
+¬ q
+U
+T
+(Q
+?1
++
+1
+w
+¬ q
+UU
+T
+)
+?1
+U.
+It should also be noted that W
+?1
+is independent of A and
+thus only needs to be computed once per control step even
+if multiple solver iterations are required. The same holds for
+various sub-matrices in the expressions (20) and (21).
+2591
+V. APPLICATION
+We implemented our controller using the 34-DOF Atlas
+humanoid model developed for the DARPA Virtual Robotics
+Challenge. Our evaluation of the controller included a variety
+of balancing and locomotion tasks using two independent
+simulation environments: Drake [16] and Gazebo [17]. As
+part of MITÕs entry into the DARPA Virtual Robotics Chal-
+lenge (VRC), the controller was used to walk reliably over
+uneven terrain, through simulated knee-deep mud, and while
+carrying an unmodeled multi-link hose, all using imperfect
+state and terrain estimation (Figure 1).
+1
+To design the balancing controller, we solved an inÞnite
+horizon LQR problem to regulate the ZMP at (0,0). The
+cost functional took the form
+J =
+
+°
+0
+y
+T
+Qydt,
+=
+
+°
+0
+
+x
+T
+C
+T
+Cx+u
+T
+D
+T
+Du+2x
+T
+C
+T
+Du
+
+dt,
+where Q = I. We assumed the COM height was constant
+while standing, thus making the ZMP dynamics linear. This
+had the advantage that it only required us to solve the LQR
+problem once. To see this, note that J
+?
+(ø x)= ø x
+T
+Sø x, where
+S is the solution of the algebraic Riccati equation. Thus the
+QP cost had the form,
+ø y
+T
+ø y+2ø x
+T
+S(Aø x+Bu)+w
+¬ q
+||¬ q
+des
+? ¬ q||
+2
++?
+	
+ij
+?
+2
+ij
+,
+where new desired ZMP locationsk=[ k
+x
+k
+y
+]
+T
+could be
+achieved by a change in coordinates, ø y = y?k, ø x = x?k,
+and k is, e.g., the point at the center of the foot support
+polygon. In practice, we found the constant COM height
+assumption has minimal practical effect on balancing per-
+formance, even when recovery motions included signiÞcant
+hip bends and arm motion. We computed ¬ q
+des
+via a simple
+PD control rule, ¬ q
+des
+= K
+p
+(q
+des
+?q)?K
+d
+(ú q), using either
+a Þxed nominal posture, q
+des
+, for standing or a time-varying
+conÞguration trajectory for manipulation. We used the same
+scalar gains, K
+p
+and K
+d
+, for all joints.
+Our planning implementation took desired foot trajectories
+as input and computed a ZMP plan, y
+d
+(t), by linear interpo-
+lation between step locations. The footstep planner combined
+terrain map information with heuristics to select reasonable
+step locations and timing. We solved the TVLQR problem
+(3) for the linear ZMP dynamics using the Riccati solution
+for balancing as the Þnal cost, Q
+f
+= S. The corresponding
+COM(x,y) trajectory, x
+d
+(t), can be computed by simulating
+the COM dynamics (1) in a closed loop from time t=0
+to t = t
+f
+with the optimal controller, ø u
+?
+= ?K(t)ø x.In
+practice, we were able to compute both J
+?
+(ø x,t) and x
+?
+(t)
+for a 10m walking plan in approximately 1/4s using an
+unoptimized MATLAB implementation of the explicit ZMP
+Riccati solution described by Tedrake et al. [18].
+The desired conÞguration, q
+des
+(t), was computed via
+inverse kinematics with constraints on the foot pose and
+1
+Example simulation code is available at
+http://people.csail.mit.edu/scottk.
+COM position. Computation of q
+des
+(t) was done either
+ofßine for open-loop trajectory following or reactively inside
+the control loop by linearizing the forward kinematics at
+the current conÞguration and solving a second small QP to
+minimize the weighted
+2
+distance to a nominal conÞguration
+while respecting foot pose, COM, and joint limit constraints.
+Qualitatively different motions could be achieved by varying
+the relative weights assigned to joints in the cost. For
+example, a smaller cost on back joints would tend to produce
+more torso sway to track the desired COM trajectory.
+We used a simpliÞed 4-point contact representation for
+each foot. Active contacts were determined by a combination
+of the desired footstep plan and the estimated distance
+between the foot and terrain. If and only if the foot is
+perceived to be in contact and the plan agreed did we
+include the corresponding foot contact in the optimization.
+The requirement that both conditions be true was essential
+for breaking contact with the ground while walking. As with
+balancing, footstep and ZMP plans could be translated in
+three dimensions without additional computation by a simple
+change in coordinates in the QP cost.
+A. Solver Performance
+We compared the solve time of our active-set algorithm
+against two general-purpose QP solvers, Gurobi [19] and
+CVXGEN [20]. For the Gurobi solver, we used the barrier
+(B) algorithm and dual simplex (DS) algorithm with both
+active constraint and solution warm-starting. Our CVXGEN
+problem formulation omitted the input saturation inequalities
+(13) to Þt within the problem size requirements. These
+experiments were done on an i7 2.1GHz quad-core laptop.
+A comparison of average solve times while executing a Þxed
+ßat ground pattern is given in Table I.
+TABLE I
+COMPARISON OF AVERAGE QP SOLVE TIMES WHILE WALKING.
+Algorithm 1 Gurobi (DS) CVXGEN Gurobi (B)
+Solve time 0.2 ms 1.0 ms 2.2 ms 3.1 ms
+The custom active-set method outperforms the next best
+solver by a factor of 5. The signiÞcant performance advan-
+tage of Algorithm 1 can be understood by considering the
+histogram in Figure 2. For an overwhelming percentage of
+control steps, the active set does not change and the solver
+succeeds in a single iteration. Thus, most of the time control
+inputs are computed by solving a single linear system of
+equations.
+For the active-set algorithm, the total controller computa-
+tion time is largely spent setting up the QP, which involves
+computing the manipulator dynamics, contact surface nor-
+mals, and kinematic quantities such as the COM and contact
+Jacobians. In our implementation, the average QP setup time
+is approximately 0.8ms for the 34-DOF Atlas model, giving
+us a total control step time of 1ms.
+The performance of the solver does have a subtle depen-
+dency on the problem formulation. We found that using the
+2592
+Fig. 1. Walking in simulation over obstacles, through simulated mud, and over rolling hills using state and terrain estimation.
+1 2 3 4 5 6 7 8 9 10+
+0
+0.5
+1
+1.5
+2
+2.5
+3
+3.5
+x 10
+4
+Controller time steps
+Solver iterations
+31761
+845
+98
+50
+31
+26
+5
+3
+29
+2
+Fig. 2. Histogram of iterations needed to solve Quadratic Program 1 during
+a walking task. The method requires only one iteration approximately 97%
+of the time.
+parameterization of the approximate friction cone (9) lead
+to fewer active set changes than the commonly used Stewart
+and Trinkle [21] parameterization,
+ö
+K
+ST
+=
+
+zn+
+N
+d
+	
+i=1
+?
+i
+d
+i
+: z ³ 0,?
+i
+³ 0,
+N
+d
+	
+i=1
+?
+i
+² ?z
+
+
+, (23)
+where we have dropped the explicit contact point index, j.
+The parameterization (23) lead to approximately 50% more
+control steps requiring 2 iterations or more. Intuitively, this
+is a result of the fact that the active inequalities constraints,
+{i : ?
+i
+=0}, under parameterization (23) can change when
+forces inside the approximate friction cone change direction.
+By contrast, when using (9), the constraints on ?
+i
+only
+become active on the surface of the polyhedron. This idea is
+illustrated in Figure 3.
+VI. RELATED WORK
+The controller design we proposed shares some properties
+with other horizon-1 MPC implementations. For example,
+the same ßavor of dynamic, friction, and foot motion con-
+straints have appeared in other QP formulations [5], [9], [11],
+?
+i
+,?
+i
+> 0
+?
+v
+1
+v
+2
+v
+3
+v
+4
+?
+v
+1
+v
+2
+v
+3
+v
+4
+?
+1
+,?
+2
+=0
+?
+3
+,?
+4
+> 0
+n
+d
+1
+d
+2
+d
+3
+d
+4
+?
+?
+1
+,?
+2
+> 0
+?
+3
+,?
+4
+=0
+n
+d
+1
+d
+2
+d
+3
+d
+4
+?
+Fig. 3. An illustration showing how different approximate friction cone
+parameterizations can affect active set stability.
+[12]. Herzog et al. [9] proposed the idea of separating the
+manipulator equation into ßoating-base and actuated DOFs
+to remove ? as a decision variable, which enabled them to
+achieve control rates of 1kHz for a 14-DOF biped. Polyhe-
+dral approximations are frequently used to linearize friction
+constraints, but to our knowledge no prior connection has
+been made between different parameterizations and solver
+performance.
+Ames et al. [22], [23] used CLFs for walking control
+design by solving QPs that minimize the input norm, ||u||,
+while satisfying constraints on the negativity of
+ú
+V
+clf
+. By con-
+trast, we placed no constraint on
+ú
+V
+clf
+and instead minimized
+an objective of the form (x,u)+
+ú
+V
+clf
+, where (x,u) is
+an instantaneous cost on x and u. This approach gave us
+the signiÞcant practical robustness while making the QP less
+prone to infeasibilities.
+Other uses of active-set methods for MPC have exploited
+the temporal relationship between the QPs arising in MPC.
+2593
+Bartlett et al. compared active-set and interior-point strategies
+for MPC [24]. The described an active-set approach based on
+Schur complements for efÞciently resolving KKT conditions
+after changes are made to the active set. This framework is
+analogous to the solution method we discuss in Section IV-B.
+In the discrete time setting, Wang and Boyd [25] describe
+an approach to quickly evaluating control-Lyapunov policies
+using explicit enumeration of active sets in cases where the
+number of states is roughly equal to the square of the number
+of inputs.
+Ferreau et al. [26] consider the MPC problems where
+the cost function and dynamic constraints are the same at
+each time step; i.e., the QPs solved at iteration differ only
+by a single constraint that enforces initial conditions. By
+smoothly varying the initial conditions from the previous to
+the current state, they were able to track a piecewise linear
+path traced by the optimal solution, where knot points in
+the path correspond to changes in the active set. Since the
+controller we considered had changing cost and constraint
+structure, this method would have been difÞcult to apply.
+VII. CONCLUSION
+We described a stabilizing QP controller formulation for
+dynamic walking and solution technique that exploits con-
+sistency between active inequality constraints in subsequent
+control steps. In our experiments with a simulated Atlas
+robot, we were able to efÞciently compute control inputs
+while walking by solving a single system of linear equations
+a high-percentage of the time, hence outperforming several
+popular general-purpose solvers used frequently in the liter-
+ature. Although we have focused on humanoids and ZMP
+dynamics in this paper, the QP formulation we described is
+equally applicable to more general ßoating-base systems and
+other types of simple system models. Similarly, the active-
+set method used in this work could easily be applied to
+the various MPC formulations that exist in the literature.
+Our current efforts are focused on adapting this approach to
+achieve stable walking, climbing, and manipulation with a
+physical Atlas humanoid robot at MIT.
+ACKNOWLEDGMENTS
+We would like to thank the members of the MIT VRC
+team for their contributions to the perception and estimation
+algorithms that made walking in the simulation challenge
+possible. We thank Robin Deits for designing the footstep
+planner used by the controller described in this paper.
+REFERENCES
+[1] M. Posa and R. Tedrake, ÒDirect trajectory optimization of rigid body
+dynamical systems through contact,Ó in Proceedings of the Workshop
+on the Algorithmic Foundations of Robotics, Cambridge, MA, 2012.
+[2] B. Stephens and C. Atkeson, ÒPush recovery by stepping for humanoid
+robots with force controlled joints,Ó in Proceedings of the International
+Conference on Humanoid Robots, Nashville, TN, 2010.
+[3] D. Dimitrov, A. Sherikov, and P.-B. Wieber, ÒA sparse model predictive
+control formulation for walking motion generation,Ó in Proceedings
+of the IEEE/RSJ International Conference on Intelligent Robots and
+Systems (IROS), San Francisco, USA, Sept. 2011, pp. 2292Ð2299.
+[4] Y. Tassa, T. Erez, and E. Todorov, ÒSynthesis and stabilization of com-
+plex behaviors through online trajectory optimization,Ó in IEEE/RSJ
+International Conference on Intelligent Robots and Systems, 2012.
+[5] Y. Abe, M. da Silva, and J. Popovi« c, ÒMultiobjective control with
+frictional contacts,Ó in SCA Õ07: Proceedings of the 2007 ACM
+SIGGRAPH/Eurographics symposium on Computer animation, Aire-
+la-Ville, Switzerland, 2007, pp. 249Ð258.
+[6] C. Collette, A. Micaelli, C. Andriot, and P. Lemerle, ÒDynamic balance
+control of humanoids for multiple grasps and non coplanar frictional
+contacts,Ó in Proceedings of the IEEE/RAS International Conference
+on Humanoid Robots, 2007, pp. 81Ð88.
+[7] A. Macchietto, V. Zordan, and C. R. Shelton, ÒMomentum control for
+balance,Ó in Transactions on Graphics/ACM SIGGRAPH, 2009.
+[8] A. D. Ames, ÒFirst steps toward underactuated human-inspired bipedal
+robotic walking,Ó in Proceedings of the IEEE International Conference
+on Robotics and Automation (ICRA), St. Paul, MN, 2012.
+[9] A. Herzog, L. Righetti, F. Grimminger, P. Pastor, and S. Schaal,
+ÒMomentum-based balance control for torque-controlled humanoids,Ó
+CoRR, vol. abs/1305.2042, 2013.
+[10] S. Kudoh, T. Komura, and K. Ikeuchi, ÒThe dynamic postural ad-
+justment with the quadratic programming method,Ó in International
+Conference on Intelligent Robots and Systems (IROS), October 2002,
+pp. 2563Ð2568.
+[11] L. Saab, O. E. Ramos, F. Keith, N. Mansard, P. Sou` eres, and J.-Y.
+Fourquet, ÒDynamic whole-body motion generation under rigid con-
+tacts and other unilateral constraints,Ó IEEE Transactions on Robotics,
+vol. 29, no. 2, pp. 346Ð362, April 2013.
+[12] T. Koolen, J. Smith, G. Thomas, S. Bertrand, J. Carff, N. Mertins,
+D. Stephen, P. Abeles, J. Englsberger, S. McCrory, J. van Egmond,
+M. GrifÞoen, M. Floyd, S. Kobus, N. Manor, S. Alsheikh, D. Duran,
+L. Bunch, E. Morphis, L. Colasanto, K.-L. H. Hoang, B. Layton,
+P. Neuhaus, M. Johnson, and J. Pratt, ÒSummary of team IHMCÕs
+virtual robotics challenge entry,Ó in Proceedings of the IEEE-RAS
+International Conference on Humanoid Robots, Atlanta, GA, Oct
+2013.
+[13] P. Sardain and G. Bessonnet, ÒForces acting on a biped robot.
+Center of pressure-zero moment point,Ó IEEE Transactions on
+Systems, Man, and Cybernetics, Part A, vol. 34, no. 5, pp. 630Ð637,
+2004. [Online]. Available: http://doi.ieeecomputersociety.org/10.1109/
+TSMCA.2004.832811
+[14] S. Kajita, F. Kanehiro, K. Kaneko, K. Fujiwara, K. Harada, K. Yokoi,
+and H. Hirukawa, ÒBiped walking pattern generation by using preview
+control of zero-moment point,Ó in Proceedings of the IEEE Interna-
+tional Conference on Robotics and Automation (ICRA), Taipei, Taiwan,
+September 2003.
+[15] N. S. Pollard and P. S. A. Reitsma, ÒAnimation of humanlike char-
+acters: Dynamic motion Þltering with a physically plausible contact
+model,Ó in Yale Workshop on Adaptive and Learning Systems, 2001.
+[16] ÒDrake: A planning, control, and analysis toolbox for nonlinear
+dynamical systems,Ó http://drake.mit.edu, September 2013. [Online].
+Available: http://drake.mit.edu
+[17] ÒGazebo,Ó http://gazebosim.org, September 2013.
+[18] R. Tedrake, S. Kuindersma, R. Deits, and K. Miura, ÒAn explicit
+solution for the ZMP planning problem with quadratic cost,Ó In Prep,
+2013.
+[19] ÒGurobi optimizer,Ó http://www.gurobi.com, September 2013.
+[20] J. Mattingley and S. Boyd, ÒCVXGEN: a code generator for embedded
+convex optimization,Ó in Optimization Engineering, vol. 13, no. 1,
+2012, pp. 1Ð27.
+[21] D. E. Stewart and J. C. Trinkle, ÒAn implicit time-stepping scheme for
+rigid body dynamics with inelastic collisions and coulomb friction,Ó
+International Journal for Numerical Methods in Engineering, vol. 39,
+no. 15, pp. 2673Ð2691, 1996.
+[22] A. D. Ames, K. Galloway, and J. W. Grizzle, ÒControl Lyapunov
+functions and hybrid zero dynamics,Ó in Proceedings of the 51st IEEE
+Conference on Decision and Control, Maui, HI, 2012.
+[23] A. D. Ames, ÒHuman-inspired control of bipedal robotics via control
+Lyapunov functions and quadratic programs,Ó in Hybrid Systems:
+Computation and Control, 2013.
+[24] R. A. Bartlett, A. W¬ achter, and L. T. Biegler, ÒActive set vs. interior
+point strategies for model predictive control,Ó in Proceedings of the
+American Control Conference, Chicago, IL, June 2000.
+[25] Y. Wang and S. Boyd, ÒFast evaluation of quadratic control-Lyapunov
+policy,Ó IEEE Transactions on Control Systems Technology, vol. 19,
+no. 4, pp. 939Ð946, 2011.
+[26] H. Ferreau, H. Bock, and M. Diehl, ÒAn online active set strategy to
+overcome the limitations of explicit MPC,Ó International Journal of
+Robust and Nonlinear Control, vol. 18, no. 8, pp. 816Ð830, 2008.
+2594

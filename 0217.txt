@@ -1,0 +1,672 @@
+Fast Marching Solution for the Social Path Planning Problem
+Javier V . G´ omez
+1
+, Nikolaos Mavridis
+2
+and Santiago Garrido
+2
+Abstract— Traditional path planning for robots is a well-
+studied problem. However, the classical setting of the problem
+is simple to state: plan a path for a robot, starting from
+an initial point, and ending at a desired target point, given
+an environmental map, usually in the form of an occupancy
+grid. In this setting though, no special consideration is given
+to humans; they are thought of simply, as being obstacles in
+the environment, equivalent to chairs or walls. However, with
+more robots entering human spaces, special consideration needs
+to be given: humans need special treatment as obstacles, and
+furthermore humans can also serve the goal of goal points,
+towards starting a social interaction; either individual humans
+or groups of humans. Also, special mechanisms are required
+for engaging and disengaging in such interactions, taking
+into account psychological considerations of proxemics. In this
+paper, we ﬁrst introduce our unifying theoretical framework
+for all the subproblems of social path planning; then, we
+propose an extended mode for engaging groups of people;
+and then, by using a special version of the fast-marching
+square planning method, we present and demonstrate actual
+algorithmic solutions for the social path planning subproblems.
+Our results prove the strengths of our approach and its
+generalizability. Finally, concrete further steps are discussed.
+I. INTRODUCTION
+Although the motion planning problem has been studied
+for at least three decades, still there exist important aspects of
+it towards successful integration of robots in our everyday
+environments that have not been adequately covered in a
+general form. For instance, socially-aware path planning has
+just started to be touched upon only in the last years, and
+only in quite an ad-hoc way and only for special sub cases.
+In this new problem setting of social path planning, humans
+are not treated only as obstacles, in a way equivalent to
+environmental objects; in contrast, special considerations for
+them are taken in the algorithms since part of the objective
+can be to avoid them in a non-psychologically disturbing and
+friendly manner or to interact with them in a way they will
+ﬁnd natural and not aggressive.
+Therefore, many new variables need to be included into the
+classical path planning problem setting: for example, we need
+special representations for humans, including parameters
+such as human pose, intentions and movements. If the current
+path planning algorithms are applied to scenarios in which
+*
+This work is partially supported by the spanish Ministry of Science and
+Innovation under the projects DPI2010-17772 and CSD2009-00067 and 
+the Greek General Secretariat for Research and Technology and from the 
+European Regional Development Fund of the EC under the Operational 
+Program "Competitiveness and Entrepreneurship" (OPCE II) - Priority Axis 
+1 "Promotion of innovation, supported by research and technological 
+development" and under the Regional Operational Program Attica - Priority 
+Axis 3 "Improving competitiveness, innovation and digital convergence".
+1
+J.V . G´ omez and S. Garrido are with RoboticsLab, Carlos III Uni-
+versity of Madrid, Av. de la Universidad 30, 28911, Madrid, Spain
+fjvgomez,sgarridog at ing.uc3m.es
+2 N.Mavridis is with NCSR Demokritos, Agia Paraskevi, P.O. 60228, 
+153 10, Athens, Greece nmavridis@iit.demokritos.gr
+a human-friendly robot navigation is desired, the robot will
+most probably execute sharp movements, distracting humans
+and making them feeling uncomfortable.
+The few existing papers representing previous work in this
+new ﬁeld are quite diverse, very different ad-hoc approaches
+have been proposed, for speciﬁc subproblems, often with
+narrow domains of applicability. For example, there exist
+learning-based algorithms for robot human-friendly naviga-
+tion [1], reactive and proactive navigation methods based on
+human imitation [2], cost-based planners [3], [4], etc. If one
+focuses though on the speciﬁc subproblem to be solved, and
+not on the actual methods employed, then another classiﬁca-
+tory system of existing work is possible. In this fashion, [5]
+proposes a learning-based algorithm that enables the robot
+to follow a human while keeping an interaction. How to
+approach a human in order to start an interaction [6] and how
+to keep that interaction [7] are some of the recent problems
+that have been studied. The previous work appears to be
+quite ad-hoc, and most importantly, solving the social path
+planning problem only partially and in speciﬁc cases. Also,
+the problem formulation and notation in the existing papers
+is, most of the times, not uniform; and thus, juxtaposition,
+comparison, and benchmarking tasks are difﬁcult.
+To effectively address the above shortcomings, and to 
+provide a rigid foundation for future work, in this paper 
+we introduce our general formulation of social path plan-
+ning, and most importantly we present and demonstrate a 
+real-world solution with general coverage. Our social path 
+planning problem formulation proposes 6 different sub-cases 
+for human-robot interaction scenarios focusing on navigation 
+tasks. By combining them, it is possible to model most of the 
+cases a robot will ﬁnd while navigating around humans. The 
+proposed and demonstrated algorithmic solutions are based 
+on the Fast Marching Square [8] method, which has many 
+strengths as a underlying planner. Let us now proceed to the 
+problem formulation:
+II. PROBLEM FORMULATION
+Let us assume that a robot is placed in a environment 
+together with humans. Although the tasks the robot has 
+to carry out might or might not imply the need for any 
+explicit social interaction, just the fact of sharing the en-
+vironment with humans effectively turns the robot into a 
+social agent. Therefore, no matter whether the objective is to 
+avoid humans or to interact with them, humans have to be 
+taken into account in order to produce a socially acceptable, 
+human-friendly behavior. In our previous work [9], the social 
+path planning problem was formulated in detail, as the 
+combination of 6 different subproblems, differentiating if the
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 2243
+humans in the environment are individuals walking around
+or groups of people engaged in an interaction:
+1) Single human, individual:
+a. Robot to point. Regular path planning considering
+humans as obstacles.
+b. Full interaction: 1) approach human, 2) interact, keep
+interaction, 3) disengage.
+c. Follow human.
+2) Group of humans:
+a. Robot to point. Regular path planning considering
+group of humans as obstacles.
+b. Observe group, ask for permission to enter.
+c. Full interaction: 1) enter the group, 2) interact, keep
+interaction, 3) disengage.
+Also, a harmonious human-robot interaction should satisfy
+the following rules [10]:
+1) Collision-free: Maintain safety.
+2) Interference-free: the robot should not enter the personal
+space of any human unless it is its objective.
+3) Waiting: If the robot enters the personal space of a
+human, it has to stop a ﬁxed amount of time.
+4) Human priority: Humans always have the highest pri-
+ority.
+5) Robot intrusion: If a robot enters the workspace of other
+robot, it should leave this space as soon as possible,
+while the other robots should stop their activities.
+6) Robot priority: Robots with lower priority should yield
+to robots with higher priority.
+Let us start our formalization by considering a bi-
+dimensional, euclidean spaceC, corresponding with the ﬂoor.
+This space is composed by the union of the obstacle-occupied
+spaceC
+obs
+and the obstacles-free spaceC
+free
+where humans
+can be located. We denote as H =hH
+i
+;:::;H
+N
+i the set
+composed by N humans in the environment. The state of
+a given human i is composed by its position, heading and
+velocity: H
+i
+=hx
+i
+H
+;y
+i
+H
+;
+i
+H
+;v
+i
+H
+i. The set of humans can
+be splitted into two different subsets: H
+group
+composed by
+those humans which are engaged in a social interaction, and
+H
+ind
+the rest of individuals (walking around).
+The inﬂuence of individuals inH
+ind
+is modeled with their
+personal spaces 
+i
+. On the other hand, people belonging to
+H
+group
+will be arranged in F-formations[11]. Therefore, we
+denote the social inﬂuence created by the group of humans
+H
+group;j
+as 
+j
+.
+The robot state is denoted as R =hx
+R
+;y
+R
+;
+R
+;v
+R
+i. The
+robot will navigate through a path  
+R
+, in a human-friendly
+manner, following the aforementioned rules.
+This formulation is summarized in ﬁgure 1.
+III. INTUITIVE INTRODUCTION TO THE FAST
+MARCHING SQUARE PATH PLANNING METHOD
+The Fast Marching Square method (FM
+2
+) is a robust, efﬁ-
+cient algorithm to compute safe and smooth trajectories [12].
+The powerfulness of this algorithm has been shown during
+the last years since it has been successfully applied to many
+different motion planning problems such as robot formations
+planning, motion learning, roadmap generation, etc. [8], [13].
+Since this method is well described in the literature, we will
+outline the basis in the following lines.
+The FM
+2
+method consists on applying twice the Fast
+Marching Method (FMM) proposed by J. A. Sethian [14].
+The objective of the FMM is to approximate distances map
+in manifolds. In other words, given a point in a space,
+it computes the distance of the rest of the points in the
+space to the initial point. It provides a fast, approximated
+solution by simulating the propagation of a wave through
+a non-homogenenous medium, in which the wave propaga-
+tion depends on the current position of the wavefront. The
+environment is modeled as a binary occupancy gridcell.
+The ﬁrst step of FM
+2
+is to compute a velocities map
+W
+FM
+2. In this case, we assign to each point of the space
+a relative velocity directly proportional to the distance to
+the closest obstacle. For that, we apply the FMM method to
+the whole workspace, using as wave sources the obstacles.
+In fact, we are computing an approximation to the distance
+transform by applying the FMM. Although any other method
+to compute the distance transform can be applied, we con-
+sider that using FMM makes the implementation easier but
+there are other advantages, i.e. continuous velocities map.
+The second step is to apply the FMM from the goal
+point and expand the wave until it reaches the current robot
+position (initial point). In this case, the distances map created
+is interpreted as a time-of-arrival map, D, in which every
+point of the space is assigned a value which represents the
+time it took to the wave to reach this point from the source
+point while restricted to the velocities map computed.
+Once this time-of-arrival path has been computed, the
+ﬁnal path is obtained by applying gradient descent from
+the initial point until the goal point (only local minimum)
+is reached. Figure 2 illustrates the different steps of the
+proposed algorithm.
+Among the desirable properties of the FM
+2
+method, the
+smoothness of the computed paths has been observed, as well
+as close-to-optimal obstacle clearance, and quite importantly,
+the time optimality property: assuming that the robot moves
+at a relative speed according to the velocities map, the
+provided path is optimal in terms of execution time [8].
+Also, in FM
+2
+, the velocities map can be used to generate
+the velocity proﬁles of the computed trajectories, just by
+extracting the velocities value for every point of the path.
+This is very useful for our purpose, as we shall discuss in
+the next section.
+A very interesting modiﬁcation of the FM
+2
+method is
+the saturation variation. Assuming that the velocities map
+contains relative velocities between 0 and 1, it is possible
+to trim (saturate) this velocities map. With this small modi-
+ﬁcation, the safety and smoothness of the computed paths
+is still ensured (except for saturation values close to 0),
+while obtaining trajectories closer to the optimal in terms
+of distance. Examples are shown in ﬁgure 3.
+2244
+x
+y
+? ? (? ? ,? ? )
+? ? ? (? ? ? ,? ? ? )
+(? ? ,? ? )
+x
+y
+? ? ? ? ? ? ? ???? ? ??? ?
+? ?
+? ? ? ?? ???
+1.? 1.? x
+y
+?
+? ? ? ? 1
+2
+3
+1.? x
+y
+x
+y
+x
+y
+1
+2
+3
+2.? 2.? 2.? ? ? ?? ? ???? ?
+? ? ? ? Fig. 1: Top: subproblems for a single human. Bottom: subproblems for group of humans.
+(a) (b) (c) (d) (e)
+Fig. 2: Steps of the FM
+2
+algorithm. a) Initial binary map. b) Velocities map generated with FMM. c),d) Wave propagation
+from the goal point. e) Final path shown over the time-of-arrival map.
+IV. FM
+2
+APPLIED TO THE SOCIAL PATH
+PLANNING PROBLEM
+The velocities map of the FM
+2
+is a very powerful tool
+in the path planning algorithm. By its proper modiﬁcation,
+higher-level problems can be easily solved in a uniform way,
+without clumsy modiﬁcations, and without increasing the
+algorithm complexity. If a static environment is given, it
+has to be calculated once. But for dynamic environments,
+the velocities map can be locally updated. Therefore, our
+solution is based on modifying the velocities map according
+to models of the personal space of humans. In the following
+subsections we detail the application of the FM
+2
+method to
+each one of the subproblems described in II.
+A. Single Human Cases
+When humans are present in the environment as individu-
+als, not taking part into social interactions, the robot should
+treat each one of them as a separate entity.
+1
+For the three
+subproblems identiﬁed within this category, we model the
+personal spaces of each human as a mixture of two Gaussian
+functions as detailed in [15]. The model of the personal space
+is included in the FM
+2
+velocities as follows:
+ Compute the personal space 
+i
+for each human i and
+normalize it in order to have values between 0 and 1.
+ Obtain the complementary of each 
+i
+: 
+0
+i
+= 1  
+i
+.
+1
+However, as we shall see, when a group of humans is engaged in
+interaction, they will be treated on the basis of their joint personal spaces.
+ Create a mapW
+
+in which all 
+0
+i
+are included.
+ Calculate the ﬁnal velocities map as:
+W =min(W
+FM
+2;W
+
+) (1)
+Before the minimum operation of the last step, it is
+possible to add to the model the personal space of the robot.
+In our case, we applied to gray scale dilation operation to
+theW
+
+map. The structuring element is a disk which radius
+is the maximum radius of the robot.
+With these simple steps the humans are taken into account
+as non-regular obstacles in which the personal space of each
+human is avoided when possible. Note that the positions of
+the humans have a value 0 in the ﬁnal velocities mapW.
+This means that, in absence of a high-level layer, when the
+goal point is a human, the algorithm will not be able to reach
+that point since it has 0 velocity (the wave will reach this
+point in inﬁnite time). One easy way to solve this problem
+is to modify the personal spaces map as follows:
+W
+PS
+:=W
+
++ (2)
+where! 0
++
+. This way, the behavior of the algorithm will
+no be inﬂuenced and no errors will appear. Note that we are
+assuming static humans for the following subsections (except
+for the follow human case).
+1) 1.a Robot to point: To solve this subproblem, the
+individuals are included in the velocities map as aforemen-
+tioned and a simple path planning query is done to the
+2245
+(a) Saturation: 0.75 (b) Saturation: 0.5
+(c) Saturation: 0.25 (d) Saturation: 0
+Fig. 3: FM
+2
+saturated variation: modiﬁcation of the path
+depending on the saturation value.
+robot (to reach one point from the current position). Thanks
+to the design of the FM
+2
+and the personal space model
+used, the robot will create safe, smooth and human-friendly
+trajectories while reaching the goal, as shown in ﬁgure 4.
+2) 1.b Full interaction: approach, interact, disengage:
+This case is divided in three different steps. First one,
+approaching to the human, exactly the same algorithm as
+mentioned before is applied. However, in this case the goal
+point for the robot is a human. Therefore, once the path is
+computed, it is processed in order to automatically select
+a new goal point 0.5 meters away from the human while
+keeping the initial path.
+We consider that the interaction phase is out of the scope
+of this paper
+2
+. However, disengaging in a friendly-manner
+is as important as a proper approaching. In this case, the
+robot moves 0.5 meters backwards in order to get out of the
+personal space of the person it is interacting with. From this
+new point, a new path is planned and the robot navigates
+towards it following the rules of the subproblem 1.a. The
+process is shown in ﬁgure 5.
+3) 1.c Follow human: In this case, the robot is intended
+to follow the human (walk with him/her) throughout the
+environment in a way that the navigation is comfortable
+for both human and robot. In this case, we apply the FM
+2
+-
+based robot formation motion planning algorithm described
+in [16]. This is a leader-followers based algorithm in which
+the leader is navigating and the followers try to follow
+the leader adapting a prescribed geometry in order to keep
+2
+The interaction phase motions depend on the scenario. As a ﬁrst
+approximation, the robot can be assumed to be static during the interaction.
+(a) Binary environment with hu-
+mans on it.
+(b)W, saturation at 0.5m and
+the ﬁnal path.
+0 500 1000 1500 2000 2500 3000 3500 4000 4500 5000
+0.4
+0.6
+0.8
+1
+Waypoints along trajectory
+Relative velocity (%)
+(c) Velocities proﬁle along the trajectory.
+Fig. 4: Result for the proposed approach. The start point is
+at the top of the map and the path provided avoids personal
+spaces except when it means to get very close to obstacles.
+Fig. 5: Results for the approaching-disengaging proposed
+solution. Red point to human: approach. Human to blue
+point: disengage.
+the formation as much as possible but adapting to the
+environment and adapting to the environment.
+The geometry deformation is based on the value of the
+velocities map. The geometry is computed normally, the
+partial goals for every follower are set and, depending on the
+velocity value for that partial goal, their position are adapted.
+Figure 6 depicts the basics of this algorithm.
+Therefore, in this subproblem the human can be treated
+as the leader of the formation and the robot follows him/her
+according to the robot formation motion planning algorithm
+described. Note that the prescribed relative position has to
+be determined by a higher-level layer. The algorithm tries
+to keep this situation as much as possible. The way the
+algorithm is designed will give preference always to the
+human in case of narrow corridors or cluttered environments.
+A sequence of this algorithm is shown in ﬁgure 7.
+2246
+? ?
+? ?
+0
+1 velocity
+? ?
+max.
+? ?
+Fig. 6: How the robot’s goal positions are set when it is
+following an human.
+Fig. 7: From top-left to bottom-right: sequence of a robot
+following a human with the FM
+2
+-based robot formation
+motion planning algorithm.
+B. Group of Humans Cases
+Now, humans are not treated individually but every group
+is modelled as a unique agent. A Gaussian-based O-space
+model for F-formations is given in [17]. However, it is only
+for groups of 2 people. Recently, this O-space model was
+expanded in order to take into account more than 2 people
+in the group. This later model consists on the application of
+the initial model to every pair of adjacent humans and later
+all the models are averaged.
+The way this model is applied to the velocities map of
+the FM
+2
+is exactly the same as the addition of the personal
+spaces 
+i
+for the single human cases.
+1) 2.a Robot to point: This case is parallel to the sub-
+problem 1.c but the humans in the interaction are taken as a
+single agent. The result is shown in ﬁgure 8.
+2) 2.b Observe group, ask for permission to enter: This
+subproblem refers to the task of approaching the group in
+a friendly way and ready for trying to start an interaction
+with the group. Again, this problem is analogous to the
+subproblem 1.b explained in section IV-A, but only the ﬁrst
+approaching step.
+In this case, the goal point of the robot is the centroid
+of the O-space. However, the path is trimmed in order to
+properly set the goal point in an acceptable zone. Therefore,
+the path ends when one of the following conditions are
+satisﬁed:
+Fig. 8: Results for the solution of a group of humans as
+obstacle.W with the O-space model, saturation at 0.5m and
+the ﬁnal path.
+ When the distance to any of the humans of the group
+is less than 0.5 meters.
+ When there is a risk of O-space invasion. If the O-
+space value for the robot position is lower than twice
+the maximum O-space value for all the humans within
+the group it is considered as an O-space invasion. Also
+a threshold is set we set a threshold (0.8) in our case
+to consider a point as an invasion of the O-space.
+This way, the robot will approach towards the group and
+will stop at a point in which the robot shows its intention
+to become a part of the group but without invading it. An
+example is given in ﬁgure 9.
+3) 2.c Full interaction: enter, interact, disengage: This
+phase can be considered as the continuation of the previous
+subproblem 2.b. Once the robot has approached and shown
+its intention to enter the group, and the group has accepted
+the robot, it should enter the group. For this, we compute the
+path from the current position to the centroid of the O-space
+of the group. The points of the path are evaluated so the
+new goal point is set at that point of the path in which the
+O-space value is equal to the average value of the O-space
+values of all the members of the group. This way, the robot
+takes an average position within the group. This behavior
+can be easily set to be more aggresive (or more discreet).
+Once the robot enters, the interaction continues. We con-
+sider this phase as a matter of future work. Once the robot
+wants to disengage from the group, the same behavior as for
+problem 1.c is given. The robot moves backwards 0.5 meters
+in order to get out of the O-space and then a new goal point
+is set. The group is the considered as an obstacle.
+The summary of this solution can be found in ﬁgure 10.
+V. CONCLUSION
+The proposed solution for the social path planning problem
+satisﬁes the points shown in the literature about how a
+robot should navigate in an environment shared with humans.
+With the FM
+2
+as a basis, all the proposed scenarios where
+successfully solved while partially accomplishing the rules
+exposed in [10]. Actually, those rules are not taken as strict
+2247
+Fig. 9: Results for the solution of observing, approaching a
+group of humans.W with the O-space model, saturation at
+0.5m and the ﬁnal path.
+Fig. 10:W with the O-space model, saturation at 0.5m and
+the ﬁnal path.
+as Lam states in his work. However, the paths are collision
+free and the humans have always the highest priority. On
+the other hand, the interference rule is violated only in those
+cases in which it is dangerous to the robot to avoid invading
+the personal space of the humans. Also, the waiting rule is
+not taking into account, since we consider that this creates a
+very clumsy social navigation for the robot. In our case, the
+robot decreases its velocity when a personal space is invaded,
+so the actions are scaled according to the surroundings.
+Although there is a lack of experimental validation of
+the proposed solution with humans, the contribution of this
+paper is quite important: a global solution to the novel social
+path planning formulation based on the FM
+2
+path planning
+algorithm. This solution is able to deal with both individuals
+and group of humans. In this last case, very few work can
+be found in the literature and a novel point of view has been
+detailed. Also, the use of the O-space values as indicators
+for the social behavior of the robot is a novel idea which is
+worthy to keep exploring.
+The interaction phases have been omitted in this work
+since they are a whole research ﬁeld by its own. The
+interaction highly depends on the objective of the robot and
+the human.
+Finally, work in progress and in the near future is focused
+on expanding the solution to dynamic environments with
+all humans mobile, on experimental validation on the basis
+of fused data captured from multiple lasers, and on further
+generalization of the model to human-human, human-robot
+and robot-robot interaction, etc.
+In conclusion, in this paper we have introduced the social
+path planning problem, including a subdivision and generic
+formalization. We have also provided a personal space model
+for groups of humans. Most importantly, we have devised
+and demonstrated algorithms based on the fast marching
+squares method, which are able to provide a general solution
+to the social path planning problem. Our results prove the
+strengths of our approach and its generalizability, enabling
+robots to gracefully enter human environments, interacting
+and co-existing with us safely and naturally.
+REFERENCES
+[1] S. Sehestedt, S. Kodagoda, and G. Dissanayake, “Robot Path Plan-
+ning in a Social Context,” in IEEE Conf. Robotics Automation and
+Mechatronics, June 2010, pp. 206–211.
+[2] J. Guzzi, A. Giusti, L. Gambardella, and G. A. Di Caro, “Human-
+friendly robot navigation in dynamic environments,” in IEEE Intl Conf
+on Robotics and Automation, Karlsruhe, Germany, May 6–10, 2013.
+[3] T. Kruse, P. Basili, S. Glasauer, and A. Kirsch, “Legible Robot
+Navigation in the Proximity of Moving Humans,” in IEEE Workshop
+on Advanced Robotics and its Social Impacts, May 2012, pp. 83–88.
+[4] J. Rios-Martinez, A. Escobedo, A. Spalanzani, and C. Laugier, “In-
+tention Driven Human Aware Navigation for Assisted Mobility,” in
+IEEE/RSJ Int.l Conf. Intelligent Robots and Systems, 2012.
+[5] D. Feil-Seifer and M. J. Matari´ c, “People-aware navigation for goal-
+oriented behavior involving a human partner,” in IEEE Intl. Conf.
+Development and Learning (ICDL), Aug. 2011, pp. 1–6.
+[6] S. Satake, T. Kanda, D. F. Glas, M. Imai, et al., “How to approach hu-
+mans?: strategies for social robots to initiate interaction,” in ACM/IEEE
+Intl. Conf. Human Robot Interaction, 2009, pp. 109–116.
+[7] C. Pedica and H. H. Vilhj´ almsson, “Spontaneous Avatar Behavior for
+Human Territoriality.” Applied Artiﬁcial Intelligence, vol. 24, no. 6,
+pp. 575–593, 2010.
+[8] A. Valero-G´ omez, J. V . G´ omez, S. Garrido, and L. Moreno, “Fast
+Marching Methods in Path Planning,” IEEE Robotics and Automation
+Magazine, no. in press, 2013.
+[9] J. V . G´ omez, N. Mavridis, and S. Garrido, “Social Path Planning:
+Generic Human-Robot Interaction Framework for Robotic Navigation
+Tasks,” in 2nd Intl. Workshop on Cognitive Robotics Systems: Repli-
+cating Human Actions and Activities, 2013.
+[10] C.-P. Lam, C.-T. Chou, K.-H. Chiang, and L.-C. Fu, “Human-Centered
+Robot Navigation - Towards a Harmoniously Human-Robot Coexisting
+Environment.” IEEE Trans. Robotics, vol. 27, no. 1, pp. 99–112, 2011.
+[11] A. Kendon, Conducting interaction: Patterns of behavior in focused
+encounters. Cambridge University Press, 1982.
+[12] S. Garrido, L. Moreno, M. Abderrahim, and D. Blanco, “FM2: A
+Real-time Sensor-based Feedback Controller for Mobile Robots,” Intl.
+J. Robotics and Automation, vol. 24, no. 1, pp. 3169–3192, 2009.
+[13] J. V . G´ omez, “Advanced Applications of the Fast Marching Square
+Planning Method,” Master’s thesis, Carlos III University, 2013.
+[14] J. A. Sethian, Level Set Methods and Fast Marching Methods. Cam-
+bridge University Press, 1996.
+[15] T. Amaoka, H. Laga, S. Saito, and M. Nakajima, “Personal Space
+Modeling for Human-Computer Interaction,” in International Confer-
+ence on Entertainment Computing, vol. 5709, 2009, pp. 60–72.
+[16] J. V . G´ omez, A. Lumbier, S. Garrido, and L. Moreno, “Planning
+robot formations with fast marching square including uncertainty
+conditions,” Robotics and Autonomous Systems, vol. 61, no. 2, 2013.
+[17] J. Rios-Martinez, A. Spalanzani, and C. Laugier, “Understanding
+human interaction for probabilistic autonomous navigation using Risk-
+RRT approach.” in IEEE/RSJ Intl. Conf. Intelligent Robots and Sys-
+tems, 2011, pp. 2014–2019.
+2248

@@ -1,0 +1,1398 @@
+Synthesis for Multi-Robot Controllers with Interleaved Motion
+Vasumathi Raman
+1
+and Hadas Kress-Gazit
+2
+Abstract— This paper addresses the problem of designing
+control schemes for teams of robots engaged in complex high-
+level tasks. It presents a method for automatically creating
+hybrid controllers that ensure that a team of possibly het-
+erogeneous robots satisﬁes a user-deﬁned high-level task. The
+proposed approach relaxes constraints on the simultaneous and
+interleaved motion of the robots, while maintaining constraints
+on their relative location to guarantee collision-avoidance and
+prevent deadlock. The approach is demonstrated in the context
+of a team of robots engaged in sorting objects for recycling.
+I. INTRODUCTION
+Constructing controllers for high-level robot behaviors is
+an active ﬁeld of research in robotics. The use of formal
+methods has seen much success in the construction of con-
+trollers for autonomous behaviors such as search and rescue
+missions and autonomous vehicle control [4], [8], [10], [12],
+[16]. With constantly improving technology for multi-robot
+applications such as robot swarms and self-driving cars, there
+is a growing need for system designers to be able to easily
+create such controllers for teams of robots.
+Unlike approaches such as [9], [10] which consider multi-
+robot control for path planning problems, this work is con-
+cerned with reactive behaviors, which may require the system
+to behave differently based on gathered sensory information.
+Applications that involve such behaviors include search-and-
+rescue and autonomous driving. Non-reactive tasks, which
+include robots driving in formation to pre-speciﬁed goal
+positions, allow for hard-coded high-level behaviors with
+low-level tuning during execution. On the other hand, reac-
+tive behaviors require planning for every eventuality, adding
+complexity to an already nontrivial problem, and hand-coded
+controllers are infeasible for even modest problem sizes. The
+authors in [5] describe the automatic synthesis of control and
+communication strategies for a robotic team, from reactive
+task speciﬁcations of servicing requests in an environment.
+In contrast with the decentralized controllers presented in
+that work, this paper focuses on centralized controllers for a
+larger class of multi-robot tasks. Moreover, the authors in [5]
+assume that the location of the requests in the environment
+are known; in contrast, this work assumes an adversarial
+environment. Closest to the setting in this work, the authors
+Vasumathi Raman is supported by TerraSwarm, one of six centers of
+STARnet, a Semiconductor Research Corporation program sponsored by
+MARCO and DARPA. Hadas Kress-Gazit is supported by NSF CAREER
+CNS-0953365 and NSF ExCAPE.
+1
+V . Raman is with the Department of Computing and Mathematical
+Sciences, California Institute of Technology, Pasadena, CA 91125, USA
+vasu@caltech.edu.
+2
+H. Kress-Gazit is with the Sibley School of Mechanical and
+Aerospace Engineering, Cornell University, Ithaca, NY 14853, USA
+hadaskg@cornell.edu
+in [13] design centralized controllers that satisfy reactive,
+temporal logic speciﬁcations, by composing controllers using
+navigation functions. However, the “secondary controllers”
+(i.e. controllers other than motion) used in the task deﬁnition
+are required to be continuous; the work presented in this
+paper does not restrict the non-motion controllers in this way.
+In order to produce provably correct high-level plans
+from reactive speciﬁcations, techniques based on temporal
+logic synthesis have been applied to automatically synthesize
+correct-by-construction controllers from formal task speciﬁ-
+cations [12], [16]. These approaches operate on a discrete
+abstraction of the robot workspace, and a formal speciﬁcation
+of the environment assumptions and desired robot behavior.
+The result is an automaton fulﬁlling the speciﬁcation on this
+abstraction, if one exists. This automaton is in turn used to
+construct a hybrid controller that calls low-level continuous
+controllers to execute each discrete transition.
+The challenge of constructing these continuous controllers
+for multi-robot systems was studied by [11]. The authors
+provided a technique for constructing atomic controllers
+that guarantee collision-avoidance and deadlock prevention
+for teams of robots. This work combined the production
+of high-level control in [12] with the low-level controller
+synthesis described in [2]. The atomic controllers described
+guide multiple robots to a goal set while avoiding collisions
+with obstacles and other robots, and can be reused to
+accommodate many different high-level tasks in the same
+workspace. In contrast with prior work, which achieved
+collision avoidance and deadlock prevention by imposing
+explicit user-deﬁned constraints, the approach in [11] allows
+these constraints to be automatically generated during the
+construction of multi-robot atomic controllers, and admits
+a wider range of constraints, including minimum pairwise
+distances between robots.
+Due to the nature of the multi-robot atomic controllers
+described in [11], the automaton representing the high-level
+plan was restricted to transitions in which only one robot
+moves at a time. This constraint is not only unnecessary for
+most tasks, but sometimes excessively restrictive, as demon-
+strated in Section IV. A key insight for overcoming this
+restriction is that, since motion is non-instantaneous, it can
+be abstracted to separate initiation and completion events.
+While several robot motion controllers may be initiated at
+once, the atomic controllers generated ensure that only one
+of them will complete over a single transition. This idea was
+ﬁrst explored in the context of timing semantics for single-
+robot controllers with low-level actions of arbitrary relative
+execution durations [15]; its application to the multi-robot
+domain is described formally in this paper.
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 4316
+The rest of the paper is structured as follows. Section II
+deﬁnes the problem. Section III describes the construction of
+a multi-robot hybrid controller that provably accomplishes a
+high-level task. Section IV presents simulations, and shows
+how the approach differs from previous work. The paper
+concludes with a discussion in Section V.
+II. PROBLEM FORMULATION
+This work considers a team of robots A =fa
+i
+j i2
+f1;:::;ngg moving in a polygonal workspace WR
+d
+i
+. Robot
+a
+i
+has conﬁguration x
+i
+2 X
+i
+R
+d
+i
+, and dynamics ˙ x
+i
+= u
+i
+for u
+i
+2 U
+i
+. The robots have minimum pairwise proximity
+constraints to ensure collision-avoidance.
+Each robot a
+i
+has a set of sensors Sen =fs
+i
+j
+j i =
+1;:::;n; j = 1;:::;m
+i
+g that represent high-level information
+about the environment (i.e. discrete events that are not
+controlled by the robot, but relevant to the task at hand). This
+includes, for example, whether one of the robots is sensing
+a ﬁre. Robots may also have a set of actions, Act =fact
+i
+k
+j
+i= 1;:::;n;k= 1;:::;l
+i
+g, which correspond to discrete actions
+like picking up objects or transmitting messages. For this
+work, we assume that such actions do no have any timing
+constraints (i.e. they can be treated as instantaneous); the
+approach generalizes to actions with timing constraints.
+Let s
+i
+j
+(t) denote the value of sensor variable s
+i
+j
+at time
+t, and act
+i
+k
+(t) denote the activation of actuator act
+i
+j
+at time
+t. Let Sen
+t
+=fs
+i
+j
+(t)j s
+i
+j
+2 Seng denote the sensor values at
+time step t. A strategy P for the robot system is a function
+such that P(Sen
+t
+) = (u;Act
+t
+), where u = (u
+1
+;u
+2
+;:::;u
+n
+) is a
+control vector and Act
+t
+=fact
+i
+k
+(t)j act
+i
+k
+2 Actg gives values
+to the robot actions. Let Sen
+P
+¥
+=fSen
+0
+;Sen
+1
+;Sen
+2
+;:::g, x
+P
+¥
+=
+fx
+0
+;x
+1
+;x
+2
+;:::g, and Act
+P
+¥
+=fAct
+0
+;Act
+1
+;Act
+2
+;:::g denote the
+inﬁnite sequences of sensor inputs, robot conﬁgurations and
+actions generated by following P.
+Finally, let j be a high-level task speciﬁcation provided
+in some formal problem description language. This speciﬁ-
+cation describes both the desired behavior of the robots, and
+assumptions on the environment.
+Problem 1 Consider a team of robots A with the above
+dynamics and proximity constraints, moving on R
+d
+where
+d =å
+n
+i=1
+d
+i
+, with sensors Sen, actions Act, and high-level
+speciﬁcationj. For any possible initial statefx
+0
+;Sen
+0
+;Act
+0
+g
+such thatfx
+0
+;Sen
+0
+;Act
+0
+gj=j, ﬁnd a strategyP, if one exists,
+such that:
+ ˙ x
+i
+(t)= u
+i
+(t)
+ if Sen
+P
+¥
+j=j (i.e. the sensors satisfy the assumptions),
+then (x
+P
+¥
+;Act
+P
+¥
+)j=j (the robots fulﬁll the task)
+III. CONTROLLER SYNTHESIS
+This section presents the method used to construct a
+hybrid controller guaranteed to produce the speciﬁed multi-
+robot high-level behavior. Applying formal methods tools to
+the construction of provably correct multi-robot controllers
+involves (a) a discrete abstraction of the problem, in which
+the continuous reactive behavior of the multi-robot system is
+described in terms of a ﬁnite set of states, and (b) a temporal
+logic formalism for the speciﬁcation, which in this work is
+Linear Temporal Logic (LTL) [6]. These components are now
+described, using an example to demonstrate the stages of
+synthesis for a simple high-level multi-robot recycling task.
+A. Linear Temporal Logic (LTL)
+Syntax: Let AP be a set of atomic propositions. LTL
+formulas are deﬁned by the recursive grammar:
+j ::=pj:jjj_jjjjjU j;
+where p2 AP,: is negation,_ is disjunction, is “next”,
+andU is a strong “until”. Conjunction (^), implication ()),
+equivalence (,), “eventually” (
+
+) and “always” () are
+derived from these operators.
+Semantics: The truth of an LTL formula is evaluated over
+inﬁnite sequences of states, corresponding to executions of
+a ﬁnite state machine representing the system. A state cor-
+responds to an assignment of truth values to all propositions
+p2 AP. Given an inﬁnite sequence of states s, the statement
+sj= j denotes that s satisﬁes formula j. The statement
+sj=Dj for D = (;;
+
+;
+
+) denotes that j is true at
+the second position, at every position, at some position, and
+inﬁnitely often in s, respectively. Let A be a ﬁnite state
+machine whose states are labeled with truth assignments on
+AP. Then A is said to satisfy j if, for every execution s of
+A,sj=j. The reader is referred to [6] for a formal deﬁnition
+of the semantics.
+B. Discrete Abstraction
+The relevant features of the continuous robot control prob-
+lem are abstracted using a ﬁnite set of Boolean propositions.
+To capture the motion of the robots using the discrete
+formalism of LTL, the workspace is partitioned into regions,
+and Boolean variables introduced to indicate the location of
+each robot. To account for the non-instantaneous execution
+of continuous motion controllers, each motion is viewed as
+the activation of the corresponding low level controller, and a
+new sensor proposition is introduced in the discrete model to
+indicate whether the controller has completed execution. That
+is, the robot is able to sense when a motion controller has
+completed its action (i.e.,when it has crossed the boundary
+into a neighboring region).
+The discrete abstraction consists of:
+ p
+s
+i
+j
+for every sensor input s
+i
+j
+(e.g., p
+1
+person
+is true if and
+only if robot 1 is sensing a person)
+ p
+act
+i
+k
+for every robot action act
+i
+k
+(e.g., p
+2
+camera
+is true if
+and only if the robot’s camera is on)
+ p
+i
+r
+for the initiation of motion by robot i towards region
+r (e.g., p
+1
+ofﬁce
+is true if and only if robot 1 is trying
+to move to the ofﬁce). These propositions represent
+controller activation events.
+ p
+c
+i
+r
+for the completion of robot i’s motion to region r
+(e.g., p
+c
+1
+ofﬁce
+is true if and only if robot 1 has arrived in
+the ofﬁce). These propositions represent sensed events.
+The set of sensor propositions is denoted byX , and the set
+of action and location (i.e., robot-controlled) propositions by
+4317
+Y. Thus, for every sensor input s
+i
+j
+, robot action act
+i
+k
+, robot
+index i and region r, p
+c
+i
+r
+;p
+s
+i
+j
+2X and p
+i
+r
+;p
+act
+i
+k
+2Y. The
+value of each p2X[Y is the abstracted binary state of a
+low-level black box component, such as a thresholded sensor
+value or robot location with respect to some workspace
+partition.
+Example 1 Consider the four-room workspace depicted in
+Fig. 1(a), where the rooms are labeled r
+1
+ r
+4
+. There are two
+robots, indicated by circles: robot 1 starts in r
+1
+and robot 2
+starts in r
+4
+. Each robot has two sensors, one for glass and
+one for metal. Robot 1’s speciﬁcation is as follows. If it sees
+glass, it takes it to r
+4
+, if it sees metal, it carries it to r
+2
+. After
+it has done so, it proceeds to r
+4
+and stays there. Robot 2’s
+speciﬁcation is to go to r
+1
+and stay there. Here,
+1) X =fp
+1
+glass
+;p
+2
+glass
+;p
+1
+metal
+;p
+2
+metal
+g[fp
+c
+i
+r
+j i2f1;2g;r2
+f1;2;3;4gg
+2) Y =fp
+1
+carrying glass
+;p
+2
+carrying glass
+;p
+1
+carrying metal
+;p
+2
+carrying metal
+g
+[fp
+i
+r
+j i2f1;2g;r2f1;2;3;4gg
+C. Task Speciﬁcation
+Given a discrete abstraction, a high-level task is speciﬁed
+using an LTL formula overX[Y. The task speciﬁcation
+governs which actions can be activated by the robots, and
+assumptions on how the action-completion and environment
+sensors behave. There are two types of properties allowed
+in a speciﬁcation: safety properties, which guarantee that
+“something bad never happens,” and liveness conditions,
+which state that “something good (always eventually) hap-
+pens”.
+This work considers tasks that can be speciﬁed using
+formulas of the form j
+e
+) j
+s
+, where j
+s
+represents the
+desired multi-robot system behavior, and j
+e
+encodes as-
+sumptions on the environment. The environment in this work
+includes events external to the robots as well as the system’s
+internal state, as perceived by the robots’ sensors. j
+e
+and j
+s
+each contain initial conditions (j
+i
+e
+;j
+i
+s
+), safety requirements
+(j
+t
+e
+;j
+t
+s
+) and liveness conditions (j
+g
+e
+;j
+g
+s
+) for the environment
+and system, respectively. The following is an excerpt of the
+user-deﬁned LTL speciﬁcation for the task in Example 1:
+(j
+c
+1
+r
+1
+^:p
+1
+carrying metal
+^:p
+1
+carrying glass
+) #Initial
+(Robot 1 starts in region r1, carrying nothing.)
+^ (j
+c
+2
+r
+4
+^:p
+2
+carrying metal
+^:p
+2
+carrying glass
+) #Initial
+(Robot 2 starts in region r4, carrying nothing.)
+^ (p
+i
+glass
+)p
+i
+carrying glass
+) #Safety
+(Robot i activates carrying glass if sensing glass)
+^ (p
+i
+metal
+)p
+i
+carrying metal
+) #Safety
+(Robot i activates carrying metal if sensing metal)
+^ 
+
+(p
+1
+carrying glass
+!p
+1
+r
+4
+) #Liveness
+(If Robot 1 is carrying glass, it should visit r
+4
+)
+^ 
+
+(p
+1
+carrying metal
+!p
+1
+r
+2
+) #Liveness
+(If Robot 1 is carrying metal, it should visit r
+2
+)
+^ 
+
+(p
+1
+r
+4
+) #Liveness
+(Robot 1 should go to r
+4
+)
+^ 
+
+(p
+2
+r
+1
+) #Liveness
+(Robot 2 should go to r
+1
+)
+In addition to the user-deﬁned speciﬁcation, there are
+several constraints automatically generated depending on the
+availability of atomic motion controllers. These components
+of the speciﬁcation are now described in detail.
+1) Multi-Robot Motion Constraints: The robot’s motion
+in the workspace is governed by the availability of controllers
+to drive it between adjacent regions, based on the location
+of the other robots and obstacles in the workspace. The
+atomic controllers used to drive the team of robots from one
+conﬁguration to another can be constructed using a method
+such as the one presented in [11]. The construction of these
+atomic controllers produces an adjacency relation and safety
+conditions based on the workspace and the speciﬁed proxim-
+ity constraints, which are automatically encoded as a logic
+formula j
+motion
+, and included as part of the speciﬁcation.
+In the construction of atomic controllers in [11], the
+conﬁguration space is composed of polytopes in which the
+agents cannot collide, and each polytope is associated with a
+region combination based on where each robot is. The atomic
+controllers are generated by solving for linear feedback
+controllers that drive the team of robots from any state in one
+polytope to the exit facet shared with each adjacent polytope
+(i.e. each polytope that shares a matching facet). This results
+in paths between region combinations. Since the atomic
+controllers direct states to a facet, at most one robot will cross
+a room threshold at any time. In the approach presented in
+[11], this required restricting the possible motions of the team
+of robots in the speciﬁcation (and thereby in the synthesized
+automaton), to those in which at most one robot changes
+rooms at a time. However, using the approach in this paper,
+the automaton no longer has to be restricted in this manner,
+and multiple robots may initiate motion simultaneously.
+The initiation and completion of the linear feedback con-
+trollers for each robot are modeled as separate events, and
+therefore constraints on which robots can move (i.e. only
+one robot can move at a time) are replaced by assumptions
+on how these controllers can complete (at most one motion
+controller will complete at a time). This allows the acti-
+vation of multiple robot motion controllers when possible,
+such as when the robots are operating in distant parts of
+the workspace. On the polytope graph, this corresponds to
+allowing paths between all polytopes in which each robot
+is in either the beginning or end conﬁguration. Note that
+a single atomic controller corresponds to the activation or
+deactivation of several variables in the discrete abstraction
+(one for each robot). So an atomic controller that drives
+robot 1 from r
+1
+to r
+2
+and robot 2 from r
+4
+to r
+3
+will give
+rise to constraints on sensors corresponding to p
+c
+1
+r
+1
+and p
+c
+2
+r
+4
+and actions corresponding to p
+1
+r
+2
+and p
+2
+r
+3
+.
+The allowed motion of the robots depends on the sensed
+location and the availability of atomic controllers to drive the
+robots from one location to another. Since each robot can
+be in exactly one location at any given time, the formulas
+j
+c
+i
+r
+=p
+c
+i
+r
+^
+V
+r
+0
+6=r
+:p
+c
+i
+0
+r
+and j
+i
+r
+=p
+i
+r
+^
+V
+r
+0
+6=r
+:p
+i
+0
+r
+are added to
+the speciﬁcation to represent robot i being in and activating
+a controller to move to region r, respectively. Assume that
+for the above example, given the proximity constraints on
+4318
+(a) Workspace for Example 1 (b) Workspace for Example 2
+Fig. 1
+Fig. 2: Excerpt of synthesized automaton for Example 1
+the robots and the availability of atomic controllers, they
+cannot be in the same region at the same time, but all other
+possible transitions are based on the adjacency of rooms.
+In other words, given initial and ﬁnal conﬁgurations of the
+team of robots, there exists an atomic controller to drive
+from the initial conﬁguration to the ﬁnal conﬁguration if
+and only if each robot is moving between adjacent rooms
+or staying in place, and the robots are not in the same room
+as each other in either conﬁguration. Then the multi-robot
+motion polytope graph generated during the construction of
+the atomic controllers results in the following (automatically
+added) safety conditions in the speciﬁcation for Example 1:
+j
+motion
+=
+# adjacency for robot i2f1;2g
+(j
+c
+i
+r
+1
+)j
+i
+r
+1
+_j
+i
+r
+2
+_j
+i
+r
+3
+)
+^(j
+c
+1
+r
+2
+)j
+i
+r
+1
+_j
+i
+r
+2
+_j
+i
+r
+4
+)
+^(j
+c
+2
+r
+3
+)j
+i
+r
+1
+_j
+i
+r
+3
+_j
+i
+r
+3
+)
+^(j
+c
+3
+r
+4
+)j
+i
+r
+2
+_j
+i
+r
+3
+_j
+i
+r
+4
+)
+# constraints forbidding robot co-location
+^
+W
+4
+i=1
+(j
+c
+1
+r
+i
+^
+W
+j6=i
+j
+c
+2
+r
+i
+)
+Formula j
+motion
+is added as a sub formula of j
+t
+s
+, i.e. the
+system safety condition.
+2) Sensor Assumptions: In addition, sensor assumptions
+are required to deﬁne the effects of the robot activating its
+various motion controllers:
+j
+completion
+=
+^
+i;r;r
+0
+(j
+c
+i
+r
+^j
+i
+r
+0
+)(j
+c
+i
+r
+_j
+c
+i
+r
+0
+))
+This says that if robot i is in region r (i.e. j
+c
+i
+r
+is true) and
+is activating the controller to move to region r
+0
+(i.e. j
+i
+r
+0
+is
+true), then in the next time step it will either still be in r (j
+c
+i
+r
+will still true), or will have arrived at r
+0
+(j
+c
+i
+r
+0
+will be true).
+Formula j
+completion
+is added as a sub formula of j
+t
+e
+, i.e. the
+environment safety assumption.
+3) Fairness conditions: In addition to the above safety
+conditions, further constraints on the environment are re-
+quired to ensure that every motion eventually completes,
+i.e. that the robots’ environment is in some sense “fair”. In
+this work, we make the environment assumption that every
+controller activation eventually results in completion, i.e. the
+fairness condition (added as a sub formula of j
+g
+e
+):
+j
+f air
+=
+^
+i;r
+
+
+(p
+i
+r
+)p
+c
+i
+r
+)
+This corresponds to the assumption that every atomic motion
+controller will eventually complete execution. In other words,
+if robot i is driving to region r, it will eventually cross the
+threshold into r.
+Given a task speciﬁcation j = (j
+e
+)j
+s
+), the LTL spec-
+iﬁcation used to synthesize a controller (after adding multi-
+robot motion constraints, sensor assumptions and fairness
+conditions) is now :
+j
+new
+= j
+e
+^j
+completion
+^j
+f air
+)j
+s
+^j
+motion
+Note that the approach presented in this work can also
+be used with single-robot feedback controllers such as those
+described in [3], [7], but the safety restrictions on the relative
+locations of the robots would have to be explicitly encoded
+in the user-deﬁned speciﬁcation.
+D. Synthesis
+An LTL formula j is realizable if there exists a ﬁnite
+state strategy that, for every ﬁnite sequence of truth assign-
+ments to the sensor propositions, provides an assignment
+to the robot propositions such that every inﬁnite sequence
+of truth assignments generated in this manner satisﬁes j.
+The synthesis problem is to ﬁnd a deterministic ﬁnite state
+automaton (if one exists) that encodes this strategy, i.e. whose
+executions correspond to sequences of truth assignments that
+satisfy j. Although synthesizing a deterministic automaton
+that realizes an arbitrary LTL formula is doubly exponential
+in the size of the formula, when restricted to formulas of the
+form j
+e
+)j
+s
+described above, the algorithm introduced in
+[14] permits synthesis in time polynomial in the size of the
+state space. This synthesis algorithm was extended in [15] to
+efﬁciently accommodate a wider class of speciﬁcations, and
+this paper uses the synthesis algorithm from that work.
+When a speciﬁcation is realizable, synthesis yields an
+automaton that implements the speciﬁcation in a discrete
+abstraction of the problem. Fig. 2 depicts an excerpt of
+the automaton synthesized for Example 1 using the GR(1)
+synthesis algorithm in [15], as implemented in the SLUGS
+synthesis tool
+1
+; the full automaton has 204 states. Each
+state of the automaton is labeled with the truth assignment
+to location and action propositions in that state, and each
+transition is labeled with the truth assignment to sensor
+propositions required for that transition to be enabled. In-
+coming transitions therefore also determine the truth value
+of the sensor propositions for each state. In state q
+0
+, robot 1
+1
+available at https://github.com/ltlmop/slugs
+4319
+is in r
+3
+(as indicated by incoming edge labelc 13), activating
+the controller for moving to r
+1
+, and is carrying metal. Robot
+2 is in r
+2
+, moving towards r
+4
+. States q
+1
+, q
+2
+and q
+3
+are the
+result of various combinations of motion-completion events,
+e.g. in q
+3
+, both robot motions have completed simultaneously
+(we do not exclude this possibility here, although the atomic
+controllers in [11] preclude it).
+E. Continuous Execution
+If an automaton is obtained, a controller that implements
+the corresponding continuous behavior is constructed by
+viewing the automaton as a hybrid controller, with a transi-
+tion between two states achieved by the activation of one or
+more low-level continuous controllers corresponding to each
+proposition. The atomic controllers used must satisfy the
+bisimulation property [1], which ensures that every change
+in the discrete robot model can be implemented in the
+continuous domain. Since the task speciﬁcation included
+a discrete transition graph representing the availability of
+these atomic controllers, every change in the discrete multi-
+robot model can by design be implemented in the continuous
+domain (i.e., the atomic motion controllers constructed as in
+[11] are guaranteed to drive each robot from one region to
+another regardless of the initial state within the region).
+Given an automaton synthesized using the above approach,
+all relevant controllers are invoked simultaneously to bring
+about an instantaneous change in state. A given discrete
+transition (q;q
+0
+) is executed by simultaneously invoking
+the controllers corresponding to every action or location
+proposition that changes value from q to q
+0
+. Transitions in the
+automaton are instantaneous, as they correspond to activation
+or completion of controllers. Recall that in this work, the
+non-motion controllers are assumed to have instantaneous
+execution, and so activation and completion are captured by
+a single event. The motion controllers may however take
+several discrete transitions to complete execution; this allows
+other events to occur while a robot is completing a motion.
+IV. SIMULATIONS
+In this section, we show the results of simulating the
+controller constructed for Example 1, and discuss differences
+of the proposed approach from that in [11]. Fig. 3 shows
+a MATLAB simulation of the automaton synthesized for
+Example 1; a video accompanies this paper. The naive
+controllers used for simulating motion for each robot set the
+robot’s velocity towards the centroid of the next region – in
+future work, these will be replaced in physical experiments
+with atomic controllers such as those constructed in [2].
+In the simulation, the robots 1 and 2 are represented by a
+red square and green triangle respectively. Larger markers on
+the trajectories indicate points where the robots change state,
+either by moving to a new region, or as the result of a sensor
+event. Fig 3(a) shows the robot initial condition, with robot
+1 in r
+1
+and robot 2 in r
+4
+. In Fig 3(b), the robots have both
+started moving towards their goals r
+4
+and r
+1
+respectively:
+robot 1 moves through r
+3
+and robot 2 moves through r
+2
+.
+In Fig 3(c), robot senses glass while it is in r
+3
+, as marked.
+In Fig 3(d), robot 1 enters r
+4
+after sensing glass, and then
+senses metal. In Fig 3(e), robot 1 arrives in r
+2
+after sensing
+metal (note that robot 2 has moved to r
+4
+to avoid being in
+the same room as robot 1). In Fig 3(f) the robots have visited
+their respective goals (robot 1 is in r
+4
+, robot 2 is in r
+1
+).
+Observe that the robot trajectories never collide, and the
+robots are never in the same region at the same time, since
+this was the constraint added based on the available low-
+level atomic controllers, and enforced in the synthesized
+automaton. Additionally, the robots move simultaneously
+when they can do so without arriving in the same room (e.g.
+in Fig 3(b)), thus allowing progress when possible while still
+avoiding collisions.
+(a) Initially robot 1 is in r
+1
+, robot 2
+is in r
+4
+(b) Robots 1 and 2 start moving to-
+wards r
+4
+and r
+1
+via r
+3
+and r
+2
+.
+(c) Robot 1 senses glass while in r
+3
+(d) Robot 1 senses metal as it enters
+r
+4
+after sensing glass
+(e) Robot 1 arrives in r
+2
+after sensing
+metal. Robot 2 moves aside to r
+4
+.
+(f) Robots continue to their destina-
+tions (robot 1 in r
+4
+, robot 2 in r
+1
+)
+Fig. 3: Simulation of Example 1
+A. Comparison with previous approach
+By allowing more than one robot to make progress at
+a time, the proposed approach succeeds in some cases
+where requiring that at most one robot move at a time is
+too conservative. The following example demonstrates one
+such case, where restricting simultaneous motion makes the
+speciﬁcation unsynthesizable, when in fact a controller exists
+to achieve the desired behavior.
+Example 2 Consider the workspace depicted in Fig 1(b).
+Robot 1 starts in r
+1
+. When it sees glass, it should immediately
+4320
+r_16
+r_21
+c_21
+c_16
+r_16
+r_21
+c_21
+c_16
+c_22
+c_16
+r_16
+r_21
+c_21
+c_16 c_21
+c_15
+r_14
+r_23
+c_26
+c_11
+r_15
+r_22
+c_23
+c_14
+r_15
+r_23
+c_26
+c_14
+r_14
+r_23
+c_23
+c_11
+r_11
+r_26
+c_26
+c_11
+c_23
+c_14
+r_16
+r_21
+c_22
+c_15
+r_16
+r_22
+c_23
+c_15
+r_15
+r_22
+c_22
+c_14
+c_23
+c_14
+c_26
+c_14
+r_15
+r_23
+c_26
+c_15
+c_23
+c_15
+c_26
+c_15
+c_23
+c_15
+c_23
+c_14
+c_23
+c_11
+c_21
+c_16
+c_22
+c_16
+c_21
+c_15
+c_22
+c_15
+c_22
+c_16
+c_22
+c_15
+c_23
+c_15
+r_16
+r_22
+c_23
+c_16
+c_22
+c_16
+c_23
+c_16
+c_22
+c_15 c_22
+c_14
+Fig. 4: Synthesized automaton for Example 2
+move to r
+2
+, and return to r
+1
+immediately when it stops
+sensing glass. Robot 2 starts in r
+6
+, and its goal is to visit r
+4
+.
+It should be possible to synthesize a controller for the
+speciﬁcation in 2, because the two robots operate in disjoint
+parts of the workspace – robot 1 only needs to move between
+regions r
+1
+and r
+2
+, and robot 2 only needs to move between
+r
+4
+;r
+5
+and r
+6
+. However, using the approach in [11], each
+robot’s motion is abstracted to a single discrete event, and
+only one robot is allowed to move at a time because of
+the nature of the constructed atomic controllers. Consider
+what happens if the glass sensor is toggled on and off at
+each successive time step. In order to satisfy the safety
+speciﬁcation, robot 1 has to move between rooms r
+1
+and r
+2
+inﬁnitely. However, robot 2 has to stay in place in r
+6
+while
+robot 1 is moving, and can therefore never visit r
+4
+.
+On the other hand, if we model motion activation and
+completion as separate events, the restriction changes from
+requiring only one robot to move at a time, to an assumption
+stating that no two robots will complete execution of a
+motion controller at the exact same time. Thus, with the
+approach presented in this paper, robot 2 can initiate motion
+towards r
+5
+and eventually r
+4
+, even as robot 1 continues to
+move between r
+1
+and r
+2
+. Moreover, while the two robots’
+motion controllers may never complete at the exact same
+time, they will both eventually complete (according to the
+fairness assumption made while synthesizing the controller).
+Fig 4 depicts the automaton synthesized for this speciﬁcation.
+B. Added complexity
+With the above discrete abstraction of the multi-robot
+mission planning problem, one environment proposition must
+be added for each robot motion (corresponding to the sensor
+for motion completion). The strategy synthesis scales ex-
+ponentially in the number of sensor propositions
+2
+, i.e. by
+a factor of 2
+jYj
+. Thus, the added richness of the discrete
+abstraction, which allows synthesis for a wider range of task
+speciﬁcations, comes at the expense of an increased state
+space, and therefore a higher computational cost of synthesis;
+the synthesis algorithm itself is still polynomial in the size
+of the state space and therefore tractable in practice.
+V. CONCLUSIONS
+This paper presented a method for constructing provably
+correct controllers for teams of robots performing complex
+2
+This can be reduced in practice by encoding mutually exclusive actions
+and sensors using bit vectors.
+high-level tasks. The approach used a discrete abstraction to
+synthesize an automaton satisfying a task speciﬁcation, and
+a set of atomic controllers for continuously implementing
+every discrete transition in the synthesized automaton. It
+relaxed assumptions on the simultaneity and interleaving
+of motion of the individual robots, while preserving safety
+of the resulting controllers. Allowing multiple robots to
+progress simultaneously overcomes inefﬁciencies resulting
+from robots awaiting their turn to move, and enables provably
+correct controller synthesis in cases that were previously
+unsynthesizable. The method was demonstrated in simulation
+through the example of a team of robots engaged in a recy-
+cling task, but is general, and lends itself to any multi-agent
+domain for which the relevant low-level atomic controllers
+can be created. Moreover, once the atomic controllers have
+been created for a speciﬁc domain, they can be reused for a
+wide variety of tasks by easily modifying the speciﬁcation.
+Experimental evaluation with atomic controllers constructed
+using a variety of approaches is a topic of future work.
+REFERENCES
+[1] Rajeev Alur, Thomas A. Henzinger, Gerardo Lafferriere, and George J.
+Pappas. Discrete abstractions of hybrid systems. Proceedings of the
+IEEE, 88(7):971–984, 2000.
+[2] Nora Ayanian and Vijay Kumar. Decentralized feedback controllers for
+multi-agent teams in environments with obstacles. IEEE Transactions
+on Robotics, 26(5):878 – 887, October 2010.
+[3] Calin Belta, V olkan Isler, and George J. Pappas. Discrete abstractions
+for robot motion planning and control in polygonal environments.
+IEEE Transactions on Robotics, 21(5):864–874, 2005.
+[4] Amit Bhatia, Lydia E. Kavraki, and Moshe. Y . Vardi. Sampling-based
+motion planning with temporal goals. In ICRA, pages 2689–2696,
+2010.
+[5] Yushan Chen, Xu Chu Ding, Alin Stefanescu, and Calin Belta. Formal
+approach to the deployment of distributed robotic teams. IEEE
+Transactions on Robotics, 28(1):158–171, 2012.
+[6] Edmund M. Clarke, Orna Grumberg, and Doron A. Peled. Model
+Checking. MIT Press, 1999.
+[7] David C. Conner, Alfred Rizzi, and Howie Choset. Composition of
+local potential functions for global robot control and navigation. In
+IROS, volume 4. IEEE, October 2003.
+[8] Sertac Karaman and Emilio Frazzoli. Sampling-based motion planning
+with deterministic m-calculus speciﬁcations. In CDC, 2009.
+[9] Marius Kloetzer and Calin Belta. Temporal logic planning and control
+of robotic swarms by hierarchical abstractions. IEEE Transactions on
+Robotics, 23(2):320–330, 2007.
+[10] Marius Kloetzer. and Calin Belta. Automatic deployment of distributed
+teams of robots from temporal logic motion speciﬁcations. IEEE
+Transactions on Robotics, 26(1):48–61, 2010.
+[11] Hadas Kress-Gazit, Nora Ayanian, George J. Pappas, and Vijay Kumar.
+Recycling controllers. In CASE, pages 772–777, 2008.
+[12] Hadas Kress-Gazit, Georgios E. Fainekos, and George J. Pappas.
+Temporal-logic-based reactive mission and motion planning. IEEE
+Transactions on Robotics, 25(6):1370–1381, 2009.
+[13] Savvas G. Loizou and Kostas J. Kyriakopoulos. Automatic synthesis
+of multiagent motion tasks based on ltl speciﬁcations. In CDC, pages
+153–158, 2004.
+[14] Nir Piterman, Amir Pnueli, and Yaniv Sa’ar. Synthesis of reactive(1)
+designs. In VMCAI, pages 364–380. Springer, 2006.
+[15] Vasumathi Raman, Nir Piterman, and Hadas Kress-Gazit. Provably
+correct continuous control for high-level robot behaviors with actions
+of arbitrary execution durations. In ICRA, pages 4075–4081, 2013.
+[16] Tichakorn Wongpiromsarn, Ufuk Topcu, and Richard M. Murray.
+Receding horizon control for temporal logic speciﬁcations. In HSCC,
+pages 101–110, 2010.
+4321

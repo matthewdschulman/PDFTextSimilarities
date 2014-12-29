@@ -1,0 +1,786 @@
+Robot Assisted Gas Tomography - Localizing Methane Leaks in
+Outdoor Environments
+Victor Hernandez Bennetts
+1
+, Erik Schaffernicht
+1
+, Todor Stoyanov
+1
+, Achim J. Lilienthal
+1
+and Marco Trincavelli
+1
+Abstract— In this paper we present an inspection robot to
+produce gas distribution maps and localize gas sources in
+large outdoor environments. The robot is equipped with a
+3D laser range ﬁnder and a remote gas sensor that returns
+integral concentration measurements. We apply principles of
+tomography to create a spatial gas distribution model from
+integral gas concentration measurements. The gas distribution
+algorithm is framed as a convex optimization problem and it
+models the mean distribution and the ﬂuctuations of gases. This
+is important since gas dispersion is not an static phenomenon
+and furthermore, areas of high ﬂuctuation can be correlated
+with the location of an emitting source. We use a compact
+surface representation created from the measurements of the
+3D laser range ﬁnder with a state of the art mapping algorithm
+to get a very accurate localization and estimation of the path
+of the laser beams. In addition, a conic model for the beam of
+the remote gas sensor is introduced. We observe a substantial
+improvement in the gas source localization capabilities over
+previous state-of-the-art in our evaluation carried out in an
+open ﬁeld environment.
+I. INTRODUCTION
+Detecting and localizing methane leaks is a relevant task
+for a variety of applications such as pipeline inspection [1],
+coal mine surveillance [2] and landﬁll monitoring [3]. Mobile
+robot olfaction, the sub-ﬁeld of robotics, which develops
+robots with gas sensing capabilities, began its development
+in the early 1990s and until the early 2000s the gas sen-
+sitive robots were deployed in controlled mock-up environ-
+ments [4]. Those robots were mostly trying to track an odour
+plume to the source using in-situ gas sensors (e.g. MOX
+sensors) and anemometers to sense the airﬂow [5]. More
+recently, other tasks for gas sensitive mobile robots like gas
+distribution mapping, leak localization, gas discrimination
+have been addressed. However, robots equipped with in-situ
+gas sensors need to enter the plume in order to detect and
+eventually identify the gas, which limits the applicability
+of gas sensing mobile robots. Recently, remote gas sensors
+based on Tunable Diode Absorption Spectroscopy (TDLAS)
+became commercially available. Some commercially avail-
+able TDLAS devices can sense a speciﬁc gas (e.g. methane)
+up to a distance of 30 m without reﬂective mirrors. Remote
+gas sensors provide integral concentration measurements but
+no information about the distance travelled by the diode’s
+beam or the gas distribution over the optical path.
+The process of generating gas distribution maps from
+integral concentration measurements is referred to gas to-
+1
+AASS Research Centre, School of Science and Technology,
+¨
+Orebro Uni-
+versity, Fakultetsgatan 1,
+¨
+Orebro, Sweden name.surname@oru.se
+mography [6]. Gas tomography requires, besides integral
+concentration measurements, information regarding the path
+travelled by the sensor’s beam. In measurement conﬁgura-
+tions where the sensor is not ﬁxed in a known position, the
+beam trajectory has to be estimated. Thus, gas tomography
+becomes heavily dependent on accurate ray tracing.
+In this paper we present a robot equipped with a TDLAS
+and other sensing modalities that allow for accurate local-
+ization and beam tracing. We then use the localized beams
+to perform gas distribution modelling and the approach is
+evaluated in a large outdoor scenario. This work builds upon
+the results presented in [7] and improves them in many
+aspects. First, not only the map of the mean gas distribution is
+computed, but also a map of the variance (i.e. ﬂuctuations) of
+the gas concentrations is built. The spatial distribution of the
+gas ﬂuctuations can provide implicit information about the
+gas dispersion phenomenon. More speciﬁcally, areas of high
+concentration variance can be correlated to the proximity of a
+gas source [8]. Second, instead of using a coarse localization
+based on GPS data and odometry, a more precise system
+based on a 3D lidar and Normal Distributions Transforms
+(NDT) occupancy maps is employed. The improved localiza-
+tion accuracy allows for a much more accurate registration
+of the sensor readings in the maps, which results in better
+gas distribution models.
+The paper is organized as follows. We will give an
+overview on remote gas sensing in general and its connection
+to robotics in Section II, before describing our robotic
+platform and the used sensors in Section III. Algorithms for
+performing robot localization, ray tracing and gas tomog-
+raphy are presented and discussed in Section IV. Section
+V describes the used experimental set up and results are
+reported in Section VI.
+II. REMOTE GAS SENSING
+Remote sensing emerged in the early 1990s when the
+development of new technologies allowed to measure gas
+concentrations without physically interacting with the target
+analytes. Remote sensors based on optical principles have
+gained momentum due to their high sensitivity, selectivity
+and stability [9].
+A common principle in optical remote sensing is absorp-
+tion spectroscopy, which measures the energy attenuation
+caused by molecules of a target gas at narrow bands of the
+electromagnetic spectrum. TDLAS sensors emit a laser beam
+tuned at the absorption band of the target gas. The laser diode
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 6362
+is modulated in a way that the emitted beam is driven on
+and off of the wavelength of interest. During this process,
+the power of the beam is measured continuously and, by
+comparing the measurements when the beam is on the target
+wavelength against the measurements when the beam is off,
+it is possible to determine, with high degree of selectivity,
+whether the emitted beam has traversed a target gas patch
+or not. Instead of providing a point measurement in parts
+per million (ppm), as in the case of in-situ sensing, remote
+sensors provide integral concentration measurement in parts
+per million meters (ppmm), with no information regarding
+the path followed by the beam or the distribution of the gas
+along the optical path.
+Remote gas sensing can bring key beneﬁts in the context of
+mobile robotics olfaction. Given that the robot does not need
+to physically travel to the location of a gas cloud to sample
+a measurement, larger exploration areas can be covered in
+shorter time and locations such as roofs and chimneys can
+be reached. In [10], a robot equipped with a TDLAS sensor
+was used to detect gas leaks in industrial environments using
+an ad-hoc triangulation algorithm. While the robot was able
+to travel towards the location of a leak, the performance of
+the algorithm heavily depended on the strong assumption
+that the detected concentration is located at the end of the
+beam. Grinham et al. [11] proposed a system to improve the
+quantiﬁcation of CH
+4
+released rates from a water storage
+site. The authors mounted a single-path optical methane
+detector to an autonomous vessel and the collected data
+allowed the authors to identify areas of highCH
+4
+ebullition
+and predict release rates.
+Computed Tomography for Gases (CTG) is the task of
+deriving gas distribution models from localized integral
+concentration measurements [6], [12]. CTG models can be
+either pixel-based or parametric. In the ﬁrst approach, the
+model is given by a lattice in which, the concentration at
+each cell is estimated from a set of integral concentration
+measurements [13]. The latter approach, uses the integral
+measurements to ﬁt the functional parameters of a set of n
+basis functions [14]. In this work, we present a pixel-based
+CTG algorithm.
+While CTG has been proven feasible, a common approach
+is to use ﬁxed sensing conﬁgurations, where the emitting
+diodes/reﬂectors are placed in predeﬁned positions and there-
+fore, the optical path of the beams are known. In the context
+of robots equipped with remote gas sensors, the estimation
+of the optical path is heavily determined by the accuracy of
+the robot’s localization algorithm. The work presented in [7]
+is the ﬁrst attempt towards robot assisted gas tomography.
+III. THE ROBOTIC PLATFORM
+The Gasbot prototype (originally introduced in [7]), shown
+in Fig. 1, is an all-terrain Husky A-200 robot equipped
+with different sensing modalities for robot localization and
+environmental monitoring. In this work, the TDLAS (Sew-
+erin RMLD) sensor is used to measure CH
+4
+, the 3D Lidar
+(VelodineHDL 32E) is used for localization purposes and
+the GPS unit (Xsens MTi-G) is used for evaluation purposes.
+No other sensing modalities are considered.
+Fig. 1. Robotic platform ”Gasbot”. The sensors that are used in this paper
+are explained in the text.
+The Remote Methane Leak Detector (RMLD) from Sew-
+erin
+1
+can work in open loop with no mirrors required for
+reﬂection of the beam. According to the manufacturer’s
+data sheets, the RMLD is able to measure CH
+4
+integral
+concentrations as low as 10ppmm at distances up to 30m.
+Fig. 2 exempliﬁes the measurement principle of the RMLD.
+The sensor is mounted on top of a Pan-Tilt unit (PTU)
+PW-70, which allows to point the laser beam at different
+orientations, between120
+
+in the tilting axis and 360
+
+in
+the panning axis. The HDL  32E
+2
+is a compact device
+that allows to generate point clouds of up to 700,000 points
+per second with a range of 100 meters and an accuracy of
+0:02 m at 10 Hz.
+Fig. 2. Measurement principle of the RMLD. In the example, the device
+reports an integral concentration measurement of 590 ppm m when the
+infra-red beams travels a 10m path in which, a background concentration
+level of 10 ppm and a CH
+4
+patch of 500 ppm are present.
+1
+http://www.sewerin.com/cms/en/products/gas/
+gas-leak-detection-outdoors/sewerin-rmld.html
+2
+http://velodynelidar.com/lidar/hdlproducts/
+hdl32e.aspx
+6363
+IV. ALGORITHMS
+A. 3D Model Acquisition
+A map of the environment is created using the recently
+proposed NDT fusion algorithm [15]. The NDT fusion
+algorithm is based on the Normal Distribution Transforms
+(NDT) framework and its Occupancy Map extension (NDT-
+OM, [16]). In the NDT framework, the exploration area is
+discretised and individual Gaussian probability density func-
+tions (pdf) are ﬁtted using the measurement points that lie
+within the voxels in the lattice. Among different localization
+algorithms, NDT based approaches offer smooth likelihood
+models, that allow for very accurate localization [17].
+The NDT fusion algorithm iterates between two steps. The
+track step of the algorithm performs an NDT-D2D registra-
+tion [18] between the acquired range scan and the map. Once
+the tracking step has converged to a candidate pose, the new
+point cloud is inserted in the map using an efﬁcient batch-
+update ray tracing procedure. The NDT fusion framework is
+applied directly to obtain consistent vehicle pose estimates
+and an incrementally constructed environmental map.
+B. Ray Tracing
+Tracing a ray through an NDT-OM map is a common
+operation, performed whenever new 3D range measurements
+are acquired. In this work however, ray tracing is also used
+to estimate the path associated with each measurement beam
+of the TDLAS sensor. The beam’s starting point is estimated
+using the position and orientation of the gas sensor, relative
+to the robot’s pose in the map. Then, a ray is traced from the
+start point through the map and the point of intersection is
+then obtained as the maximum likelihood point x
+ML
+along
+the ray, given the Gaussian pdf in each traversed cell. If the
+likelihood is high enough, then the ray is likely to hit the
+distribution and x
+ML
+is considered as the beam’s endpoint.
+C. Gas Distribution Mapping
+The measurements of a Tunable Diode Laser Absorption
+Spectroscopy (TDLAS) sensor are line integrals of the gas
+concentration over the distance travelled by the beam. This
+scenario is similar to computer assisted tomography (CAT),
+where the image of a body of interest is reconstructed from
+a set of attenuation measurements of e.g. X-rays beams. The
+major difference is that bones are ﬁxed while performing the
+CAT measurements, while gas disperses in the environment
+due to airﬂow advection and turbulence causing the gas
+distribution to be very dynamic. We will therefore estimate
+a model of the gas distribution that captures its statistical
+properties. We consider a polyhedral region that includes
+the volume for which the methane distribution map has to
+be produced. We divide the polyhedral region in a uniform
+grid of cubic cells. The purpose of the algorithm presented
+here is the estimation of the mean and variance of the
+methane concentration in each cell in the lattice from a set of
+TDLAS measurements. We start from the assumption that the
+statistics of the gas distribution (mean and variance) in each
+cell are constant over the duration of the experiments. No
+assumption is made about the spatial distribution of gases or
+  
+l
+15
+a
+23
+a
+23
+Fig. 3. Example scenario in which a measurement has been taken in an area
+described by a 46 lattice, with the sensor being placed in cell 10 and the
+laser being reﬂected on the ground in cell 23. Shown are the two different
+sensor models, line and cone. First, the dashed line represents the idealized
+beam model. It computes the length l the beam travels through each cell
+(depicted for cell 15). In this case, the measure obtained by the TDLAS
+sensor isy
+beam
+=l
+10
+x
+10
++l
+14
+x
+14
++l
+15
+x
+15
++l
+19
+x
+19
++l
+23
+x
+23
++ where
+ is the measurement noise. The second model is the more realistic cone
+model. The area of intersectiona of the cone and each grid cell is computed,
+an example is shown in cell 23. The measurement is then expressed as
+ycone = a
+10
+x
+10
++a
+11
+x
+11
++a
+14
+x
+14
++a
+15
+x
+15
++a
+19
+x
+19
++a
+20
+x
+20
++
+a
+23
+x
+23
++a
+24
+x
+24
++:
+the number of emitting sources present in the environment.
+In order to simplify the explanation, we consider a two
+dimensional example in Fig. 3.
+As a further simpliﬁcation, we will ﬁrst consider that the
+measurement represents a line integral of the gas concentra-
+tion over the path travelled by the beam. Therefore, we can
+write every measurement as:
+y =
+M
+X
+i=1
+l
+i
+x
+i
++ =l
+T
+x+ (1)
+wherey is the TDLAS reading,M is the number of cells,
+l
+i
+is the distance travelled by the beam in celli,x
+i
+is the gas
+concentration in celli, and is the measurement noise term.
+As a more realistic model of the real sensor , we model the
+laser as a cone instead of a beam. The cone is approximated
+by an isosceles triangle and we consider the area integral of
+the intersection of this triangle with the grid cell a
+i
+instead
+of the line integral. Eq. 1 for the line model can again be
+used after substituting l with a in all cases.
+In order to calculate the likelihood of the integral mea-
+surements, we assume Gaussian noise with zero mean and
+standard deviation :
+p(yjx;l;) =N(yjl
+T
+x;) (2)
+Now, having a set of N measurements, the problem of
+gas distribution mapping can be formulated as the problem
+to estimate the vector of concentrations x that maximizes
+the likelihood of the measurements. Given a set of N
+measurements, we can deﬁne a vectory[N1] that contains
+all the measurement values, a vectorx[M1] that contains
+the concentration in the cells, and a matrix L[NM] that
+contains the line or area integral, respectively, that each
+measurement ray tracing produced. Therefore, the whole
+dataset of measurements can be described by the following
+matrix equation:
+6364
+y =Lx+1 (3)
+The likelihood of the measurements assuming Gaussian
+noise is:
+p(yjx;L;) =
+N
+Y
+n=1
+N(y
+n
+jLx;) (4)
+Maximizing the logarithm of the likelihood (equivalent to
+maximizing the likelihood itself) boils down to the following
+non negative least squares problem, which imposes the
+constraint x  0, i.e. that gas concentrations have to be
+positive:
+minimize
+x
+kLx yk
+2
+2
+(5)
+subject to x0
+If some cells are never observed or many measurements
+are highly correlated the problem may become underdeter-
+mined and therefore it is useful to introduce a regularization
+term, modifying the problem in the following way:
+minimize
+x
+kLx yk
+2
+2
++kxk
+2
+2
+(6)
+subject to x0
+which is analogous to choosing a Gaussian prior with zero
+mean on the average concentration of the cells. The strength
+of the prior is governed by the hyper-parameter . In our
+experiment we heuristically set  = 10
+ 5
+, since we want to
+impose a weak prior. In our numerical results, we observe
+that the constraintx0 is never active, which implies that
+the obtained solution is the ordinary least squares solution
+^ x = (L
+T
+L)
+ 1
+L
+T
+y. The case in which some entries of
+^ x are equal to zero is of theoretical interest only and is
+not practically relevant. This estimator is unbiased which
+means that E[^ x] = x
+
+, where x
+
+is the true value of the
+mean concentration in the cells. The covariance matrix of
+the estimator is:
+cov(^ x) =E[(^ x x
+
+)(^ x x
+
+)
+T
+] = (7)
+= (L
+T
+L)
+ 1
+L
+T
+E[
+T
+]L(L
+T
+L)
+ 1
+= (8)
+= (L
+T
+L)
+ 1
+L
+T
+(
+2
+I)L(L
+T
+L)
+ 1
+=
+2
+(L
+T
+L)
+ 1
+(9)
+The diagonal elements of the covariance matrix are the
+variance of the estimators of the individual parameters, i.e.
+the variance of the gas concentration in each cell. We are left
+with the estimation of the variance of the process noise 
+2
+.
+If we call the vector of residuals r =y L^ x, the variance
+of r is:
+var(r) =E[r
+T
+r] =E[tr(rr
+T
+)] =tr(E[rr
+T
+]) = (10)
+=tr(E[M11
+T
+M
+T
+]) =tr(ME[11
+T
+]M) =
+(11)
+=
+2
+tr(M
+2
+) =
+2
+tr(M) =
+2
+(N M) (12)
+Fig. 4. (a) The Gasbot platform patrolling the experimental area. (b)
+Artiﬁcial CH
+4
+gas source.
+where M = I  L(L
+T
+L)
+ 1
+L
+T
+is a symmetric and
+idempotent matrix. An unbiased estimator of 
+2
+is:
+s
+2
+=
+r
+T
+r
+N M
+(13)
+For more detailed explanations on the derivations of the
+formula the interested reader can consult [19].
+V. EXPERIMENTAL SETUP
+Experiments were conducted near the
+¨
+Orebro University’s
+main campus (Fig. 4(a)), where an artiﬁcial gas source was
+placed. The gas source was a ﬂask of natural gas ( 90%
+CH
+4
+) connected to a tube ring punctured in multiple places.
+In order to diffuse the jet-like emissions coming from the
+punctures, a permeable mat was used to cover the ring (4(b)).
+During the experimental trials, the ambient temperature was
+16
+
+C with a moderate wind ﬂow of 1:6 m=s.
+Two experiments were carried out in which the robot
+was remotely commanded to follow different exploration
+paths inside areas of approximately 154 m
+2
+and 432 m
+2
+respectively. The total exploration time was approximately
+1200 s in both cases. During the exploration, the robot was
+stopping to collect gas measurements. At each stop position,
+the PTU was used to scan the neighbouring area in a con-
+tinuous sweeping movement with apertures of ( 70
+
+;70
+
+)
+and ( 8
+
+; 2
+
+) in pan and tilt respectively. The RMLD was
+always pointing towards the ground (grass surface), which
+was used as reﬂective surface. No artiﬁcial reﬂectors were
+introduced in the experimental location.
+VI. RESULTS
+Since accurate ground truth on the real gas distribution is,
+with currently available instrumentation, impossible to ac-
+quire in generic uncontrolled environments like the presented
+experimental setup, we evaluate the gas distribution models
+according to their capability to predict the location of the gas
+source. In [7], bottles ﬁlled with methane were successfully
+localized using the maximum of the mean concentration map
+as an indicator. Here we show that in real world scenarios,
+where methane is dispersed in the environment from a
+leaking gas source and not conﬁned into static volumes,
+the maximum of the concentration variance map, one of the
+novelties proposed in this paper, is a much better indicator of
+the position of the gas source. Fig. 5 shows example maps
+6365
+Fig. 5. Mean and variance of the gas distribution for various map resolutions. The green marker indicates the true position of the gas source, while the
+blue marker indicates the estimated position of the gas source (maximum of the mean/variance map).
+(a) (b)
+Fig. 6. Gas source localization accuracy. (a) First experimental run (explored area 154 m
+2
+). (b) Second experimental run (explored area 432 m
+2
+).
+obtained for various cell sizes in one of our experimental
+runs. In order to numerically evaluate the improvements
+introduced by the NDT based localization and the conic
+beam model we divide the two datasets into 5 folds each and
+calculate errorbars for the accuracy of the gas source position
+estimation. Figure 6(a) and 6(b) show the results for the two
+experimental runs. From the distances between the real and
+estimated gas source position, it is clear that the maximum of
+the variance map (errors consistently below 10m) provides a
+better indicator of the gas source position than the maximum
+of the mean map (errors between 25m and 35m). Focusing
+the attention on the predictions obtained with the variance
+map, we can see how in general the positioning and ray
+tracing obtained with the NDT model (errors in the order
+of 2m  4m) outperform the positioning based on ﬁltered
+GPS and odometry (errors around 10m) presented in [7].
+Regarding the comparison of the beam models, we can see
+how the models obtained with the conical beam model (errors
+between 1m and 4m) clearly outperform the models based
+on the line beam model in the second experimental run, while
+in the ﬁrst experimental run, a clear difference is visible only
+for cell sizes 3m.
+VII. CONCLUSIONS
+In this paper we present an approach for robot assisted gas
+tomography. The contributions of this paper, which builds
+upon the work presented in [7], are three-fold. First a state-
+of-the-art NDT-OM localization system, which uses the input
+from a 3D LIDAR and the odometry of the robot, is used for
+accurately localizing the beams of the TDLAS sensor. This
+results in higher quality gas distribution maps. We improved
+a previously proposed gas distribution mapping algorithm so
+that it estimates not only the mean but also of the variance
+of gas concentration. Third, a more realistic conic shaped
+sensor model is proposed instead of the previously used line
+model. It is worth noting that the proposed system has been
+evaluated on a large experimental area similar to the one
+where fully ﬂedged gas inspection robots could be deployed
+(e.g. a decommissioned landﬁll). While no ground truth
+evaluation could be performed performed with respect to
+6366
+the predictive capabilities of the gas distribution models, we
+observed that the maximum of the variance map (computed
+with a conic model and with a more accurate 3D environment
+representation), is a much better indicator of the position of
+the gas source than the maximum of the mean map. This
+result is supported by previous work in which, measurements
+on turbulent underwater plumes show that the magnitude of
+the concentration ﬂuctuations exhibit a steeper gradient along
+the downstream direction that the average concentration [20].
+Several aspects require further investigation, which is
+deferred to future works. First, the performance of the gas
+distribution algorithm clearly depends on the choice of the
+cell size. A large cell size may lead to an oversimpliﬁed gas
+distribution model, while a small cell size may introduce
+estimation errors since the measurements cannot support
+such a complicated model. This particular instance of the
+well known bias-variance (model selection) dilemma may
+be solvable by a cross-validation approach similar to the one
+used for other gas distribution mapping algorithms like the
+Kernel DM+V (e.g. [21]).
+Second, the choice of the location of the measurement
+clearly affects the quality of the model. The choice of the
+measurement points will most probably result from a trade-
+off between the desired quality of the model and the time
+needed to explore the whole area of interest.
+Third, gas dispersion is a highly dynamic phenomenon and
+thus, the assumption of time invariant gas distribution models
+does not hold. This problem has been explored for in-situ gas
+sensors [22], [23] and a proposed solution is to consider the
+time stamps of the acquired concentration measurement in
+such a way that recent measurements are more signiﬁcant
+when computing the gas distribution models.
+Additional experiments are needed to thoroughly validate
+the proposed approach. These experiments should be carried
+out in locations other than open areas. For example, outdoor
+locations occluded by buildings/obstacles, uneven terrains or
+urban locations. Furthermore, a grid of in-situ gas sensors
+could be added to provide ground truth concentration mea-
+surements for evaluation purposes.
+ACKNOWLEDGMENTS
+The authors would like to thank Robotdalen, for funding
+this work as part of the Gasbot project (project number
+8140), and Clearpath Robotics, for providing the Husky A-
+200 robotic platform through its PartnerBot program.
+REFERENCES
+[1] R. A. Alvarez, S. W. Pacala, J. J. Winebrake, W. L. Chameides, and
+S. P. Hamburg, “Greater focus needed on methane leakage from natural
+gas infrastructure,” Proceedings of the National Academy of Sciences,
+vol. 109, no. 17, pp. 6435–6440, 2012.
+[2] M. A. Meybodi and M. Behnia, “Australian coal mine methane emis-
+sions mitigation potential using a stirling engine-based chp system,”
+Energy Policy, vol. 62, no. 0, pp. 10 – 18, 2013.
+[3] V . Hernandez Bennetts, A. J. Lilienthal, P. Neumann, and M. Trin-
+cavelli, “Mobile robots for localizing gas emission sources on landﬁll
+sites: Is bio-inspiration the way to go?”FrontiersinNeuroengineering,
+vol. 4, no. 20, 2012.
+[4] G. Kowadlo and R. A. Russell, “Robot Odor Localization: A Tax-
+onomy and Survey,” The International Journal of Robotics Research,
+vol. 27, no. 8, pp. 869 – 894, 2008.
+[5] A. J. Lilienthal, A. Loutﬁ, and T. Duckett, “Airborne chemical sensing
+with mobile robots,” Sensors, vol. 6, no. 11, pp. 1616–1678, 2006.
+[6] P. Price, M. Fischer, A. Gadgil, and R. Sextro, “An algorithm for
+real-time tomography of gas concentrations, using prior information
+about spatial derivatives,” Atmospheric Environment, vol. 35, no. 16,
+pp. 2827–2835, 2001.
+[7] V . Hernandez Bennetts, A. Lilienthal, A. A. Khaliq, V . Pomareda Sese,
+and M. Trincavelli, “Towards real-world gas distribution mapping and
+leak localization using a mobile robot with 3d and remote gas sensing
+capabilities,” in Proceedings of the IEEE International Conference on
+Robotics and Automation (ICRA), 2013, pp. 2327–2332.
+[8] S. Asadi, M. Reggente, C. Stachniss, C. Plagemann, and A. J. Lilien-
+thal, Intelligent Systems for Machine Olfaction: Tools and Methodolo-
+gies. IGI Global, 2011.
+[9] X. Liu, S. Cheng, H. Liu, S. Hu, D. Zhang, and H. Ning, “A survey
+on gas sensing technology,” Sensors, vol. 12, no. 7, pp. 9635–9665,
+2012.
+[10] G. Bonow and A. Kroll, “Gas leak localization in industrial environ-
+ments using a tdlas-based remote gas sensor and autonomous mobile
+robot with the tri-max method,” in Robotics and Automation (ICRA),
+2013 IEEE International Conference on, May 2013, pp. 987–992.
+[11] A. Grinham, M. Dunbabin, D. Gale, and J. Udy, “Quantiﬁcation of
+ebullitive and diffusive methane release to atmosphere from a water
+storage,” Atmospheric Environment, vol. 45, no. 39, pp. 7166 – 7173,
+2011.
+[12] R. Byer, “Two-dimensional remote air-pollution monitoring via to-
+mography,” Optics Letters, vol. 4, no. 3, pp. 75–77, 1979.
+[13] M. Trincavelli, V . Bennetts, and A. Lilienthal, “A least squares
+approach for learning gas distribution maps from a set of integral gas
+concentration measurements obtained with a tdlas sensor,” in Sensors,
+2012 IEEE, Oct 2012, pp. 1–4.
+[14] A. Drescher, A. Gadgil, P. Price, and W. Nazaroff, “Novel approach for
+tomographic reconstruction of gas concentration distributions in air:
+Use of smooth basis functions and simulated annealing,” Atmospheric
+Environment, vol. 30, no. 6, pp. 929–940, 1996.
+[15] T. Stoyanov, J. Saarinen, H. Andreasson, and A. Lilienthal, “Normal
+distributions transform occupancy map fusion: Simultaneous mapping
+and tracking in large scale dynamic environments,” in Intelligent
+Robots and Systems (IROS), 2013 IEEE/RSJ International Conference
+on, Nov 2013, pp. 4702–4708.
+[16] J. Saarinen, H. Andreasson, T. Stoyanov, J. Ala-Luhtala, and A. Lilien-
+thal, “Normal distributions transform occupancy maps: Application to
+large-scale online 3d mapping,” in Robotics and Automation (ICRA),
+2013 IEEE International Conference on, May 2013, pp. 2233–2238.
+[17] J. Saarinen, H. Andreasson, T. Stoyanov, and A. Lilienthal, “Nor-
+mal distributions transform monte-carlo localization (ndt-mcl),” in
+Intelligent Robots and Systems (IROS), 2013 IEEE/RSJ International
+Conference on, Nov 2013, pp. 382–389.
+[18] T. Stoyanov, M. Magnusson, and A. J. Lilienthal, “Fast and accurate
+scan registration through minimization of the distance between com-
+pact 3d ndt representations,” The International Journal of Robotics
+Research, vol. 31, pp. 1377–1393, 2012.
+[19] C. Heij, P. de Boer, P. H. Franses, T. Kloek, and H. K. van Dijk,
+Econometric Methods with Applications in Business and Economics.
+Oxford University Press, 2004.
+[20] D. Webster, S. Rahman, and L. Dasi, “Laser-induced ﬂuorescence mea-
+surements of a turbulent plume,” Journal of Engineering Mechanics,
+vol. 129, no. 10, pp. 1130–1137, 2003.
+[21] A. J. Lilienthal, M. Reggente, M. Trincavelli, J. L. Blanco, and
+J. Gonzalez, “A statistical approach to gas distribution modelling with
+mobile robots the kernel dm+v algorithm,” in Proceedings of the
+IEEE/RSJ International Conference on Intelligent Robots and Systems
+(IROS), October 11 - October 15 2009, pp. 570–576.
+[22] J. G. Monroy, “Advances in gas sensing and mapping for mobile
+robotics,” Ph.D. dissertation, University of Malaga, nov 2013.
+[23] S. Asadi, S. Pashami, A. Loutﬁ, and A. J. Lilienthal, “Td kernel
+dm+v: Time-dependent statistical gas distribution modelling on sim-
+ulated measurements,” in AIP Conference Proceedings Volume 1362:
+Olfaction and Electronic Nose - Proceedings of the 14th International
+SymposiumonOlfactionandElectronicNose(ISOEN), 2011, pp. 281–
+283.
+6367

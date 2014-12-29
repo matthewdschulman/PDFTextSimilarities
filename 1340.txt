@@ -1,0 +1,969 @@
+Reconstruction of Rigid Body Models
+from Motion Distorted Laser Range Data Using Optical Flow
+Eddy Ilg Rainer K¨ ummerle Wolfram Burgard Thomas Brox
+Abstract— The setup of tilting a 2D laser range ﬁnder up and
+down is a widespread strategy to acquire 3D point clouds. This
+setup requires that the scene is static while the robot takes
+a 3D scan. If an object moves through the scene during the
+measurement process and one does not take into account these
+movements, the resulting model will get distorted. This paper
+presents an approach to reconstruct the 3D model of a moving
+rigid object from the inconsistent set of 2D measurements
+by the help of a camera. Our approach utilizes optical ﬂow
+in the camera images to estimate the motion in the image
+plane and point-line constraints to compensate the missing
+information about the motion in depth. We combine multiple
+sweeps and/or views into to a single consistent model using a
+point-to-plane ICP approach and optimize single sweeps by
+smoothing the resulting trajectory. Experiments obtained in
+real outdoor scenarios with moving cars demonstrate that our
+approach yields accurate models.
+I. INTRODUCTION
+Compared to stereo cameras, laser range ﬁnders have
+become popular devices for the acquisition of 3D point
+clouds in large-scale scenarios because of their ability to
+obtain accurate long-range measurements [1]. A widely used
+and cost-effective setup is to mount a 2D range scanner on a
+tilting actuator. By nodding the laser scanner this approach is
+able to generate accurate models of static scenes. However, if
+an object moves during an entire sweep, which with typical
+conﬁgurations takes one second or even more, the individual
+measurements will not be consistent (see Figure 1a). In
+this paper, we present an approach that utilizes the optical
+ﬂow calculated from images grabbed during the point cloud
+acquisition and combines it with the laser measurements to
+estimate the movement of the corresponding object. Accord-
+ing to the estimated movement, it then calculates an accurate
+model of this object (see Figures 1b and 1c).
+The key idea of our approach is to estimate and perform
+a compensation for the motion of the moving object. To
+achieve this, we employ a video camera that we calibrate to
+the nodding laser range ﬁnder. As the camera operates at a
+higher framerate compared to the 3D point cloud acquisition
+(10 Hz vs. 1 Hz), our approach estimates the motion of
+the object in the image plane from frame to frame using
+optical ﬂow [2] and employs this information to reproject
+the individual 2D laser range scanlines according to the
+movement of the object. This, however, requires that we
+estimate the depth of the individual image pixels after the
+motion. To achieve this, we assume that the perceived object
+All authors are with the University of Freiburg. This work has been partially
+supported by DFG grant BR 3815/5-1 and the EC under contract numbers
+ERC-267686-LifeNav, FP7-600890-ROVINA, and FP7-610603-EUROPA2.
+(a)
+nodding 2D
+laser range ﬁnder
+camera
+(b) (c)
+Fig. 1. (a) Top view of a bulk point cloud recorded during 15 sweeps of a
+nodding 2D laser range ﬁnder of a car moving along the trajectory indicated
+by red arrows. (b) The car used as moving object. (c) The colored point
+cloud model reconstructed from the distorted point cloud above.
+is rigid. If, at one instant of time, we know a partial model of
+the rigid body, the optical ﬂow provides point-line constraints
+for the pose of this model at another instant of time. As a
+minimum model we have a non-degenerated single scanline
+(recorded in one rotation of the mirror deﬂecting the laser),
+which we assume to be recorded instantaneously. Tracking
+the pose of this model and adding more scanlines over time
+allows for reconstructing the model of the rigid object.
+Pose tracking with optical ﬂow naturally accumulates
+errors (drift), especially in the viewing direction of the
+camera. Therefore, as soon as we record a new sweep of
+the object, we use the model from this sweep as a reference
+and register the old model to it using an ICP approach. This
+restricts drift to the time window between two sweeps. The
+model recorded during one sweep is dense in the direction
+of the rotation of the mirror of the laser range ﬁnder, but
+sparse in the nodding direction. Due to this sparseness, the
+alignment of sweeps is not an easy task. We estimate the
+underlying surface of the existing (possibly denser) model
+by estimating its normals and register the points of the newly
+recorded sweep by minimizing their point-to-plane distances
+to this surface. To reduce drift, we furthermore constrain the
+motion of the object to the ground plane.
+Furthermore, we improve the tracking result by smoothing
+it with the alignment determined by ICP. This allows us to
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 4627
+reduce the inﬂuence of the drift on the quality of the model
+estimated by our approach. Afterwards, we use the smooth
+trajectory to recalculate the point cloud of the current sweep
+before integrating it into the model.
+II. RELATED WORK
+The typical methods to obtain 3D data with laser range
+ﬁnders can be roughly divided into two categories. The ﬁrst
+operates with laser range ﬁnders that are rigidly connected
+to a moving platform, such as a robot [3]. These methods
+require a precise estimate of the position of the robot to
+obtain an accurate model. The second category actively
+actuates the laser range ﬁnder either by nodding or rotating
+it [4], where the laser range ﬁnder itself may have a single
+or multiple beams. Note that there are also exceptions. For
+example, Zibedee by Bosse et al. [5] employs a spring-
+mounted laser range ﬁnder which is passively actuated due
+to the vibrations induced by driving over non-ﬂat surfaces.
+Obviously, the data of such a 3D scanning device can be used
+for various tasks including object reconstruction or mapping
+an environment.
+In addition to the categories mentioned above, dedicated
+approaches for model acquisition have been proposed. A
+popular approach to obtain the model is to use a robot for
+moving the sensor around the object [6], [7]. Krainin et
+al. [8] suggested a method that uses a robotic arm to grasp
+the object and to move it in front of a depth camera. In
+contrast to our approach, these methods either obtain a model
+of a non-moving object or move the object by themselves,
+whereas our approach considers the data of a continuously
+nodding 2D laser range ﬁnder to obtain a 3D model of a
+rigid object, which is moving along an unknown trajectory.
+Blais et al. [9] present an approach that explicitly takes
+into account that the scanned object moves. Their approach
+iteratively reﬁnes the model but relies on a Lissajous pattern
+to obtain the range data. Weise et al. [10] propose an
+approach to correct the distortion for active illumination
+stereo in short time frames. Instead of obtaining a model
+of an object by scanning a single object from multiple
+views, Ruhnke et al. [11] exploit the presence of multiple
+instances of the objects in the scene to obtain complete 3D
+models. Their approach applies spectral clustering to merge
+the individual instances into one object model.
+A related problem in computer vision is 3D reconstruction
+from a moving camera in the presence of independently
+moving objects [12]. While a static scene would come down
+to a structure-from-motion problem, a moving rigid object
+requires segmentation of the object and estimation of the
+relative rigid motion.
+Our approach combines the data of a laser range ﬁnder
+with vision. This combination has been applied successfully
+for other applications, such as extending the range for terrain
+classiﬁcation [13] or increasing the resolution of the range
+data [14]. Held et al. [15] apply upsampling to the sparse
+range data of a Velodyne scanner. They show that the denser
+range data leads to better velocity estimates for tracking a
+moving object. In contrast to our approach, their method
+(a)
+(b)
+Fig. 2. (a) The calibration pattern in the camera data and (b) in the remission
+data of the laser range ﬁnder.
+(a) (b)
+Fig. 3. (a) The ideal model of the calibration pattern. The red dots indicate
+the corners of the pattern. (b) The error function used to detect the rigid
+in-plane transformation. Darker areas indicate lower error.
+receives a full 3D scan with 10 Hz, whereas we receive such
+a scan at only 1 Hz and scanline-by-scanline. We exploit that
+the camera operates at a much higher frame rate than our
+nodding 2D laser range ﬁnder and track the object in the
+image space to account for the distortion.
+III. CALIBRATION AND SYNCHRONIZATION
+A. Calibration
+For calibrating the tilting laser range scanner and the cam-
+era we employ the calibration pattern depicted in Figure 2. To
+have a distinct pattern that can be well observed by both the
+laser range ﬁnder and the camera, the bright areas consist of
+highly reﬂective material conducting a scattering of the laser
+beam. This results in low remission values (black patches in
+Figure 2b) and makes it possible to detect the corresponding
+areas in the 3D scan. For calibration, we nod the laser range
+ﬁnder at a very slow velocity and record multiple sweeps to
+obtain high resolution scans.
+To establish a camera projection matrix P, which maps the
+3D points to image points, we are interested in ﬁnding the
+set of corresponding patch corners in image and 3D space. In
+the image we compute the intersections of the lines detected
+from the edges of the patches. In 3D space, we ﬁrst ﬁt a
+plane through the points p
+i
+with low remission values (black
+patches in Figure 2b) using a RANSAC approach. Given this
+plane we then interpolate corners of the patches by ﬁtting an
+4628
+(a)
+(b)
+Fig. 4. (a) Calibration object used to determine the time shift between the
+laser range ﬁnder and the camera. Green dots indicate points of the object
+detected by the laser range ﬁnder due to their remission value. The white
+arrows indicate the direction of movement. (b) Synchronized laser range
+ﬁnder and camera data of a moving object.
+ideal model (see Figure 3a) of the calibration pattern to the
+data. To this end, we deﬁne an error functionE() (see Figure
+3b) for the point locations. To determine the pose (R
+
+; t) of
+the pattern on the previously extracted plane we minimize
+arg min
+;t
+N
+X
+i=1
+E (R
+
+p
+i
++ t) (1)
+using gradient descent, where R
+
+is a 2D rotation matrix
+with angle  and t is a 2D translation.
+Once we know the corresponding locations of the corners
+in 3D space and the image, we establish a homography [16].
+Since the calibration object is planar, we take multiple
+rotated views of the pattern to uniquely determine the internal
+parameters of the camera and the projection matrix P.
+B. Synchronization
+To determine the time shift between the laser range ﬁnder
+and the tilt actuator, we exploit that objects must have the
+same coordinates within subsequent upward and downward
+sweeps. Hence, we determine the angle between the ground
+planes in two subsequent sweeps and iteratively shift the
+timestamps of the tilt actuator until this angle approaches
+zero.
+By moving another calibration object at high velocities
+from left to right, we calibrate the time shift between the
+laser and the camera. The surface of this object (depicted
+in Figure 4a) consists of the same reﬂective material as the
+calibration pattern described before. For the synchronization,
+we do not nod the laser range ﬁnder. We detect the pattern in
+the laser range ﬁnder data by its low remission values and
+project the points to image space (depicted as green dots
+in Figure 4). Along the line (shown in white) extrapolated
+from these points, we search for nearby pixels with the
+color of the calibration object to determine its location in
+the image. For a given scanline, we then seek for a camera
+frame close in time which best matches the position of the
+Rotation Axis
+!
+Rotation
+Translation
+v Screw Motion
+(Twist)
+p
+1
+p
+2
+p
+3
+r
+Fig. 5. Illustration of a twist. The motion corresponds to a rotation around
+the axis ! (red) and a translation along v (blue) resulting in the screw
+motion from p
+1
+to p
+3
+(green).
+object. We store the difference in time between the scanline
+and the image and ﬁt a normal distribution to a histogram
+over all values. We then use the mean of this distribution to
+shift the camera timestamps to match the laser range ﬁnder
+timestamps. Figure 4b shows a typical result.
+IV. MODEL RECONSTRUCTION
+A. Point-Line Correspondences from Optical Flow
+To compensate the motion, we assume that a partial model
+is known at one instant of time. In the beginning, this is the
+ﬁrst scanline of the laser range ﬁnder. Let x
+i
+denote the
+3D points of this model. With the projection matrix P from
+the previous section, these points can be projected into the
+camera image. We denote the points in the image plane by
+~ x
+i
+. We use large displacement optical ﬂow [2] to compute
+the displacements
+~
+
+i
+of ~ x
+i
+to the next camera frame. The
+displaced image location ~ x
+0
+i
+= ~ x
+i
++
+~
+
+i
+restricts x
+0
+i
+to the
+projection ray of ~ x
+0
+i
+.
+3D lines can be represented implicitly by so-calledPl¨ ucker
+lines [17]. Let L
+0
+i
+= (m
+0
+i
+; n
+0
+i
+) be the Pl¨ ucker line with a unit
+vector n
+0
+and a moment m
+0
+that corresponds to the projection
+ray ~ x
+0
+i
+. The Pl¨ ucker line representation then yields directly
+the distance of an arbitrary 3D point x to L
+0
+i
+via [18]:
+d(L
+0
+i
+; x) =kx n
+0
+i
+  m
+0
+i
+k: (2)
+Based on these point-line constraints, we estimate the six
+degrees of freedom of the rigid body motion to move the
+3D points to their new position at the time when the current
+camera image was taken.
+B. Pose Estimation
+For a given set of non-occluded points x
+i
+we seek for a
+rigid body transformation T = (Rj t) with a rotation R
+and a translation t that minimizesd(L
+0
+i
+; x
+0
+i
+). For the purpose
+of pose estimation, the twist representation [19] of T is well
+suited. As illustrated in Figure 5, a twist is a screw motion
+around a rotation axis ! and a translation v. Such a twist
+can be represented as a vector = (!
+1
+;!
+2
+;!
+3
+;v
+1
+;v
+2
+;v
+3
+) or
+in matrix form
+^ ! =
+0
+@
+0  !
+3
+!
+2
+!
+3
+0  !
+1
+ !
+2
+!
+1
+0
+1
+A
+;
+^
+ =
+
+^ ! v
+0
+>
+0
+
+: (3)
+Multiplying
+^
+ by a factor allows for an arbitrary scaling of
+the motion [20]. We can map a scaled twist to a transforma-
+tion matrix and back by taking the exponential or logarithm:
+T = exp(
+^
+);
+^
+ =
+1
+
+log(T); (4)
+4629
+which can be computed efﬁciently by the Rodrigues for-
+mula [19]. Here, we set  = 1 and seek for a twist that
+minimizes the distance d(L
+0
+i
+; x
+0
+i
+):
+arg min
+
+X
+i
+
+
+
+
+
+
+exp(
+^
+)
+
+x
+i
+1
+
+ n
+0
+i
+  m
+0
+i
+
+
+
+
+2
+; (5)
+where () denotes the projection from homogeneous to
+Euclidean coordinates. To reduce drift, we restrict the motion
+to the ground plane, which we detect using RANSAC, by
+aligning the z-axis of the reference frame to the ground
+normal and by setting
+!
+1
+= 0; !
+2
+= 0; and v
+3
+= 0: (6)
+Eq. (5) states a non-linear least squares problem, which we
+solve with the Gauss-Newton method, i.e., we iteratively
+linearize exp(
+^
+) I +
+^
+. Hence, Eq. (5) becomes a linear
+system in each iteration:
+arg min
+
+X
+i
+k((I + ^ !) x
+i
++ v) n
+0
+i
+  m
+0
+i
+k
+2
+: (7)
+We map the twist corresponding to the solution of this linear
+system to the corresponding transformation matrix and apply
+it to the 3D points to perform the next iteration.
+C. Treatment of Outliers
+Both the estimation of the optical ﬂow and the pose of
+the object are affected by residual errors. Hence, repeatedly
+estimating a new pose given the previous result leads to an
+accumulation of errors, i.e., a drift in the position and the
+orientation of the object. Close to the object boundary, this
+can result in model points that need to be projected to a
+background pixel, where the optical ﬂow does not correspond
+to the motion of the model. Figure 6a illustrates such a case.
+Another cause for such outliers can be local errors of the
+optical ﬂow. To be robust to such outliers, we apply robust
+statistics and replace the squared error norm in Eq. (5) by a
+truncated Huber norm [21]. This is equivalent to iteratively
+reweighted least squares. Using the Gauss-Newton method,
+we iteratively solve the linear system of Eq. (7). Let us
+denote this system as
+arg min
+
+X
+i
+kA
+i
+  b
+i
+k
+2
+: (8)
+If the correspondence hx
+i
+; ~ x
+0
+i
+i is an outlier, the residual
+r
+i
+() = kA
+i
+  b
+i
+k of this point is large. To reduce its
+inﬂuence on the solution , we introduce the weight
+w
+i
+() =
+(
+0 ifkr
+i
+()k>
+1
+kri()k+"
+otherwise
+; (9)
+which corresponds to replacing the quadratic norm by the
+truncated Huber norm with truncation at . The parameter
+ limits the weights of points with low residual and, conse-
+quently, the condition number of the system matrix. We start
+with w
+i
+= 1 and then solve Eq. (8) by computing
+arg min
+
+k
+X
+i
+w
+i
+(
+k 1
+)kA
+i
+
+k
+  b
+i
+k
+2
+(10)
+in each iteration k. Figure 6b shows the result of enabling
+iteratively weighted least squares.
+(a)
+(b)
+Fig. 6. (a) Illustration of the pose estimation drift during the reconstruction
+of the ﬁrst six sweeps of a car moving to the right. The area in red shows
+the optical ﬂow while the points indicate the projection of the model and its
+estimated pose. The drift leads to outliers (indicated by the white arrows).
+(b) Applying Eq. (9) weakens the inﬂuence of the outliers.
+(a) (b)
+Fig. 7. Illustration of model merging with the ﬁrst two sweeps of a moving
+car. (a) Initial misalignment of the ﬁrst two sweeps. The ﬁrst sweep is shown
+in red and the second one in blue. (b) The model after aligning the ﬁrst two
+sweeps with our approach. One can also see that the sweeps are dense in
+the direction of mirror rotation and sparse in the direction of nodding.
+D. Model Merging
+Applying the pose estimation process described above
+allows us to track the object and build its model by accumu-
+lating points. As already mentioned, this method produces
+drift. To keep the error of the drift bounded, we build a
+new model for each sweep. As the pose of the most recently
+recorded model is most certain, we align the formerly tracked
+model with the most recent one. Afterwards, we merge the
+models to an accumulated one, which is then aligned and
+merged with the next sweep in the same manner.
+Let   be the accumulated model and let  be the model
+of the most recent sweep. We want to register both models
+in a common coordinate frame. To this end, we consider
+the tracking result provided by optical ﬂow as an initial
+guess for registering both models with an ICP approach (see
+Figure 7a). We, however, have to take into account that the
+range data is sparse and that the scanlines hit the object at
+different height levels. Applying the commonly used point-
+to-point metric would align the dense scanlines and yield
+sub-optimal results. Thus, we instead consider a point-to-
+plane metric. Consequently, we have to estimate the normal
+vectors. Since the quality of the estimate of a normal vector
+depends on the density of the underlying point cloud, we
+compute the normal vectors on the accumulated model  ,
+which is in general denser than the newly recorded model .
+To estimate the normal vector n
+i
+of a point p
+i
+2  , we
+4630
+(a)
+y1
+T1
+Tn 1
+yn
+TA
+(b)
+y
+0
+1
+y
+0
+n
+Fig. 8. The trajectory optimization. Image (a) shows the pose estimates
+between two speciﬁc poses y
+1
+and yn . Blue circles indicate the estimated
+poses directly after a laser sweep was completed. Red lines indicate pose
+updates due to optical ﬂow pose estimation while blue lines indicate pose
+updates due to an ICP alignment. (b) Corresponding optimized trajectory.
+ﬁrst ﬁnd the neighbors within a certain radius. We compute
+the normal vector n
+i
+as the Eigenvector corresponding to
+the smallest Eigenvalue of the covariance matrix of these
+neighboring points. Additionally, we determine the sign of
+the surface normal such that it points towards the camera. We
+furthermore assume that the surfaces of the captured objects
+are convex. This allows us to detect occlusions when the
+object is moving by identifying points whose normals do
+no longer point in the direction of the camera. Speciﬁcally,
+we mark points as occluded if the angle between the vector
+from the point to the camera and the normal exceeds 60
+
+.
+We do not consider occluded points in the pose estimation
+step. A representation of the tangential plane to a point p
+i
+with normal n
+i
+is
+n
+i
+x d
+0
+= 0; (11)
+where d
+0
+= n
+i
+p
+i
+. Furthermore,jn
+i
+x d
+0
+j represents the
+distance of a point x to this plane. We iteratively seek for
+the nearest neighbors q
+i
+2  to p
+i
+bounded by a maximum
+distance d
+max
+and align  to   by minimizing
+arg min
+T
+A
+X
+i
+jn
+i
+(T
+A
+q
+i
+) d
+0
+j
+2
+: (12)
+Representing T
+A
+as a twist (see Eq. (4)) allows us to apply
+the constraint of Eq. (6), namely that the object moves on
+the ground plane. Again, we ﬁnd the solution of Eq. (12)
+using the Gauss-Newton method analogously to the pose
+estimation problem described before. Figure 7b depicts the
+outcome of our registration approach.
+We found that the robustness of the alignment of the
+sparse clouds heavily depends on the parameter d
+max
+. In
+contrast to other ICP implementations, our approach starts
+withd
+max
+= 10 cm in each iteration and only increasesd
+max
+if the number of neighbors found is insufﬁcient (less than
+one-third of the size of ).
+E. Trajectory Optimization
+As mentioned above, the pose of the reconstructed object
+is more accurate after we registered our existing model  
+and the point cloud  of the current sweep. The alignment
+step corresponds to a correction of the error accumulated
+by chaining up the pose estimates (T
+1
+;:::; T
+n 1
+) from
+optical ﬂow. Figure 8a illustrates such a chain along with
+the ICP alignment that yields the transformation matrix T
+A
+.
+To account for the pose estimation errors made during the
+construction of , we perform a smoothing of the trajectory
+to obtain the maximum likelihood estimate for the trajectory
+(a) (b) (c)
+Fig. 9. Pictures and point clouds of the different objects: (a) Audi TT,
+(b) Van, (c) Polo.
+0
+10
+20
+A1 A2 A3
+Van
+V1 V2 V3 P1 P2 P3
+Polo Audi TT
+30
+40
+50
+60
+70
+RMS [cm]
+Van
+Polo
+Audi TT
+Fig. 10. RMS errors of the different datasets from Figure 11 compared to
+the different ground truths from Figure 9. As visible, the RMS to the correct
+ground truth is always the smallest and therefore allows for a classiﬁcation.
+of the object. Let (y
+1
+;:::; y
+n
+) be the poses of the moving
+object while  is acquired. Additionally, let e(y
+i
+; y
+j
+; T) be
+an error function which computes the difference between
+a given estimated transformation T and the expected value
+given the current state of the poses y
+i
+and y
+j
+. We determine
+y
+0
+1;:::;n
+by solving
+argmin
+y
+1;:::;n
+ke(y1;yn;TA)k
+2
+	
++
+n 1
+X
+i=1
+ke(yi;yi+1;Ti)k
+2
+
+i
+; (13)
+wherekk
+2
+
+is the squared Mahalanobis distance weighted by
+the covariance matrix . Here, 	 and 
+i
+allow us to balance
+the inﬂuence of the measurements. Again, we solve Eq. (13)
+with Gauss-Newton as implemented in g
+2
+o [22]. This leads
+to a smoothed trajectory y
+0
+1;:::;n
+(see Figure 8b) that we use
+to rebuild the model acquired during the most recent sweep.
+V. RESULTS
+We evaluate our approach on several real-world data sets
+in which three different cars are moving through the scene.
+A Hokuyo UTM-30LX laser rotating with 40 Hz mounted
+on a servo that is tilting from -50
+
+to +30
+
+provided the 3D
+range measurements. Additionally, we recorded the image
+data of one camera of a Point Grey Bumblebee2 stereo
+camera running at 10 Hz and a resolution of 1024 768
+pixels. We use the implementation from Brox and Malik [2]
+for computing the optical ﬂow.
+For a quantitative evaluation, we acquired dense point
+clouds of the still standing vehicles depicted in Figure 9 by
+manually steering a robot around the vehicle. We applied
+sparse surface adjustment [23] to join the views and to
+obtain ground truth models. To assess the quality of our
+model reconstruction from a moving vehicle, we constrain
+the models to the ground plane and align the reconstruction
+to the ground truth with the previously introduced point-to-
+plane ICP approach. As an initialization we align the four
+contact points of the wheels. For each model point we then
+4631
+AudiTT -A1
+14Sweeps
+AudiTT -A1
+14Sweeps
+AudiTT -A1
+14Sweeps
+AudiTT -A1
+14Sweeps
+AudiTT -A1
+14Sweeps
+AudiTT -A1
+14Sweeps
+AudiTT -A1
+14Sweeps
+AudiTT -A1
+14Sweeps
+AudiTT -A1
+14Sweeps
+AudiTT -A1
+14Sweeps
+AudiTT -A3
+8Sweeps
+Van-V2
+26Sweeps
+Polo-P1
+10Sweeps
+Polo-P3
+31Sweeps
+AudiTT -A2
+29Sweeps
+Van-V1
+8Sweeps
+Van-V3
+13Sweeps
+Polo-P2
+3Sweeps
+Fig. 11. Illustration of the different datasets. The top row shows the trajectory of the moving object estimated by our approach along with a top view of
+the bulk point cloud. The bottom row illustrates the models reconstructed by our approach.
+ﬁnd the nearest neighbor in the ground truth and compute
+the root mean squared error (RMS). We not only compute
+the RMS of a vehicle compared to itself but also to the other
+models. The results are shown in Figure 10.
+For the evaluation we recorded three different motion
+scenes of different lengths (from 3 to 30 seconds) for each
+vehicle, as illustrated in Figure 11. The trajectories include
+linear motions towards the camera, from left-to-right and
+right-to-left, stops, curves and circles. For each vehicle, in
+case of a circle, we are able to reconstruct a 360
+
+model.
+The RMS with respect to the corresponding ground truth
+model typically lies between 3 cm and 9 cm. As visible from
+Figure 10, in all cases (even with only 3 sweeps), the RMS
+of the reconstructed models sufﬁces to distinguish between
+different vehicles without the use of further features. This
+indicates that we can use our approach to classify moving
+objects based on their 3D shape instead of relying on the
+visual appearance alone.
+VI. CONCLUSION
+In this paper, we propose a method to reconstruct models
+of moving rigid objects captured by a nodding laser range
+ﬁnder and a video camera. To this end, our approach
+considers optical ﬂow to track the object in the camera
+frame and to correct the distortion in the range data induced
+by the motion of the object. The results from different
+motion scenes of vehicles indicate that our approach allows
+us to obtain accurate reconstructions. Our evaluation shows
+that reconstruction errors lie in the range of 3 cm to 9 cm.
+Furthermore, one could use our approach to classify the
+moving object based on corresponding, previously recorded
+3D models.
+There are several options for future work. Potential exten-
+sions regard a real-time implementation or the relaxation of
+the ground plane or rigidity assumption.
+REFERENCES
+[1] S. Kumar, D. Gupta, and S. Yadav, “Sensor fusion of laser and
+stereo vision camera for depth estimation and obstacle avoidance,”
+International Journal of Computer Applications, vol. 1, no. 26, 2010.
+[2] T. Brox and J. Malik, “Large displacement optical ﬂow: descriptor
+matching in variational motion estimation,” IEEE Transactions on
+PatternAnalysisandMachineIntelligence, vol. 33, pp. 500–513, 2011.
+[3] G. Sibley, C. Mei, I. Reid, and P. Newman, “Vast scale outdoor
+navigation using adaptive relative bundle adjustment,” Int. Journal of
+Robotics Research, vol. 29, no. 8, pp. 958 – 980, July 2010.
+[4] O. Wulf and B. Wagner, “Fast 3D-scanning methods for laser mea-
+surement systems,” in Int. Conf. on Control Systems and Computer
+Science (CSCS), 2003.
+[5] M. Bosse, R. Zlot, and P. Flick, “Zebedee: Design of a spring-mounted
+3-D range sensor with application to mobile mapping,”IEEETrans.on
+Robotics, vol. 28, no. 5, pp. 1104–1119, 2012.
+[6] R. Triebel, B. Frank, J. Meyer, and W. Burgard, “First steps to-
+wards a robotic system for ﬂexible volumetric mapping of indoor
+environments,” Proc. of the IFAC/EURON Symposium on Intelligent
+Autonomous Vehicles (IAV), 2004.
+[7] T. Foissotte, O. Stasse, A. Escande, P.-B. Wieber, and A. Kheddar,
+“A two-steps next-best-view algorithm for autonomous 3D object
+modeling by a humanoid robot,” in Proc. of the IEEE Int. Conf. on
+Robotics & Automation (ICRA), 2009.
+[8] M. Krainin, B. Curless, and D. Fox, “Autonomous generation of com-
+plete 3D object models using next best view manipulation planning,”
+in Proc. of the IEEE Int. Conf. on Robotics & Automation (ICRA),
+2011.
+[9] F. Blais, M. Picard, and G. Godin, “Accurate 3D acquisition of freely
+moving objects,” in Proc. of the 2nd Int. Symposium on 3D Data
+Processing, Visualization and Transmission, 2004.
+[10] T. Weise, B. Leibe, and L. Van Gool, “Fast 3D scanning with automatic
+motion compensation,” in Proc. of the IEEE Conf. on Comp. Vision
+and Pattern Recognition (CVPR), 2007.
+[11] M. Ruhnke, B. Steder, G. Grisetti, and W. Burgard, “Unsupervised
+learning of 3D object models from partial views,” in Proc. of the
+IEEE Int. Conf. on Robotics & Automation (ICRA), 2009.
+[12] K. E. Ozden, K. Schindler, and L. Van Gool, “Multibody structure-
+from-motion in practice,” IEEE Transactions on Pattern Analysis and
+Machine Intelligence, vol. 32, no. 6, pp. 1134–1141, 2010.
+[13] H. Dahlkamp, A. Kaehler, D. Stavens, S. Thrun, and G. Bradski, “Self-
+supervised monocular road detection in desert terrain,” in Proc. of
+Robotics: Science and Systems (RSS), 2006.
+[14] J. Dolson, J. Baek, C. Plagemann, and S. Thrun, “Upsampling range
+data in dynamic environments,” in Proc. of the IEEE Conf. on
+Comp. Vision and Pattern Recognition (CVPR), 2010.
+[15] D. Held, J. Levinson, and S. Thrun, “Precision tracking with sparse 3D
+and dense color 2D data,” in Proc. of the IEEE Int. Conf. on Robotics
+& Automation (ICRA), 2013.
+[16] Z. Zhang, “A ﬂexible new technique for camera calibration,” IEEE
+Trans. on Pattern Analysis and Machine Intelligence (PAMI), vol. 22,
+no. 11, pp. 1330–1334, 2000.
+[17] F. Shevlin, “Analysis of orientation problems using Pl¨ ucker lines.”
+in International Conference on Pattern Recognition (ICPR), vol. 1,
+Brisbane, 1998, pp. 685–689.
+[18] T. Brox, B. Rosenhahn, J. Gall, and D. Cremers, “Combined region-
+and motion-based 3D tracking of rigid and articulated objects,” IEEE
+Transactions on Pattern Analysis and Machine Intelligence, vol. 32,
+no. 3, pp. 402–415, 2010.
+[19] R. M. Murray, Z. Li, and S. S. Sastry, Mathematical Introduction to
+Robotic Manipulation. Baton Rouge: CRC Press, 1994.
+[20] B. Rosenhahn, T. Brox, and H.-P. Seidel, “Scaled motion dynamics for
+markerless motion capture,” in International Conference on Computer
+Vision and Pattern Recognition (CVPR), 2007.
+[21] P. J. Huber, Robust Statistics. New York: Wiley, 1981.
+[22] R. K¨ ummerle, G. Grisetti, H. Strasdat, K. Konolige, and W. Burgard,
+“g2o: A general framework for graph optimization,” in Proc. of the
+IEEE Int. Conf. on Robotics & Automation (ICRA), 2011.
+[23] M. Ruhnke, R. K¨ ummerle, G. Grisetti, and W. Burgard, “Highly
+accurate 3D surface models by sparse surface adjustment,” in Proc. of
+the IEEE Int. Conf. on Robotics & Automation (ICRA), 2012.
+4632

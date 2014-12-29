@@ -1,0 +1,1294 @@
+Localization and mapping for aerial manipulation based on range-only
+measurements and visual markers
+Felipe R. Fabresse
+1
+, Fernando Caballero
+1
+, Ivan Maza
+1
+and Anibal Ollero
+1
+Abstract—This paper presents a new approach for aerial
+robotssimultaneouslocalizationandmapping(SLAM)oriented
+to aerial manipulation applications. The approach is based on
+the integration of range-only measurements and visual markers
+detected with the on-board camera. A multiple hypotheses
+framework is applied for range-only together with visual
+markers SLAM. This approach allows integrating two different
+typesofsensorsthatarecomplementaryforlocalization,mixing
+the stable and continuous estimation provided by range sensors
+with the precise but infrequent measurements from the visual
+markers. Real experiments involving an aerial robot and
+radio/visual markers have been used to validate the approach.
+I. INTRODUCTION
+Range sensors have been subject of research in the last
+decade not only in the domain of localization applications but
+also for Simultaneous Localization And Mapping (SLAM)
+systems. These devices make possible the localization of
+robots or other kind of objects in GPS denied environments
+such as indoors. In the advantages, they offer a low cost
+localization solution which does not require a direct line of
+sight (LOS) between each pair of sensors when employing
+radio systems like Wiﬁ or Ultra Wide Band (UWB) beacons.
+In addition, the data association problem is often solved
+by attaching the sensor identiﬁcation with the range mea-
+surement information. However, the observability of range
+sensors state depends on the trajectory tracked by the vehicle,
+making visual information a perfect complement for these
+measurements in order to solve the ambiguities produced
+in those situations. In manipulation applications the use
+of range sensor might be used to give a rough estimation
+of the elements to be manipulated when their location is
+completely unknown and there is NLOS between the camera
+of the vehicle and these elements, whereas visual information
+provides a ﬁne estimation for manipulation tasks.
+Range sensors have been applied in different areas, such
+as localization of Autonomous Guided Vehicles (AGV) in
+manufacturing environments [1], outdoor mapping of RFID-
+based range sensors employing an aerial vehicle [2] and
+simultaneous localization and mapping of Autonomous Un-
+derwater Vehicles (AUV) and ultrasonic transponders [3].
+The advantage of not requiring a LOS between each pair
+This work is partially supported by the ARCAS project (FP7-ICT-2011-
+7-287617) funded by the European Commission of the Seventh Frame-
+work Programme and the national projects RANCOM (P11-TIC-7066) and
+CLEAR (DPI2011-28937-C02-01).
+1
+F.R. Fabresse, F. Caballero, I. Maza and A. Ollero are with
+Grupo de Robotica, Visi´ on y Control, Universidad de Sevilla,
+Spain. E-mail: fabresse@us.es, fcaballero@us.es,
+imaza@us.es, aollero@cartuja.us.es
+(a) Aerial manipulation
+(b) Embedded range sensors and visual
+markers
+Fig. 1. Aerial manipulation of structural elements based on embedded
+sensors and visual markers.
+of sensors makes them very useful for the localization and
+identiﬁcation of structural elements in indoor/outdoor aerial
+or ground manipulation.
+The information provided by these range sensors is a
+simple measurement of the distance between two range
+sensor, which makes their integration in localization and/or
+mapping applications specially difﬁcult due to the lack of
+bearing information which leads to multiple location hy-
+potheses. This problem have been researched, specially in the
+case of 2D RO-SLAM, by researchers who have proposed
+different methods to solve the multi-hypotheses problem.
+Thus, to solve the mapping problem [4] proposes a grid-
+based solution to map the position of different beacons (range
+sensors with unknown locations). The solution is improved
+by the employment of a robust outlier rejection method based
+on a spectral graph partitioning. On the other hand, [2]
+proposes a probabilistic approach based on a particle ﬁlter to
+get an initial 2D estimation of each beacon position while the
+aerial vehicle moves around these beacons. Once the particle
+ﬁlter of each beacon has converged into a Gaussian solution,
+the estimation is switched to an Extended Kalman Filter
+(EKF). Although the results of this method are accurate, the
+main drawback is the delayed initialization of the EKF which
+loses all past range information employed by the particle
+ﬁlter. Later, the same authors proposed a multiple hypotheses
+solution [5] where the initial 2D localization uncertainty of
+the beacons is modeled with a Gaussian Mixture Model
+integrated in an EKF since the ﬁrst range measurement re-
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 2100
+ceived. As new range measurements are received, the system
+reduces the number of hypotheses in order to decrease the
+computational load associated to multi-hypotheses solutions
+while the EKF estimate the real location of the beacon. To
+model the bearing information, the method is based on the
+polar parametrization proposed in [6]. The results of this
+method are accurate and, in contrast to previous work, it
+allows to initialize the EKF with a single range measurement.
+In the domain of Range-only SLAM (RO-SLAM), two
+novel solutions are presented in [7], [8]. In [7] the authors
+employ a spectral algorithm based on a SVD decomposi-
+tion of the observation matrix while in [8] two different
+approaches are used to solve the RO-SLAM problem: one
+based on semideﬁnite programming techniques and other
+based on convex optimization techniques. Other conventional
+SLAM frameworks are compared in [9], [10] where the Fast-
+SLAM approach is considered the most accurate and efﬁcient
+solution. This Fast-SLAM framework is used in [11], [12],
+where a particle ﬁlter for both localization and mapping
+problem is used. Two different optimization techniques for
+the particle ﬁlter used to locate the different beacons are
+applied. Another Fast-SLAM solution is proposed in [13],
+[14] where the particle ﬁlter of the mapping problem is
+switched into an EKF once each particle ﬁlter converges into
+a Gaussian distribution reducing the computational burden of
+previous approaches. For 3D RO-SLAM, [15] proposes an
+undelayed solution which models the multi-modality of the
+range measurement model with a Gaussian Mixture Model
+so that each beacon is integrated in an independent EKF.
+This solution presents accurate results but does not allow
+the integration of inter-beacon measurements in such a way
+that cross correlations between beacons can be taken into
+account. Thus, the authors of [16] propose a 3D RO-SLAM
+method based on a centralized EKF-SLAM framework which
+allows the integration of inter-sensor measurements consid-
+ering the cross correlation between them. In aerial manip-
+ulation, keeping the correlation between beacons is crucial
+when multiple beacons are embedded in the same structural
+element (see Fig. 1). The method also improves the scala-
+bility of the system with a reduced spherical parametrization
+and an efﬁcient EKF update scheme.
+In general, the main drawback of previous works is
+the observability problem associated to range measurements
+which depends on the trajectory tracked by the autonomous
+vehicle. In [17] this issue is solved using visual information
+to reﬁne the rough estimation performed by a 2D range-only
+mapping method which is based on a delayed EKF-SLAM.
+The delayed initialization algorithm of this method is based
+on a particle ﬁlter and the solution proposed uses a Cartesian
+parametrization of the beacon hypotheses which is less robust
+than a polar parametrization [6].
+The main contributions of this paper are the use of an
+optimal 3D RO-SLAM solution based on a reduced spherical
+parametrization integrating not only range measurements but
+also visual information. On the other hand, this paper will
+propose two different strategies to reduce the computational
+load required by multi-hypotheses frameworks by means of
+integration of visual information, these strategies will be
+compared an validated with experimental results.
+The paper is organized as follows. The ﬁrst section intro-
+duces the aerial manipulation problem focusing in the local-
+ization and mapping of the aerial vehicle and the structural
+elements. A summary of the method employed is given in
+Sect. II. Section III details the proposed method, explaining
+the different stages of the Bayesian ﬁlter applied. The method
+is then validated in real experiments in Sect. IV-A. Finally
+the conclusions in Sect. V close the paper.
+II. SYSTEM OVERVIEW
+The method presented in this paper extends the RO-SLAM
+method presented by the authors in [16] making it more
+robust against range measurement outliers and improving
+the prune strategy. On the other hand, the mapping solu-
+tion proposed in this paper describes a method to include
+visual measurements which are based on the detection and
+localization of visual markers placed on the same structural
+elements where the range sensors are embedded (see Fig. 1).
+The method proposed is suitable for aerial manipulation tasks
+where an aerial robot endowed with a manipulator have to
+interact with several structural elements. In these cases, the
+system should localize the aerial robot and, at the same time,
+it should also map the structural elements to be manipulated.
+The use of visual markers allow the correction of the coarse
+estimation about the position of structural elements using the
+3D range-only mapping algorithm detailed in the following.
+Thus, this paper uses a centralized EKF to estimate not
+only the 3D position of the aerial robot, but also the 3D
+position of each beacon embedded in structural elements.
+This scheme has the advantage of keeping the correlation
+existing between those beacons embedded in the same struc-
+tural element, which makes the position estimation more
+robust. On the other hand, the use of an EKF allows to
+deal with the non-linearities which appear in this kind of
+observation models in an efﬁcient way.
+III. SLAM WITH RANGE SENSORS AND VISUAL
+MARKERS
+The solution presented in this paper uses a centralized
+EKF-SLAM whose state vector x is composed by the aerial
+vehicle position x
+r
+= [x
+r
+;y
+r
+;z
+r
+]
+T
+and the position of m
+beacons (features of the map f
+i
+):
+x=[x
+t
+r
+;f
+t
+1
+;f
+t
+2
+;:::;f
+t
+m
+]
+T
+: (1)
+The prediction and correction stages of this ﬁlter are
+described in the following subsections.
+A. Aerial robot localization
+For the localization of the aerial vehicle, any kinematic and
+dynamic model of the vehicle can be used. Then to correct
+the position predicted, this paper proposes to use some range
+sensors whose positions are known (anchors) as a mean to
+trilaterate the 3D position of the aerial robot. The positions
+of the anchors must be placed in a way that the vehicle can
+trilaterate its position as it moves around the entire scenario.
+2101
+The equation applied to update the vehicle position in the
+EKF with a single range measurement is
+r
+i
+=
+p
+(x
+ai
+ x
+r
+)
+2
++(y
+ai
+ y
+r
+)
+2
++(z
+ai
+ z
+r
+)
+2
+; (2)
+where [x
+ai
+;y
+ai
+;z
+ai
+] is the known 3D position of the i-th
+anchor that provided the range measurement r
+i
+.
+B. Range-only mapping
+As it was mentioned above, the mapping solution proposed
+in this paper uses a multiple-hypotheses strategy similar to
+that one described in [16]. Hence the position of the radio
+beacons is estimated by using range-only information and, in
+order to tackle with the multi-modality of this observation
+model, two Gaussian Mixture Models (GMM) are used to
+integrate all the hypotheses in the EKF since the very ﬁrst
+measurement. Then, as new beacons are discovered, their
+hypotheses are added dynamically into the EKF with only
+the ﬁrst range measurement received from the beacons. The
+state vector of each beaconf
+i
+is represented using a reduced
+spherical parametrization (see Fig. 2) which is composed
+by the position of the aerial vehicle x
+i
+= [x
+i
+;y
+i
+;z
+i
+]
+T
+from
+which the ﬁrst range measurement was received, the range
+measurement received 
+i
+= r
+i
+as the radius of the sphere,
+n
+
+samples of possible azimuth angles 
+i
+and n
+
+samples
+of possible elevation angles 
+i
+. Hence, the state vector of a
+beacon during the initialization stage is
+f
+i
+=[x
+t
+i
+;
+i
+;
+i1
+;
+i2
+;:::;
+in
+
+;
+i1
+;
+i2
+;:::;
+in
+
+]
+T
+: (3)
+It should be noticed how this spherical parametrization of
+then
+
+n
+
+hypotheses uses only4+n
+
++n
+
+parameters instead
+of4+n
+
+n
+
+. As in [16], each sample
+ij
+is the mean value of
+one Gaussian mode of the GMM used to model the possible
+azimuth angles 
+i
+. The weights of each mode are initialized
+with the same probability and depends on the number of sam-
+ples employed. In the same manner, the standard deviation
+
+ij
+of each sample is initialized uniformly and depends on
+the number of hypotheses h=n
+
+n
+
+used to model the real
+uniform spherical distribution. The same applies to the GMM
+used to model the possible elevation angles 
+i
+. The number
+of hypotheses h are initialized automatically according to
+the ﬁrst measurement received and the optimal density of
+hypotheses as it is described in [16]. Finally, the covariance
+of the centerx
+i
+is initialized with the same covariance matrix
+of the aerial vehicle at the moment of the initialization, and
+ﬁnally, the deviation
+i
+represents the thickness of the initial
+uniform sphere distribution represented in Fig.2
+Then, once a beacon has been initialized, the following
+range measurements are used to update each sample. This
+range measurements are ﬁltered with a median ﬁlter in order
+to reject sensor outliers and hence making the method more
+robust. The update scheme used has also been optimized to
+only use n
+
++n
+
+equations, instead of the n
+
+n
+
+equations
+used in other works. This update scheme is composed by
+n
+
++n
+
+equations like
+X
+[x i , y i , z i ]
+?? i
+? i
+? i
+? i
+X
+X
+?
+i
+?
+i
+Fig. 2. Spherical parametrization of beacons. The yellow area represents the
+probability distribution where the feature can be located once a ﬁrst range
+measurement is received. The annulus at left represents the GMM used to
+model the theta samples (azimuth angles), the annulus at center represent
+the GMM used to model the phi samples (elevation angles) and ﬁnally
+the sphere at right represents the real uniform and spherical distribution
+modeled with the combination of both GMM. The green object represents
+the real position of the range-sensor (beacon). The center of the sphere is
+composed by the position where the robot was located when the ﬁrst range
+measurement was received.
+r
+i
+=
+q
+(x
+fi
+ x
+r
+)
+2
++(y
+fi
+ y
+r
+)
+2
++(z
+fi
+ z
+r
+)
+2
+; (4)
+where x
+fi
+, y
+fi
+and z
+fi
+stand for
+x
+fi
+= x
+i
++
+i
+cos(
+i
+)cos(
+i
+)
+y
+fi
+= y
+i
++
+i
+sin(
+i
+)cos(
+i
+)
+z
+fi
+= z
+i
++
+i
+sin(
+i
+):
+(5)
+Thus, to update one 
+ij
+sample the method proposed is
+to substitute the value 
+i
+of (4) by the expected elevation
+angle 
+i
+and propagating its equation properly through the
+Jacobian H. Analogously, 
+i
+is used to update each sample
+
+ij
+. More details are given in [16].
+On the other hand, to update the weights of both GMMs
+the equations used followed by normalization are
+!
+ij
+
+=!
+ij
+
+max(p(r
+i
+jx
+t
+r
+;x
+t
+i
+;
+i
+;
+ij
+
+;
+ij
+
+)jj
+
+=1::n
+
+)
+(6)
+and
+!
+ij
+
+=!
+ij
+
+max(p(r
+i
+jx
+t
+r
+;x
+t
+i
+;
+i
+;
+ij
+
+;
+ij
+
+)jj
+
+=1::n
+
+):
+(7)
+In addition to this optimized update strategy, a prune
+scheme is also used to reduce the computational burden
+and resources of the method as the ﬁlter converges into
+a single hypotheses. In this paper samples are removed if
+their weights are lower than a threshold th = 10
+ 10
+=h
+whereh is the current number of hypotheses. But, in contrast
+to [16], this paper proposes a merging strategy which join
+those samples which are similar with respect to their angular
+distance. Thus, for example, when the angular distance
+between two samples 
+ij1
+and 
+ij2
+is lower than a certain
+threshold, then these samples are joined as
+
+0
+ij1
+=
+!
+ij1
+
+ij1
++!
+ij2
+
+ij2
+2
+(8)
+and the new EKF covariance is updated with the JacobianJ
+of the equation (8) as P
+t
+=JP
+t
+J.
+2102
+The mapping strategy presented is suitable for aerial
+manipulation to offer a coarse estimation about the location
+of structural elements to be manipulated, so that the vehicle
+can approach to these structural elements and reﬁne the
+position estimation employing an on-board camera and visual
+markers placed over the same position where radio beacons
+are embedded (see Fig. 1(b)). The way in which this visual
+information is integrated into the ﬁlter is described in the
+next subsection.
+C. Integration of visual markers
+For the detection and localization of visual markers with a
+monocular camera several solutions have been analyzed and
+developed, such as the ArUco library [18]. The detection of
+visual markers is often solved using a hamming codiﬁcation
+printed in visual markers which allows its identiﬁcation after
+the marker is extracted from the image as follows:
+1) Use of a border detection algorithm in the input image.
+2) Remove undesired borders: borders without rectangu-
+lar shapes and borders with few of pixels.
+3) Sort corners of detected rectangles in anti-clockwise
+direction.
+4) Remove elements which are very close to each other.
+5) Use of homography methods to remove the perspective
+of markers detected.
+6) Validation of the hamming code of markers detected
+(6x6 grids).
+Finally, for those markers detected as valid, the algorithm
+applies the intrinsic model of the camera to get the 3D
+position of the marker with respect to the camera reference
+frame. This relative position is integrated in the EKF. The
+integration of this relative positions is computed if the ﬁlter
+previously contained an initialized beacon with the same
+identiﬁcation code of the marker. If it is the case, the relative
+position of the beacon is then transformed in order to get
+the position with respect to the vehicle reference frame V .
+This frame is aligned with the global reference frame in our
+approach (i.e. the vehicle is only translated with respect to the
+global frame but not rotated). Finally the estimated position
+of the beacon with respect to the vehicle is computed for
+each hypotheses as
+x
+V
+fi
+= x
+i
++
+i
+cos(
+i
+)cos(
+i
+) x
+r
+y
+V
+fi
+= y
+i
++
+i
+sin(
+i
+)cos(
+i
+) y
+r
+z
+V
+fi
+= z
+i
++
+i
+sin(
+i
+) z
+r
+;
+(9)
+where x
+V
+fi
+is the estimated relative position of the beacon
+with respect to the vehicle which can be compared by the
+EKF with the measured relative position extracted from
+visual markers. In that point, this paper propose two different
+algorithms:
+ The ﬁrst algorithm prune all hypotheses of the beacon
+detected except the one with higher probability accord-
+ing to the visual measurement received. The visual
+information is assumed to be very precise with respect
+to the hypotheses estimation of the ﬁlter which have
+not been pruned yet by the prune strategy explained
+in Sect. III-B. The following visual measurements are
+used to update the most likely estimated position of the
+beacon according to (9).
+ The second algorithm updates all existing hypotheses
+of the beacon detected and their weights in a similar
+way than the method described in Sect. III-B, but now
+applying (9) and taking the visual measure received,
+i.e. each 
+i
+and 
+i
+sample is updated applying the
+expected elevation
+i
+and azimuth
+i
+angles respectively
+and the weights are updated in this case evaluating
+the probability p(v
+i
+jx
+t
+r
+;x
+t
+i
+;
+i
+;
+ij
+
+;
+ij
+
+) where v
+i
+is
+the visual measurement received. In this method, hy-
+potheses are used as a mean to make the system robust
+against camera outliers instead of selecting the most
+likely which may lead to bad hypotheses due to a visual
+outlier for instance.
+In practice, as it will be explained in the next section,
+both methods are very similar when the aerial robot follows
+an optimal trajectory. In those cases, when the ﬁrst visual
+measurement is received and all the hypotheses have already
+converged into a single hypotheses the application of both
+methods is equivalent. The ﬁrst method reduces considerably
+the computational burden of the multi-hypotheses scheme
+used by RO-Mapping algorithm with a single visual measure
+at the cost of a worst estimation due to visual outliers,
+whereas the second method is more robust against visual
+outliers.
+IV. EXPERIMENTAL RESULTS
+Experiments involving an aerial robot, range sensors and
+visual markers have been conceived in order to validate the
+approach presented in this paper. The main objective of these
+experiments is to demonstrate the suitability of the approach
+when real sensors with noisy measurements are used. The
+experimental results will be presented at two different levels:
+pure mapping experiments and full SLAM.
+The mapping experiments are oriented to show how the
+approach behaves when the localization of the aerial robot is
+solved, and the problem is reduced to map the position of the
+range nodes in the space. This is a typical situation in indoors
+experiments when very precise positioning systems such as
+VICON or OptiTrack are used, or when RTK positioning
+systems are used outdoors.
+SLAM experiments will consider the localization of both
+the aerial vehicle and the range nodes without the integration
+of precise localization systems. The paper will show results
+based only on local sensors (barometer and inertial measure-
+ment unit), range sensors and visual markers, and results also
+integrating standard GPS in single conﬁguration.
+Prior to the discussion of the experimental results, next
+section describes the experimental setup describing all the
+elements involved in the experiment: aerial robot, sensors,
+ground-truth, etc.
+A. Experimental setup
+The complete experimental setup is composed by the
+following elements:
+2103
+GPS IMU 
+CAMERA 
+RADIO RANGE NODE 
+ULTRASONIC RANGE NODE 
+BAROMETER 
+(a)
+ULTRASONIC RANGE NODE 
+RADIO RANGE NODE 
+VISUAL MARKERS 
+BAR 
+(b)
+Fig. 3. Experimental setup. (a) Sensors on-board the aerial robot. The
+system is equipped with GPS in single conﬁguration, a range sensor based
+on radio, a range sensor based on ultrasounds, a visual camera looking
+downwards, an inertial measurement unit and a barometer. (b) Experiments
+area with several elements deployed: ultrasound and radio range sensors,
+visual markers at known positions and a bar whose position will be estimated
+based on range sensors and visual markers.
+ An aerial robot with the following on-board sensors
+(see Fig. 3(a)): GPS in single conﬁguration, an inertial
+measurement unit providing roll, pitch and yaw, a radio
+based range sensor, an ultrasound based range sensor, a
+barometer and a visual camera pointing downwards.
+ A bar with two range sensors based on radio and two
+small visual markers (see Fig. 3(b)).
+ Five range sensors based on radio. Three of them are
+installed in the scenario at known positions, whereas the
+other two are mounted in the bar (see Fig. 3(b)).
+ Three range sensors based on ultrasound placed at
+known positions in the scenario (see Fig. 3(b)).
+ Several visual markers with different size deployed all
+over the scenario at known positions (see Fig. 3(b)).
+Due to payload constraints, the aerial robot was not able
+to carry a RTK GPS, so the only positioning information was
+the single GPS on-board. In order to provide a good ground-
+truth for the position of the aerial robot, the real position of
+all the visual markers placed on the ﬂoor were registered
+and the images of the camera computed as a RANSAC
+PnP problem based on Levenberg-Marquardt optimization in
+order to compute the position of the vehicle with respect to
+them. The absence of vehicle ground truth in result ﬁgures is
+due to a lack of markers visibility from the vehicle camera.
+The ArUco library [18] was used to build and detect the
+markers not only for the ground truth computation but for
+the detection of bar markers too. This setup allows errors in
+the order of 10 cm when the markers occupy the 70% of
+the image or when several markers are detected in the same
+image.
+During the experiments, the aerial robot was ﬂying around
+and close to the bar in order to detect the visual markers
+on top of it. Next sections will explain the mapping and
+SLAM results obtained with Matlab. A video summarizing
+the experiments and the results obtained with an imple-
+mentation on ROS framework can be downloaded from
+http://grvc.us.es/staff/felramfab/icra2014/video.mp4.
+B. Mapping results
+The goal of this experiment was to estimate the range
+sensors attached to the bar assuming that the position of the
+vehicle is known. For this purpose, the robot localization
+based on visual markers is used as robot true position, and
+the range nodes and visual markers on the bar are used to
+estimate their position. This experiment allows showing the
+convergence and proper behaviour of the approach when the
+robot position is known, which is very usual in indoor setups
+or outdoors with accurate position systems such as the RTK
+position system.
+Figure 4 presents the evolution of the hypotheses for both
+range sensors. All the hypotheses are initialized around the
+robot position with the ﬁrst range measurement. After some
+trilateration (see Fig. 4(b)), most position hypotheses have
+been deleted for beacon 1, while for beacon 2 have already
+converged to a single solution. Figure 4(c) shows the results
+right after the visual marker information attached to each
+node has been integrated using the prune hypotheses method.
+It can be seen how both positions converge to a single
+solution close to the actual position. Finally, after integrating
+more range and visual information, Figure 4(d) shows the
+estimated position of both range sensors. It can be seen in
+the legend of the ﬁgure how the errors are 15 cm and 25 cm
+respectively.
+It is important to mention that the minimum distance from
+the aerial robot to the marker was 1.5 m during the mapping
+experiments. Visual markers detection on the marker’s bar
+could be improved if the aerial robot were closer, and
+this improvement can be directly translated to the mapping
+process.
+Both methods for visual marker detection have been im-
+plemented (prune hypotheses and weighting), but they yield
+to the same results with slightly differences, so the weighting
+results are not shown in the paper. In general, results will be
+very similar because the hypotheses quickly converge to a
+single one thanks to the good precision of the visual markers
+measurements. If the visual marker measurement is subject
+to outliers, then the weighting method could be more robust.
+Otherwise the prune hypotheses method is the best option
+from the computational point of view.
+C. SLAM results
+This section presents the results when the SLAM ﬁlter is
+used. The method integrate range only measurement from
+2104
+?6
+?4
+?2
+0
+2
+4
+?6
+?4
+?2
+0
+2
+4
+0
+2
+4
+6
+8
+? Beacon 1
+?Beacon 2
+Z (meters)
+Y (meters) X (meters)
+(a)
+?4
+?3
+?2
+?1
+0
+1
+2
+3
+4
+?4
+?2
+0
+2
+4
+0
+1
+2
+3
+4
+5
+6
+7
+8
+? Beacon 2
+? Beacon 1
+Y (meters)
+Z (meters)
+Groundtruth
+Beacon 1
+Hyp.2: 0.21965m
+Hyp.3: 1.7538m
+Hyp.4: 3.3075m
+Hyp.5: 4.7665m
+Hyp.20: 2.4803m
+Hyp.21: 3.4424m
+Hyp.22: 4.4217m
+Hyp.23: 5.2409m
+Hyp.68: 1.2988m
+Hyp.69: 2.3306m
+Hyp.70: 3.6403m
+Hyp.71: 4.8984m
+Beacon 2
+Hyp.2:l0.68333m
+X (meters)
+(b)
+?2
+?1.5
+?1
+?0.5
+0
+0.5
+1
+1.5
+2
+?2
+?1
+0
+1
+2
+0
+0.5
+1
+1.5
+2
+2.5
+3
+3.5
+? Beacon 2
+? Beacon 1
+Y (meters)
+Z (meters)
+Groundtruth
+Beacon 1
+Hyp.3: 0.64558m
+Beacon 2
+Hyp.2: 0.74987m
+X (meters)
+(c)
+?2
+?1.5
+?1
+?0.5
+0
+0.5
+1
+1.5
+2
+?2
+?1
+0
+1
+2
+0
+0.5
+1
+1.5
+2
+2.5
+3
+3.5
+? Beacon 2
+? Beacon 1
+Y (meters)
+Z (meters)
+Groundtruth
+Beacon 1
+Hyp.3: 0.14904m
+Beacon 2
+Hyp.2: 0.25629m
+X (meters)
+(d)
+Fig. 4. Mapping results. Evolution of the multiple hypotheses for the position of two nodes attached to the bar. (a) Initialization of the poses into the
+ﬁlter. (b) Most of the hypotheses are pruned after some trilateration of the aerial robot. (c) Result right after visual marker measurements are included. It
+can be seen how both positions converge to a single hypothesis. (d) Final mapping results.
+two different type of sensors at known positions, three radio
+based sensors with standard deviation of 1.5 m approximately
+and three ultrasonic devices with standard deviation of 5 mm.
+The SLAM ﬁlter also integrated information from the IMU
+in the prediction stage together with a model of the aerial
+robot, and barometric information in order to estimate the
+altitude. The positions of two radio nodes attached to the
+bar are also mapped and the position of the visual markers
+placed on the bar when they are detected are also integrated.
+Figure 5 shows the localization results of the SLAM ﬁlter.
+The global RMS error is about 1.7 m, but the error is below
+this threshold most of the time as it can be seen in the ﬁgure.
+The ground-truth showed in the ﬁgure is the estimation
+provided by the visual marker detector. It can be seen how
+the estimation follows the real position of the vehicle most of
+the time with small errors. It is remarkable that no GPS have
+been used on the robot pose estimation. The localization of
+the nodes on the bar converges to single hypotheses thanks
+to the visual marker integration and they are localized with
+errors of 0.7 and 0.6 m respectively.
+Figure 5 shows the results of the same experiment, but
+integrating a GPS in single conﬁguration with the usual 2.5 m
+CEP. It can be seen how the RMS error is almost reduced to
+the half, 1.06 m. The mapping of nodes on the bar is slightly
+improved in one of them with localization errors of 0.7 and
+0.4 m respectively. In general, the SLAM ﬁlter behaves better
+because the prediction model does not constraint enough the
+space of possible solutions, because we are using a pure
+predictive model. If other predictions are used, as visual
+odometry, the results will not differ signiﬁcantly with respect
+0 20 40 60 80 100 120 140 160 180
+?10
+0
+10
+XA7m9
+0 20 40 60 80 100 120 140 160 180
+?5
+0
+5
+10
+YA7m9
+0 20 40 60 80 100 120 140 160 180
+?5
+0
+5
+10
+ZA7m9
+Groundtruth
+Estimation
+0 20 40 60 80 100 120 140 160 180
+0
+5
+10
+ErrorAaxisAX
+ErrorA7m9
+Groundtruth
+Estimation
+0 20 40 60 80 100 120 140 160 180
+0
+2
+4
+ErrorAaxisAY
+ErrorA7m9
+Groundtruth
+Estimation
+0 20 40 60 80 100 120 140 160 180
+0
+2
+4
+6
+ErrorAaxisAZ
+ErrorA7m9
+TimestampA7sec9
+0 20 40 60 80 100 120 140 160 180
+0
+5
+10
+AbsoluteAerror
+ErrorA7m9
+TimestampA7sec9
+AbsoluteAerror
+RMSAerror:A1.7655m
+ErrorAaxisAZ
+RMSAerror:A0.58469m
+ErrorAaxisAY
+RMSAerror:A0.77265m
+ErrorAaxisAX
+RMSAerror:A1.4759m
+TimestampA7sec9
+Fig. 5. SLAM results without GPS. Estimated position of the aerial robot
+with the SLAM ﬁlter. The position integrates range measurements from three
+radio and three ultrasonic devices, an IMU and a barometer for altitude
+estimation. No GPS is used for position estimation. The ground-truth is
+computed based on the detection of visual markers placed in the ﬂoor at
+known locations. The graphs show the estimated X, Y and Z values together
+with the ground truth. The RMS error per axis and the global error are also
+shown.
+to the SLAM without GPS. It is important to remark that
+from seconds 100 to 120 there was no ground-truth because
+there were no markers in the ﬁeld of view of the camera
+on-board the aerial robot. The mean value has been plotted
+in order to have an estimation.
+V. CONCLUSIONS
+The paper has presented a simultaneous localization and
+mapping approach employing range measurements to get a
+coarse estimation of beacons position and a camera to detect
+and localize the position of the beacons by using visual
+2105
+0 20 40 60 80 100 120 140 160 180
+?10
+0
+10
+XA9m7
+0 20 40 60 80 100 120 140 160 180
+?10
+?5
+0
+5
+YA9m7
+0 20 40 60 80 100 120 140 160 180
+?5
+0
+5
+10
+ZA9m7
+Groundtruth
+Estimation
+0 20 40 60 80 100 120 140 160 180
+0
+2
+4
+6
+ErrorAaxisAX
+ErrorA9m7
+Groundtruth
+Estimation
+0 20 40 60 80 100 120 140 160 180
+0
+2
+4
+ErrorAaxisAY
+ErrorA9m7
+Groundtruth
+Estimation
+0 20 40 60 80 100 120 140 160 180
+0
+2
+4
+6
+ErrorAaxisAZ
+ErrorA9m7
+TimestampA9sec7
+0 20 40 60 80 100 120 140 160 180
+0
+2
+4
+6
+AbsoluteAerror
+ErrorA9m7
+TimestampA9sec7
+AbsoluteAerror
+RMSAerror:A1.0619m
+ErrorAaxisAZ
+RMSAerror:A0.52824m
+ErrorAaxisAY
+RMSAerror:A0.50518m
+ErrorAaxisAX
+RMSAerror:A0.77035m
+TimestampA9sec7
+Fig. 6. SLAM results with GPS. Estimated position of the aerial robot
+with the SLAM ﬁlter. The position integrates range measurements from
+three radio and three ultrasonic devices, an IMU, a barometer for altitude
+estimation and a GPS in single conﬁguration. The ground-truth is computed
+based on the detection of visual markers placed in the ﬂoor at known
+locations. The graphs show the estimated X, Y and Z values together with
+the ground truth. The RMS error per axis and the global error are also
+shown.
+markers attached to the same beacons. This strategy can be
+applied for aerial manipulation tasks where the aerial robot
+uses the coarse estimation of the beacons embedded in struc-
+tural elements for approaching, and then visual information
+is used to reﬁne the position estimation of structural elements
+to be manipulated.
+The localization approach uses range sensors with prior
+knowledge of their real position (anchors) to correct the pre-
+diction of the aerial vehicle position. On the other hand, the
+mapping solution relies on an optimal range-only mapping
+approach based on a reduced spherical parametrization and
+the use of marker detection and localization. Additionally,
+two different strategies have been proposed to reduce the
+computational load of the multi-hypotheses method used to
+initialize beacons position by integrating visual information
+and explaining the advantages and disadvantages of both
+methods. For the validation of the methods, the paper has
+presented some experimental results based on a real dataset
+collected with an aerial robot ﬂying around a bar. A coarse
+estimation is obtained from the range measurements provided
+by two radio beacons embedded in the bar. The robot ﬁnally
+reﬁnes the estimation by approaching to the localized bar.
+The localization results using only a basic prediction model
+and ﬁve anchors are good. The mapping results have demon-
+strated how the precise visual information complements very
+well the stable and continuous range measurements provided
+by the radio beacons.
+Future work will be focused on the use of other distributed
+solutions which can keep the cross correlation between those
+elements integrated in the same structural elements while
+at the same time it improves the scalability of the system
+with the number of elements to be manipulated by the
+aerial vehicle. On the other hand, more experiments with
+a higher number of structural elements and different vehicle
+maneuvers will be performed.
+ACKNOWLEDGEMENT
+Fernando Caballero is partially supported by the FROG
+project (FP7-ICT-2011.2.1) funded by the European Comis-
+sion.
+REFERENCES
+[1] M. Gholami, N. Cai, and R. Brennan, “An artiﬁcial neural
+network approach to the problem of wireless sensors network
+localization,” Robotics and Computer-Integrated Manufacturing,
+vol. 29, no. 1, pp. 96–109, Feb. 2013. [Online]. Available:
+http://www.sciencedirect.com/science/article/pii/S0736584512000907
+[2] F. Caballero, L. Merino, I. Maza, and A. Ollero, “A particle ﬁltering
+method for wireless sensor network localization with an aerial robot
+beacon,” in IEEE International Conference on Robotics and Automa-
+tion, 2008. ICRA 2008, May 2008, pp. 596 –601.
+[3] P. Newman and J. Leonard, “Pure range-only sub-sea SLAM,” in
+IEEE International Conference on Robotics and Automation, 2003.
+Proceedings. ICRA ’03, vol. 2, Sept. 2003, pp. 1921 – 1926 vol.2.
+[4] E. Olson, J. Leonard, and S. Teller, “Robust range-only beacon
+localization,” in In Proceedings of Autonomous Underwater Vehicles,
+2004, p. 6675.
+[5] F. Caballero, L. Merino, and A. Ollero, “A general gaussian-mixture
+approach for range-only mapping using multiple hypotheses,” in IEEE
+International Conference on Robotics and Automation (ICRA), 2010,
+2010, pp. 4404–4409.
+[6] J. Djugash and S. Singh, “A robust method of localization and mapping
+using only range,” in Experimental Robotics, ser. Springer Tracts in
+Advanced Robotics, O. Khatib, V . Kumar, and G. J. Pappas, Eds.
+Springer Berlin Heidelberg, Jan. 2009, no. 54, pp. 341–351.
+[7] B. Boots and G. J. Gordon, “A spectral learning approach to
+range-only SLAM,” arXiv:1207.2491, July 2012. [Online]. Available:
+http://arxiv.org/abs/1207.2491
+[8] J. R. Spletzer, A New Approach to Range-only SLAM for Wireless
+Sensor Networks, 2003.
+[9] Z. Kurt-Yavuz and S. Yavuz, “A comparison of EKF, UKF, Fast-
+SLAM2.0, and UKF-based FastSLAM algorithms,” in 2012 IEEE16th
+International Conference on Intelligent Engineering Systems (INES),
+June 2012, pp. 37 –43.
+[10] G. Tuna, K. Gulez, V . Gungor, and T. Veli Mumcu, “Evaluations of
+different simultaneous localization and mapping (SLAM) algorithms,”
+in IECON 2012 - 38th Annual Conference on IEEE Industrial Elec-
+tronics Society, 2012, pp. 2693–2698.
+[11] P. Yang, “Efﬁcient particle ﬁlter algorithm for ultrasonic sensor-based
+2D range-only simultaneous localisation and mapping application,”
+IET Wireless Sensor Systems, vol. 2, no. 4, pp. 394 –401, Dec. 2012.
+[12] Z. M. Wang, D. H. Miao, and Z. J. Du, “Simultaneous localization and
+mapping for mobile robot based on an improved particle ﬁlter algo-
+rithm,” in International Conference on Mechatronics and Automation,
+2009. ICMA 2009, Aug. 2009, pp. 1106 –1110.
+[13] D. Hai, Y . Li, H. Zhang, and X. Li, “Simultaneous localization
+and mapping of robot in wireless sensor network,” in 2010 IEEE
+International Conference on Intelligent Computing and Intelligent
+Systems (ICIS), vol. 3, Oct. 2010, pp. 173 –178.
+[14] J.-l. Blanco, J. Gonzlez, and J.-a. Fernndez-madrigal, “A pure proba-
+bilistic approach to range-only SLAM,” Pasedena Conference Center,
+California, USA, May 2008.
+[15] J.-L. Blanco, J.-A. Fernandez-Madrigal, and J. Gonzalez, “Efﬁcient
+probabilistic range-only SLAM,” in IEEE/RSJ International Confer-
+ence on Intelligent Robots and Systems, 2008. IROS 2008, Sept. 2008,
+pp. 1017 –1022.
+[16] F. R. Fabresse, F. Caballero, I. Maza, and A. Ollero, “Undelayed
+3D RO-SLAM based on gaussian-mixture and reduced spherical
+parametrization,” in 2013 IEEE/RSJ International Conference on In-
+telligent Robots and Systems (IROS), Tokyo Big Sight, Tokyo, Japan,
+Nov. 2013, pp. 1555–1561.
+[17] E. Menegatti, M. Danieletto, M. Mina, A. Pretto, A. Bardella,
+S. Zanconato, P. Zanuttigh, and A. Zanella, “Autonomous discovery,
+localization and recognition of smart objects through WSN and image
+features,” in 2010 IEEE GLOBECOM Workshops (GC Wkshps), Dec.
+2010, pp. 1653 –1657.
+[18] “ArUco: a minimal library for augmented reality applica-
+tions based on OpenCv,” Jan. 2013. [Online]. Available:
+http://www.uco.es/investiga/grupos/ava/node/26
+2106

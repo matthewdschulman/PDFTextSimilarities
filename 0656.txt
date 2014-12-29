@@ -1,0 +1,2419 @@
+A Distributed Model Predictive Control approach
+for robust postural stability of a humanoid robot
+Aurelien Ibanez
+1
+, Philippe Bidaud
+1;2
+and Vincent Padois
+1
+Abstract— A novel formulation of the synthesis of motor
+coordination for humanoid whole-body motion is proposed
+in this paper, in order to ensure robust control of postural
+stability. It relies on the distributed model predictive control
+framework to coordinate, in an optimal way, several objectives.
+The effectiveness of this control technique to maintain postural
+stability of a biped against strong external disturbances is
+shown. Control of the horizontal dynamics of the center of mass
+can withstand limited perturbations. Thus postural stability
+criteria are speciﬁed with respect to the robot center of mass
+vertical and horizontal dynamics, and to the angular dynamics
+of its torso. Formulating the balance problem in a predictive
+form and distributing at different time scales signiﬁcantly
+increases the robustness of the system to external disturbances,
+in terms of both tip-over and slippage risks. This original
+control architecture is validated through the simulation of
+an iCub robot performing a walking activity under unknown
+external actions.
+I. INTRODUCTION
+The work presented in this paper introduces a robust
+whole-body control approach to ensure postural stability of
+multi-legged locomotion systems, more particularly bipeds,
+against external perturbations. These perturbations, which
+may be of different nature (unexpected actions from the
+environment, uncertainty on contact conditions), affect the
+stability of contacts and consequently the control of the
+locomotion system as a whole, possibly causing the biped
+to tip-over or the contacts to slip. Several types of compen-
+satory motions can be involved to improve the control of
+biped postural stability: horizontal [1], [2] and vertical [3]
+dynamics of the system, angular momentum [4], [5], actions
+induced by the upper-limbs [6] or recovery steps [7], [8].
+The framework of Distributed Model Predictive Control
+(DMPC) offers to combine in an optimal way these different
+motor activities. The predictive aspect of such an architecture
+brings robustness to postural balance through the preview of
+future consequences of inputs on the system. The distributed
+aspect allows to deal with conﬂicting objectives, with the
+additional ability to adapt preview horizons to the dynamics
+of the controlled sub-processes.
+In this paper, a control architecture for biped postural
+stability is developed according to this approach. Several
+models of the system dynamics are coordinated in order
+1
+Aurelien Ibanez, Philippe Bidaud and Vincent Padois are with:
+- Sorbonne Universit´ es, UPMC Univ Paris 06, UMR 7222, Institut des
+Syst` emes Intelligents et de Robotique, F-75005, Paris, France
+- CNRS Centre National de la Recherche Scientiﬁque, UMR 7222,
+Institut des Syst` emes Intelligents et de Robotique, F-75005, Paris, France
+fibanez,bidaud,padoisg@isir.upmc.fr
+2
+Philippe Bidaud is with the ONERA, 91123 Palaiseau, France
+philippe.bidaud@onera.fr
+z
+x
+y
+F
+n
+F
+t
+F
+CoP
+CoM
+Mg
+M?
+H
+Fig. 1. Overview of postural stability dynamics
+to simultaneously optimize multiple balance and contacts
+stability objectives, previewed over different future horizons.
+The control problem of balance and stable biped loco-
+motion for humanoid robots is often tackled through the
+control of some characteristic point such as the Zero-Moment
+Point [9] (ZMP) or Capture Point [4] (CP). The most
+robust applications of such criteria generally implement a
+predictive problem in order to provide anticipative features
+to the reaction of the system. A signiﬁcant breakthrough
+in balance control involved a ZMP criterion in a predictive
+approach [1] and later in a Model Predictive Control (MPC)
+problem [2], introducing explicitly a set of constraints acting
+on the ZMP into the optimization problem and leading to
+signiﬁcant improvements in robustness against strong per-
+turbations. Robust control algorithms for walking activities
+were developed based on CP dynamics [10] and are subject
+to further developments in a MPC framework [11].
+Predictive approaches are not applied to all aspects of robot
+control; indeed the formulation of an optimization problem
+over a preview horizon tends to regulate control inputs,
+its main advantage being the rejection of short-term distur-
+bances. In that sense long preview horizons are not suitable to
+the control of systems of high-frequency dynamics. The MPC
+framework yet provides an indisputable gain in robustness
+for balance control. However, the computational cost it adds
+makes it more favorable to models of the system dynamics of
+a higher level of abstraction. A constrained Linear Inverted
+Pendulum (LIP) model of constant altitude is commonly used
+to derive the dynamics of the ZMP or CP. In addition, a
+signiﬁcant amount of valuable developments based on the
+ZMP Preview Control framework [1] rely solely on the
+control of the horizontal dynamics of the center of mass
+(CoM) of the robot to maintain balance, and rotational effects
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 202
+objective 
+objective i 
+objective j
+objective k 
+objective l 
+objective m 
+objective n
+CENTRALIZED DECENTRALIZED
+(a)
+objective i 
+objective j
+objective k 
+objective l 
+objective m 
+objective n
+objective 
+NON COOPERATIVE
+DISTRIBUTED (NASH)
+COOPERATIVE
+DISTRIBUTED (PARETO)
+(b)
+Fig. 2. Illustration of centralized, decentralized and distributed optimization problems
+are commonly neglected in the ZMP equations. In order
+to increase balance robustness against strong perturbations,
+such as external pushes or ground irregularities, the introduc-
+tion of additional controlled degrees of freedom is necessary;
+focus has been recently put in this direction towards the
+computation of recovery steps [12], [8], [13] to avoid the fall
+of the robot. These approaches hold tip-over as the main fall
+scenario. Contact stability is largely considered as a low-level
+(high priority) constraint exclusively [14], [15], [16] and no
+optimization is made towards the minimization of slippage
+risk. Nevertheless slippage is also a major concern as it
+leads to uncontrollable traction from the ground, and contact
+conditions strongly inﬂuence motor activity for example in
+sit-to-stand motions [17].
+Contribution of this paper is directed to three aspects
+of predictive balance control, in an attempt to answer to
+the foregoing remarks. First, postural stability is maintained
+through both balance (tip-over) and contacts stability (slip-
+page) maximization. Second, balance control takes advantage
+of both horizontal and vertical CoM dynamics, along with
+rotational effects through angular momentum of the robot
+around its CoM, as illustrated in ﬁgure 1. Last, several
+models of different levels of abstraction and objectives are
+combined within a single distributed predictive problem, and
+span multiple preview horizons.
+The paper is organized as follows. Distribution methods
+are ﬁrst introduced to highlight their advantages in solving
+large optimization problem. An optimal postural stability
+control problem is next developed, and its resolution is
+presented in the following section through decomposition
+and distribution at different time scales. Last section validates
+the resulting control architecture through the simulation
+of a walking activity under external pushes, and exhibits
+noticeable gains in robustness with respect to tip-over and
+slippage risks.
+II. DISTRIBUTED MODEL PREDICTIVE CONTROL
+Optimal control of systems with numerous degrees of
+freedom for multi-task activities generally requires the setup
+of a proper control architecture. A centralized architecture
+is the most intuitive and presents ascertained optimality
+properties: it consists in using a complete model of the
+controlled system capturing internal couplings between its
+different sub-processes. The monolithic structure of such
+an architecture raises several obstacles mainly related to
+computational cost that lead to a paradigm of decentralized
+control. Decentralized control has been subject to various
+developments in the last couple of decades in the ﬁeld of
+industrial control [18], and focuses on the decomposition
+of the system in autonomous sub-processes as illustrated
+in ﬁgure 2(a).
+However, in the case of strongly coupled sub-systems, adhoc
+techniques have to be setup in order to guarantee clear
+optimality properties or even stability [19]. An alternative to
+decentralized control is a two-layers architecture consisting
+in a set of autonomous sub-systems regulated by a higher-
+level coordinator with respect to global objectives. In the case
+of conﬂicting subsystems, coordination consists mainly in a
+hierarchy [20]. Examples of coordinated architectures can be
+found applied to humanoid robotics with the works of [21]
+and [16]: the distribution of degrees of freedom among a
+set of local objectives (tasks) is solved either by a strict
+hierarchy [22] or a weighting strategy [23], respectively.
+Distributed methods propose to balance drawbacks and
+advantages of each architecture by taking advantage from
+the structure of the controlled system: a communication
+network between sub-systems is enforced in order to reach
+a consensus. Communication can be bilateral (parallel distri-
+bution) or unilateral (sequential) distribution, depending on
+the considered coupling between sub-processes.
+The Model Predictive Control (MPC) framework is no-
+tably favorable to distributed techniques as problems of large
+dimension are considered and it offers a time window within
+which a coordination strategy can be settled. Two classes
+of Distributed MPC (DMPC) architectures are distinguished
+depending on the range of the cost function considered as
+illustrated in table I.
+Objective
+g(u
+1
+;u
+2
+),!
+1
+g
+1
+(u
+1
+;u
+2
+)
++!
+2
+g
+2
+(u
+1
+;u
+2
+)
+Centralized problem min
+u
+1
+;u
+2
+g(u
+1
+;u
+2
+)
+Non-cooperative distribution
+(Nash equilibrium)
+min
+u
+1
+g
+1
+(u
+1
+;u
+2
+) min
+u
+2
+g
+2
+(u
+1
+;u
+2
+)
+Cooperative distribution
+(Pareto optimum)
+min
+u
+1
+g(u
+1
+;u
+2
+) min
+u
+2
+g(u
+1
+;u
+2
+)
+TABLE I
+DISTRIBUTED PROBLEMS AND RESPECTIVE OPTIMALITY
+Non-cooperative distributed architectures implement sub-
+problems with local objectives: the resulting problem is
+equivalent to a non-cooperative game where each sub-process
+only cooperates with others if it can beneﬁt from this
+strategy, and convergence of such a problem is towards a
+Nash [24] equilibrium. A cooperative architecture considers
+203
+P
+N
+min(g
+1
+)
+f
+p
+u
+1
+min(g
+2
+)
+-6
+-4
+-2
+0
+2
+4
+6
+u
+2
+Fig. 3. Illustration of optimality from different coordination techniques:
+Pareto (P) and Nash (N) optima for two concurrent objectives g
+1
+(u
+1
+;u
+2
+)
+and g
+2
+(u
+1
+;u
+2
+) with their Pareto frontier fp .
+a shared global objective for every sub-problems and thus
+constitutes a team problem where all sub-processes cooperate
+in order to reach a minimal cost, i.e. a Pareto optimum. A
+comparison of these architectures is made in ﬁgure 2(b).
+Note that in the case of independent sub-systems Pareto
+efﬁciency and Nash equilibrium are identical; however if
+sub-processes are strongly interconnected a large gap might
+stand between the two optima, as illustrated in ﬁgure 3. Non-
+cooperative architectures are thus highly advantageous in
+computational cost terms by considering local optimization
+problems solely, but might not converge to a global optimum
+in the case of highly interdependent sub-systems. Alterna-
+tives such as dual decomposition techniques [25] allow to
+rewrite a team problem as a non-cooperative game, and hence
+set equivalence between a Nash equilibrium and a desired
+Pareto optimum.
+The following section describes the biped stability control
+problem as a DMPC problem with concurrent and conﬂicting
+local objectives.
+III. CONTROL PROBLEM
+Whole-body control methods for humanoids aim at ex-
+ecuting stable motion activities. Apart from joint-related
+constraints, the most severe restrictions that controllers have
+to cope with are related to contact points; in the case of biped
+walking, the stability of contacts at the feet (no slippage)
+and the guarantee to ensure postural balance (no tipping
+over) through unilateral actions are preponderant. A common
+way of achieving this objective is to compute the horizontal
+dynamics of the CoM securing postural balance – through
+a ZMP Preview Control [1] method, for example – to
+ﬁnally compute the whole-body control torques achieving
+this desired safe CoM behavior while respecting, among
+others, contact constraints [14], [15], [16].
+Postural stability is ensured in this work through the
+minimization of both tip-over and slippage risks: contacts
+stability is explicitly accounted for in the preview problem
+along with biped balance. To achieve this objective CoM
+control must involve more degrees of freedom than just
+its horizontal dynamics: optimal future trajectories of the
+CoM linear acceleration and rate of angular momentum are
+computed online to maximize postural stability.
+Scalars are noteda, vectors a and matrices A;a
+k
+denotes
+the measured variable a at control step k and a
+k+ijk
+the
+previewed value of a at step k +i from measured state at
+step k.
+A. Postural stability
+Postural stability of a humanoid robot is solely supported
+by contact reactions from the environment. A straightforward
+analysis of biped balance raises two main failure cases:
+tipping over and slippage. Such situations are commonly
+characterized by the relative amplitudes of the contact
+actions (friction) and their distribution on the contact areas
+(tip-over): their main inﬂuence in the system dynamics can
+hence be found respectively in the force and momentum
+expressions of the system equations of motion. Two
+postural stability criteria are derived from the whole-body
+dynamics expressed at the CoM G of the system. These
+dynamics correspond in the Lagrange formalism to the
+equations of motion projected in the variety spanned by the
+unactuated degrees of freedom and are illustrated in ﬁgure 1.
+Let c, z respectively denote the horizontal and vertical
+positions of the CoM of the robot. With F
+n
+and F
+t
+the
+respective normal and tangential norms of the resulting
+reaction force from the ground, the force equation yields
+F
+2
+n
+=M
+2
+( z+g)
+2
+; F
+2
+t
+=M
+2
+k ck
+2
+; (1)
+where M is the total mass of the system and g the gravity
+acceleration amplitude. Note that a contact situation requires
+F
+n
+ z> 0, and thus the constraint
+8t2R;  z(t)> g (2)
+needs to be enforced.
+The momentum equation at any point O writes
+M
+c
+O
++ OGMg = OGM
+
+ c
+T
+ z
+
+T
++
+_
+H
+G
+; (3)
+where
+_
+H
+G
+is the rate of change of angular momentum of the
+system around its CoM andM
+c
+O
+the moment of the contact
+forces aroundO. Angular momentum of the robot around the
+CoM is assumed in this paper to be supported by the upper-
+body solely, with the torso as its root body of which angular
+position is written a along the longitudinal and lateral axes.
+Thus its rate of change is written
+_
+H
+Gx
+,  a
+x
+I
+x
+where I
+x
+is
+the upper-body inertia around the robot CoM and along the
+x axis, with a similar expression along they axis. Assuming
+that all contacts are coplanar in plane (x; y), the center of
+pressure (CoP) is the point on the ground of position p where
+M
+c
+P
+ x =M
+c
+P
+ y = 0, and hence holds
+(g+  z)(p
+x
+ c
+x
+)+z c
+x
+  a
+y
+I
+y
+=M = 0
+(g+  z)(p
+y
+ c
+y
+)+z c
+y
+  a
+x
+I
+x
+=M = 0:
+A common way to maximize biped balance is to maximize
+the distance between the CoP and the edges of the susten-
+tation convex hull. This is usually performed by setting a
+reference position p
+r
+in the center of the contacts hull as
+a tracking objective for the ZMP p, and hence maximizing
+postural balance is equivalent to minimizing a distance h
+t
+between p and p
+r
+. The minimal tip-over risk situation
+p = p
+r
+can be written, assuming(g+  z)6= 0, as the balance
+objective
+h
+t
+,
+
+(g+  z)(p
+r
+x
+ c
+x
+)+z c
+x
+  a
+y
+I
+y
+=M
+(g+  z)
+ 
+p
+r
+y
+ c
+y
+
++z c
+y
+  a
+x
+I
+x
+=M
+
+2
+= 0: (4)
+A reduced model can be also deduced from (3) neglecting
+204
+rotational effects a, which brings the biped balance simpliﬁed
+objective
+h
+b
+,
+
+(g+  z)(p
+r
+x
+ c
+x
+)+z c
+x
+(g+  z)
+ 
+p
+r
+y
+ c
+y
+
++z c
+y
+
+2
+= 0: (5)
+A similar expression of the ZMP can be found in [3] and is
+strictly equivalent, under the assumption8t2R; _ z(t) = 0,
+to the widespread expression of the ZMP objective [1], [2],
+[8].
+Slippage risk is measured in this work as a non-Euclidean
+distance h
+s
+to the Coulomb friction cone. A simple dry
+friction model considers two contact regimes: static friction
+if F
+t
+<F
+n
+and kinetic friction (slippage) for F
+t
+=F
+n
+.
+To maximize contacts stability, slippage regimes should be
+avoided: tangential efforts are not controllable in such cases.
+The objective is hence to maximize a distance h
+s
+to the
+friction limit F
+t
+=F
+n
+, written if F
+t
+<F
+n
+h
+s
+, log
+ 
+
+2
+F
+n
+2
+ F
+t
+2
+
++log
+ 
+
+2
+F
+n
+2
+
+: (6)
+The distance h
+s
+is a logarithmic frontier to the slip-
+page regime: in a minimal slippage risk situation
+F
+t
+= 0)h
+s
+= 0, and h
+s
+!1 when F
+t
+!F
+ 
+n
+.
+B. Control parameters
+Trajectories of the CoM linear acceleration and rate of
+angular momentum are captured by the deﬁnition of the jerks
+u,
+...
+c, v ,
+...
+z and w,
+...
+a. In discrete time of period dt,
+dynamics ^ c,
+
+c _ c  c
+
+T
+, ^ z and ^ a can be deduced from
+a simple integration scheme
+8i2N;
+^ c
+k+i+1jk
+= A^ c
+k+ijk
++ Bu
+k+ijk
+^ z
+k+i+1jk
+= A
+z
+^ z
+k+ijk
++ B
+z
+v
+k+ijk
+^ a
+k+i+1jk
+= A^ a
+k+ijk
++ Bw
+k+ijk
+:
+Thus any function of ^ c, ^ z or ^ a is written as a function of u,
+v or w, respectively.
+C. Optimization
+The control problem solved in this paper aims at max-
+imizing postural stability over a preview horizon; that is,
+maximize biped balance and contacts stability. Cost functions
+h
+t
+,h
+b
+andh
+s
+involve different dynamics (vertical, horizontal
+and rotational) and capture these objectives at different
+levels: h
+t
+measures a tip-over risk with a view to vertical,
+horizontal and rotational dynamics of the system, h
+b
+relies
+on a simpler model of the system to quantify a balance
+error to a reference CoP position and h
+s
+deﬁnes a contacts
+stability criterion as a slippage risk with respect to vertical
+and horizontal dynamics. This difference in insight provided
+by each cost function leads to the exploitation of different
+preview horizonsn
+t
+,n
+b
+andn
+s
+respectively. In discrete time
+of period dt, the postural stability maximization problem
+hence writes
+min !
+t
+nt
+X
+i=1
+h
+t
+k+ijk
+| {z }
+H
+t
+n
+t
++!
+b
+n
+b
+X
+i=1
+h
+b
+k+ijk
+| {z }
+H
+b
+n
+b
++!
+s
+ns
+X
+i=1
+h
+s
+k+ijk
+| {z }
+H
+s
+ns
+s.t. (2)
+; (7)
+where !
+t
+, !
+b
+and !
+s
+are scalar coefﬁcients deﬁning the
+relative predominance of each individual objective and ac-
+counting for differences in dimensions. HorizonsU,V and
+W of control inputs u, v and w described in the previous
+paragraph are denoted at control step k
+U
+m
+k
+,
+
+u
+kjk
+::: u
+k+m 1jk
+
+T
+;
+V
+m
+k
+,
+
+v
+kjk
+::: v
+k+m 1jk
+
+T
+;
+W
+m
+k
+,
+
+w
+kjk
+::: w
+k+m 1jk
+
+T
+:
+LetN, max(n
+t
+;n
+b
+;n
+s
+); the optimization problem derived
+from the postural stability cost (7) writes
+8
+<
+:
+min
+U
+N
+k
+;V
+N
+k
+;W
+n
+t
+k
+H
+t
+nt
+(U
+nt
+k
+;V
+nt
+k
+;W
+nt
+k
+)
++H
+b
+n
+b
+(U
+n
+b
+k
+;V
+n
+b
+k
+)+H
+s
+ns
+(U
+ns
+k
+;V
+ns
+k
+)
+s.t. (2):
+(8)
+Note that no straightforward convexity properties can be
+found in H
+t
+, H
+b
+and H
+s
+. However an admissible initial
+guess can be derived from an unconstrained implementation
+of a ZMP Preview controller [1], [2] for example and a
+local optimum within its neighborhood can be computed. The
+optimization problem is regularized with the introduction of
+additional strictly convex objective functions for each control
+parameter. A generalized Tikhonov regularization method is
+introduced with the following additional convex objective
+functions
+H
+u
+n
+,!
+u
+n 1
+P
+i=0
+ku
+k+ijk
+k
+2
+;H
+z
+n
+,
+n
+P
+i=1
+k
+
+z
+(^ z
+k+ijk
+ ^ z
+r
+)k
+2
+;
+H
+v
+n
+,!
+v
+n 1
+P
+i=0
+v
+2
+k+ijk
+and H
+w
+n
+,
+n
+P
+i=1
+k
+
+w
+(^ a
+k+ijk
+ ^ a
+r
+)k
+2
+;
+where !
+u
+and !
+v
+are scalar coefﬁcients, 
+
+z
+and 
+
+w
+diag-
+onal weighting matrices. H
+u
+and H
+v
+can be interpreted as
+objective terms giving preference to smaller norm solutions.
+Additional costs H
+z
+and H
+w
+describe supplementary tasks
+maintaining the CoM vertical position and torso orientation
+around reference states; note that desired reference states ^ z
+r
+and ^ a
+r
+are not necessarily constant and can be used to add
+a desired trajectory as an additional objective.
+The postural stability control problem is written as the
+following regularized optimization problem
+8
+<
+:
+min
+U
+N
+k
+;V
+N
+k
+;W
+n
+t
+k
+G
+t
+nt
+(U
+nt
+k
+;V
+nt
+k
+;W
+nt
+k
+)
++G
+b
+n
+b
+(U
+n
+b
+k
+;V
+n
+b
+k
+)+G
+s
+ns
+(U
+ns
+k
+;V
+ns
+k
+)
+s.t. (2);
+(9)
+where
+G
+t
+nt
+(U
+nt
+k
+;V
+nt
+k
+;W
+nt
+k
+) , H
+t
+nt
+(U
+nt
+k
+;V
+nt
+k
+;W
+nt
+k
+)
++H
+w
+nt
+(W
+nt
+k
+);
+G
+b
+n
+b
+(U
+n
+b
+k
+;V
+n
+b
+k
+) , H
+b
+n
+b
+(U
+n
+b
+k
+;V
+n
+b
+k
+)
++H
+u
+n
+b
+(U
+n
+b
+k
+)+H
+z
+n
+b
+(V
+n
+b
+k
+);
+and G
+s
+ns
+(U
+ns
+k
+;V
+ns
+k
+) , H
+s
+ns
+(U
+ns
+k
+;V
+ns
+k
+)
++H
+v
+ns
+(V
+ns
+k
+)
+are the three regularized cost functions of problem (8).
+The following section presents the distribution method pro-
+posed to solve such an optimization problem.
+205
+IV. RESOLUTION
+Concurrency between balance models is ﬁrst distributed
+and conﬂicts between stability objectives are next exposed
+and relaxed through dual decomposition. The resulting
+DMPC problem is solved with an implementation of a
+parallelized projected gradient algorithm.
+A. Sequential distribution
+A sequential distribution is performed to uncouple the
+rotational variable W
+k
+from the linear ones. Problem (9)
+can be divided into two optimization problems, with
+N, max(n
+b
+;n
+s
+)
+8
+>
+>
+>
+>
+>
+<
+>
+>
+>
+>
+>
+:
+min
+U
+N
+k
+;V
+N
+k
+G
+b
+n
+b
+(U
+n
+b
+k
+;V
+n
+b
+k
+)+G
+s
+ns
+(U
+ns
+k
+;V
+ns
+k
+)
+s.t. (2);
+min
+U
+n
+t
+k
+;V
+n
+t
+k
+;W
+n
+t
+k
+G
+t
+nt
+(U
+nt
+k
+;V
+nt
+k
+;W
+nt
+k
+)
+s.t. (2)
+(10a)
+(10b)
+which are coupled by the variables U
+k
+and V
+k
+. The
+distribution adopted consists in solving the problem (10b)
+after (10a):U
+k
+andV
+k
+are considered as inputs to the prob-
+lem (10b). The centralized problem (9) is hence distributed
+as follows
+8
+>
+>
+>
+>
+>
+>
+>
+>
+>
+<
+>
+>
+>
+>
+>
+>
+>
+>
+>
+:
+FindU
+N
+k
+
+;V
+N
+k
+
+that solve
+min
+U
+N
+k
+;V
+N
+k
+G
+b
+n
+b
+(U
+n
+b
+k
+;V
+n
+b
+k
+)+G
+s
+ns
+(U
+ns
+k
+;V
+ns
+k
+)
+s.t. (2);
+FindW
+nt
+k
+
+that solves
+min
+W
+n
+t
+k
+G
+t
+nt
+(U
+nt
+k
+
+;V
+nt
+k
+
+;W
+nt
+k
+)
+s.t. (2)
+(11a)
+(11b)
+which is not strictly equivalent. Nevertheless such a distri-
+bution can be interpreted as the consideration of angular mo-
+mentum as a non-conﬂicting means to increase the balance
+performance: optimal CoM linear dynamics are ﬁrst com-
+puted unaware of rotational effects through (11a), and the
+torso angular dynamics are subsequently adjusted according
+to (11b) in order to maximize the postural stability of the
+system. This sequential distribution (11) of (9) is adopted in
+this work to reduce the inﬂuence of H
+t
+over U
+k
+and V
+k
+to a unilateral pairing, due to the error-prone approximation
+made on the angular momentum support.
+B. Dual decomposition
+The coupling between balance and stability objectivesG
+b
+and G
+s
+of problem (11a) cannot be handled safely through
+a straightforward distribution as introduced in the previous
+paragraph. Their concurrency indeed induces that any change
+in U
+k
+or V
+k
+that would beneﬁt G
+b
+might deteriorate the
+distance G
+s
+: such problems can be referred to as cooper-
+ative – or team – problems. Dual decomposition allows to
+set up a market mechanism where G
+b
+and G
+s
+are locally
+optimized while both problems are driven to a consensus.
+The resulting strictly equivalent problem is of a simpler
+structure – non-cooperative – and thus more favorable to
+common solving algorithms.
+Problem (11a) can be written as the following constrained
+problem by the introduction of local versions (; ) of the
+coupling variables (U;V)
+8
+>
+>
+>
+>
+<
+>
+>
+>
+>
+:
+min
+U
+N
+k
+;V
+N
+k
+;
+
+N
+k
+; 
+N
+k
+G
+b
+n
+b
+(U
+n
+b
+k
+; 
+n
+b
+k
+)+G
+s
+ns
+(
+ns
+k
+;V
+ns
+k
+)
+s.t.
+8
+<
+:
+(2);
+
+n
+k
+ U
+n
+k
+= 0;
+
+n
+k
+ V
+n
+k
+= 0
+(12)
+where n, min(n
+b
+;n
+s
+). The LagrangianL of this problem
+writes, with the Lagrange multipliers and
+L , G
+b
+n
+b
+(U
+n
+b
+k
+; 
+n
+b
+k
+)+G
+s
+ns
+(
+ns
+k
+;V
+ns
+k
+)
++
+n
+k
+T
+[
+n
+k
+ U
+n
+k
+]+
+n
+k
+T
+[
+n
+k
+ V
+n
+k
+]
+and problem (12) – problem (11a) consequently – is strictly
+equivalent to
+8
+>
+<
+>
+:
+max
+
+n
+k
+;
+n
+k
+min
+U
+N
+k
+;V
+N
+k
+;
+
+N
+k
+; 
+N
+k
+L
+
+U
+N
+k
+;V
+N
+k
+; 
+N
+k
+; 
+N
+k
+;
+n
+k
+;
+n
+k
+
+s.t. (2):
+This problem is separable, and can be dissociated into four
+subproblems
+8
+>
+>
+>
+>
+>
+>
+>
+>
+>
+>
+<
+>
+>
+>
+>
+>
+>
+>
+>
+>
+>
+:
+min
+U
+N
+k
+;
+n
+b
+k
+G
+b
+n
+b
+(U
+n
+b
+k
+; 
+n
+b
+k
+)+
+n
+k
+T
+
+n
+k
+ 
+n
+k
+T
+U
+n
+k
+min
+
+ns
+k
+;V
+N
+k
+G
+s
+ns
+(
+ns
+k
+;V
+ns
+k
+)+
+n
+k
+T
+
+n
+k
+ 
+n
+k
+T
+V
+n
+k
+max
+
+n
+k
+
+n
+k
+T
+[
+n
+k
+ U
+n
+k
+]
+max
+
+n
+k
+
+n
+k
+T
+[
+n
+k
+ V
+n
+k
+]
+s.t. (2):
+(13a)
+(13b)
+(13c)
+(13d)
+The set of problems (13) can be interpreted as a market
+mechanism where  and  regulate the cost of violating
+the coupling between the objectives G
+b
+and G
+s
+. Such a
+distributed architecture represents a non-cooperative parallel
+problem: each subproblem optimizes a local cost function
+with its own variables. Communication between them is
+sufﬁcient to reach a Nash equilibrium of problem (13) which
+is strictly equivalent to the desired Pareto optimum of the
+centralized problem (11a).
+C. Algorithm
+Although problems (13c) and (13d) are always convex,
+problems (13a) and (13b) present no peculiar convexity
+properties; however an admissible local optimum around an
+initial guess is considered as satisfactory in this work. The
+linear constraint (2) and the previous remarks license the
+setup of a projected gradient algorithm to solve problem (13).
+Note that this algorithm is naturally decomposed in four
+processes.
+Problem (13) is written for the sake of simplicity
+8
+>
+>
+>
+>
+>
+>
+>
+>
+<
+>
+>
+>
+>
+>
+>
+>
+>
+:
+min
+U
+N
+k
+;
+n
+b
+k
+J
+b
+(U
+n
+b
+k
+; 
+n
+b
+k
+;
+n
+k
+; 
+n
+k
+;
+n
+k
+); s.t. (2)
+min
+
+ns
+k
+;V
+N
+k
+J
+s
+(
+ns
+k
+;V
+ns
+k
+;
+n
+k
+; 
+n
+k
+;
+n
+k
+); s.t. (2)
+min
+
+n
+k
+J
+
+(
+n
+k
+; 
+n
+k
+;U
+n
+k
+)
+min
+
+n
+k
+J
+
+(
+n
+k
+; 
+n
+k
+;V
+n
+k
+)
+(14a)
+(14b)
+(14c)
+(14d)
+206
+where
+J
+
+(
+n
+k
+; 
+n
+k
+;U
+n
+k
+) = 
+n
+k
+T
+[U
+n
+k
+  
+n
+k
+];
+J
+
+(
+n
+k
+; 
+n
+k
+;V
+n
+k
+) = 
+n
+k
+T
+[V
+n
+k
+  
+n
+k
+];
+and is solved with the parallelized algorithm described
+in ﬁgure 4, with 
+m
+g
+:R
+m
+!R
+m
+a projector on the variety
+delimited by (2) over m preview steps. Descent steps  are
+determined using a backtracking line search method.
+dual decomposition
+sequential distribution
+V
+k
+:=?
+g
+(V
+k
+-?
+V
+?J
+s
+)
+?
+k
+:=?
+k
+-?
+?
+?J
+s
+U
+k
+:= U
+k
+-?
+u
+?J
+b
+?
+k
+:=?
+g
+(?
+k
+-?
+?
+?J
+b
+)
+?
+k
+:=?
+k
+-?
+?
+(U
+k
+-?
+k
+) ?
+k
+:=?
+k
+-?
+?
+(V
+k
+-?
+k
+)
+W
+k
+:=W
+k
+-?
+W
+?G
+t
+convergence?
+U
+k
+, V
+k
+, W
+k
+?
+k
+, ?
+k
+, ?
+k
+, ?
+k
+U
+k
+adm
+(U
+k
+,?
+k
+), ?
+g
+(V
+k
+adm
+(V
+k
+,?
+k
+)), W
+k
+min J
+b
+, n
+b
+min J
+s
+, n
+s
+min J
+?
+, n min J
+?
+, n
+U
+k
+, V
+k
+, W
+k
+, ?
+k
+,?
+k
+, ?
+k
+, ?
+k
+initialization
+min G
+t
+, n
+t
+Fig. 4. Flow chart of the iterative gradient descent algorithm solving the
+non-cooperative and sequential distributed problems (14) and (11)
+Typical convergence results for objective functions J
+b
+and J
+s
+with this algorithm are shown in ﬁgure 5: concur-
+rency is clearly visible as both objectives successively and
+alternately compromise until they reach a mutual agreement.
+The gap between decoupled variables (U; ) and (V; )
+0 10 20 30 40
+150
+100
+50
+0
+50
+100
+150
+200
+iteration
+evaluated cost
+Fig. 5. Typical convergence results for objective functions J
+b
+and J
+s
+– blue cross: J
+b
+- red circle: J
+s
+is simultaneously reduced and converges towards a con-
+sensus for the values of (U;V), as shown in ﬁgure 6.
+This ﬁgure shows that convergence of the pair (V; )
+is slower than (U; ); this can be interpreted as vertical
+dynamics being the preponderant source of conﬂict between
+balance and friction objectives. Note that a suboptimal so-
+0 10 20 30 40
+0
+5
+10
+15
+20
+25
+30
+35
+iteration
+normalized error (%)
+Fig. 6. Typical convergence of constraint relaxationsU = andV =
+towards a consensus – blue cross:
+k
+n
+k
+ V
+n
+k
+k
+kV
+n
+k
+k
+- red circle:
+k
+n
+k
+ U
+n
+k
+k
+kU
+n
+k
+k
+lution can be obtained by stopping the algorithm before
+convergence is reached: an admissible solution with re-
+spects to the coupling constraints is obtained by projections
+U
+n
+k
+adm
+=
+U
+n
+k
++
+n
+k
+2
+andV
+n
+k
+adm
+=
+V
+n
+k
++
+n
+k
+2
+onto the feasible
+setsU =  andV = . Note that convergence results in
+ﬁgures 5 and 6 are obtained from the simulations presented
+in Sec. V: less than 30 descent iterations were required to
+reach convergence.
+V. RESULTS
+Simulations have been carried out using Arboris-
+Python [26], an open-source dynamics simulator developed
+at ISIR with the Python programming language. An accurate
+model of an iCub robot [27] is simulated with 32+6 degrees
+of freedom.
+A. Compared frameworks
+Whole-body control of the model is ensured by an LQP-
+based controller [16] accounting for joint and contact con-
+straints. Contacts between the robot and the ground are
+solved according to a dry friction model of static coefﬁcient
+ = 0:5. The whole-body controller takes as inputs desired
+trajectories of the CoM position and torso orientation, and
+the performance of the DMPC algorithm introduced in this
+work is compared to the one of a state of the art predictive
+framework.
+A low-priority task is deﬁned for both frameworks to
+try and maintain all joints position around a predeﬁned
+reference describing a standing pose of the robot. Trajectory
+tracking tasks for both the CoM position and the torso
+orientation are included in the whole-body control problem
+as top-level priority tasks (weight a hundred times greater in
+magnitude). The predictive framework is centered around an
+unconstrained implementation of the ZMP Preview Control
+as described in [2] which provides optimal horizontal tra-
+jectories for the CoM of the robot. Orientation of the torso
+is indirectly maintained by the low priority reference task,
+while CoM altitude is regulated with a stiff proportional-
+derivative controller in order to enforce the constant-altitude
+assumption made in the ZMP Preview Control formula-
+tion [1].
+In the second framework all CoM and torso desired trajecto-
+ries are output from the DMPC algorithm introduced in this
+paper, as shown in ﬁgure 7.
+CoM horizontal 
+acceleration
+CoM vertical
+acceleration
+torso angular
+acceleration
+joints & contacts
+constraints
+whole-body
+torques
+DMPC
+LQP
+CoM horizontal 
+acceleration
+CoM vertical
+acceleration
+joints & contacts
+constraints
+ZMP
+Preview
+Control
+LQP P/D
+Control
+DMPC FRAMEWORK ZMP PREVIEW CONTROL FRAMEWORK
+ROBOT
+robot state
+whole-body
+torques
+ROBOT
+robot state
+Fig. 7. Predictive control frameworks compared
+B. Simulation results
+The scenario supporting the simulation is a walking activ-
+ity under an unknown external action from the environment
+on the waist of the robot, as illustrated with a selection of
+simulation snapshots in ﬁgure 8.
+The proﬁle of the external action is shown in ﬁgure 9
+which exhibits two impulses in the horizontal plane shortly
+preceding the changes of supporting foot.
+207
+t=1.875s t=2.125s t=2.375s t=2.625s t=2.875s t=3.125s
+Fig. 8. Simulation snapshots for both control frameworks – top: ZMP
+Preview control - bottom: DMPC
+1.5 2 2.5 3
+?10
+?5
+0
+5
+10
+Time (s)
+External effort amplitude (N)
+Fig. 9. Amplitude proﬁle of the unknown external action applied on the
+waist of the robot – blue circle: lateral - black cross: longitudinal - red star:
+vertical
+As the cost function G
+b
+is the closest in in-
+sight – among G
+b
+, G
+t
+and G
+s
+– to the objective function
+minimized in the ZMP Preview Control framework, its
+horizon n
+b
+is set similarly to the ZMP Preview control
+problem and covers 1:0s. The selected values for preview
+horizons n
+t
+and n
+s
+both span 0:25s. Different values of n
+t
+and n
+s
+from n
+b
+=8 to n
+b
+resulted in a lower performance of
+the controller during critical phases. This remark validates
+the need for different preview horizons depending on the
+level of insight provided by each control objective and the
+predominant dynamics it involves. To allow for compari-
+son regularization of H
+b
+is set up to the same order of
+magnitude as in the ZMP Preview Control problem, that is
+!
+u
+=!
+b
+= 1:e
+ 6
+.
+Figures 10 and 11 show the evolution of the CoP position
+on the ground for both frameworks, with regard to the
+tracked reference position. These ﬁgures show that, as
+1.5 2 2.5 3
+?0.25
+?0.2
+?0.15
+?0.1
+?0.05
+Time (s)
+ZMP X position (m)
+tip-over
+risk reduction
+sustentation l l l hull
+zmp reference
+Fig. 10. Evolution of the ZMP in longitudinal direction – blue cross: DMPC
+- black solid: ZMP Preview Control - red arrows: normalized external effort
+expected, the concomitant use of both horizontal and vertical
+1.5 2 2.5 3
+?0.1
+?0.05
+0
+0.05
+0.1
+Time (s)
+ZMP Y position (m)
+40% tip-over
+risk reduction
+50% tip-over
+risk reduction
+sustentation hull
+zmp reference
+Fig. 11. Evolution of the ZMP in lateral direction – blue cross: DMPC
+- black solid: ZMP Preview Control - red arrows: normalized external effort
+1.5 2 2.5 3
+0.1
+0.15
+0.2
+0.25
+0.3
+Time (s)
+Required Friction coefficient Ft/Fn
+Slippageif?<0.3
+Slippageif?<0.25
+Nominal region
+Fig. 12. Evolution of the required friction coefﬁcient – blue cross: DMPC
+- black solid: ZMP Preview Control
+degrees of freedom of the CoM along with the control of
+angular momentum allows for a signiﬁcant gain in balance
+performance. This improvement in reference tracking can
+reach up to more than50% during critical intervals, as shown
+at instants t 2:0s and t 3:0s when the ZMP Preview
+Control framework almost fails at maintaining the robot
+postural balance.
+An additional beneﬁt from the introduction of the vertical
+control of the CoM is displayed in ﬁgure 12 which maps the
+amplitude ratio between tangential and normal components
+of the resulting contact force with the ground. This ratio can
+be interpreted as a required friction coefﬁcient: if the actual
+friction coefﬁcient , characterizing the contact conditions
+with the ground, is lower than or equal to , then slippage
+occurs and might lead to postural instability. In that sense,
+the lowest required friction coefﬁcient minimizes the risk of
+slippage in case of ill-estimation of the current contact condi-
+tions. Actual friction coefﬁcient might be overestimated in
+a variety of usual cases in unstructured environments: strong
+drops in admissible traction can be observed for example if
+the robot steps over a wet area or an unexpected region of dif-
+ferent material. Figure 12 shows that the robot can control the
+reaction forces from the ground until a limit of
+min
+= 0:25
+with the DMPC framework and down to 
+min
+= 0:34 with
+the ZMP Preview Control framework. Relatively to the
+expected friction coefﬁcient  = 0:5 these ﬁgures bring an
+uncertainty tolerance – robustness – of 50% for the DMPC
+208
+1.5 2 2.5 3
+0.472
+0.474
+0.476
+0.478
+Time (s)
+CoM Z position (m)
+Fig. 13. Evolution of the CoM altitude – blue cross: DMPC - black solid:
+ZMP Preview Control
+framework and less than 35% for the ZMP Preview Control
+framework. The consequences of this higher robustness are
+illustrated in the video attached to this paper, presenting
+a disturbed scenario where postural stability is maintained
+with the DMPC controller while the ZMP Preview Control
+framework fails at ensuring contacts stability. The DMPC
+framework is thus prominently more robust to disturbances
+than the ZMP Preview Control framework. Note that due to
+the exponential growth of the slippage cost function H
+s
+, no
+noticeable performance gain can be found in the nominal
+region and only slippage-prone peaks are cut down.
+Finally, the DMPC framework allows to automatically reg-
+ulate the altitude of the CoM of the robot and its variations,
+as shown in ﬁgure 13. The ZMP Preview Control framework
+bounds the CoM to stay at a constant altitude in order to
+preserve the validity of the cart-table model, while the DMPC
+framework takes beneﬁt from this degree of freedom in order
+to compromise between balance and stability objectives.
+VI. CONCLUSIONS
+The control problem of postural stability of a humanoid
+robot is approached in this work in a distributed model
+predictive control framework. This novel formulation takes
+advantage of different models of the balance dynamics,
+coordinated along multiple future horizons, and efﬁciently
+increases the robustness of the system against strong and
+unexpected external perturbations.
+Contributions of this control architecture are highlighted
+with the simulation of a walking activity under external
+pushes: signiﬁcant gains in balance and contacts stability are
+observed compared to a ZMP Preview Control framework.
+Tip-over and slippage risks are noticeably minimized with
+the predictive control of the center of mass horizontal and
+vertical dynamics, and of the robot angular momentum.
+Future works will investigate the generalization of the
+DMPC framework for the control problem of multi-task
+activities.
+ACKNOWLEDGMENT
+This work was partially supported by the French Ministry
+of Higher Education and Research, by the RTE company
+through its chair “Robotics Systems for ﬁeld intervention in
+constrained environments” hold by Vincent Padois and by
+the European Commission within the CoDyCo project (FP7-
+ICT-2011-9, No. 600716).
+REFERENCES
+[1] S. Kajita, F. Kanehiro, K. Kaneko, K. Kajiwara, K. Harada, K. Yokoi,
+and H. Hirukawa, “Biped walking pattern generation by using preview
+control of zero-moment point,” in Proc. of the IEEE ICRA, 2003.
+[2] P.-B. Wieber, “Trajectory free linear model predictive control for stable
+walking in the presence of strong perturbations,” in Proc. of the IEEE-
+RAS Int. Conf. on Humanoid Rob., 2006, pp. 137–142.
+[3] J. H. Park and H. C. Cho, “An online trajectory modiﬁer for the base
+link of biped robots to enhance locomotion stability,” in Proc. of the
+IEEE ICRA, vol. 4. IEEE, 2000, pp. 3353–3358.
+[4] J. Pratt, J. Carff, S. Drakunov, and A. Goswami, “Capture point: A
+step toward humanoid push recovery,” in Proc. of the IEEE-RAS Int.
+Conf. on Humanoid Rob. IEEE, 2006, pp. 200–207.
+[5] D. N. Nenchev and A. Nishio, “Ankle and hip strategies for balance
+recovery of a biped subjected to an impact,” Robotica, vol. 26, no. 05,
+pp. 643–653, 2008.
+[6] A. Ibanez, P. Bidaud, and V . Padois, “Uniﬁed preview control for
+humanoid postural stability and upper-limb interaction adaptation,” in
+Proc. of the IEEE/RSJ IROS. IEEE, 2012, pp. 1801–1808.
+[7] B. Stephens, “Humanoid push recovery,” in Proc. of the IEEE-RAS
+Int. Conf. on Humanoid Rob. IEEE, 2007, pp. 589–595.
+[8] A. Herdt, H. Diedam, P.-B. Wieber, D. Dimitrov, K. Mombaur, and
+M. Diehl, “Online walking motion generation with automatic footstep
+placement,” in Adv. Rob., vol. 24, no. 5-6, 2010, pp. 719–737.
+[9] M. Vukobratovi´ c and J. Stepanenko, “On the stability of anthropomor-
+phic systems,” in Math. Biosciences, vol. 15, no. 1, 1972, pp. 1–37.
+[10] J. Englsberger, C. Ott, M. A. Roa, A. Albu-Schaffer, and G. Hirzinger,
+“Bipedal walking control based on capture point dynamics,” in Proc.
+of the IEEE/RSJ IROS. IEEE, 2011, pp. 4420–4427.
+[11] M. Krause, J. Englsberger, P.-B. Wieber, and C. Ott, “Stabilization
+of the capture point dynamics for bipedal walking based on model
+predictive control,” in Robot Control, vol. 10, 2012, pp. 165–171.
+[12] O. Stasse, P. Evrard, N. Perrin, N. Mansard, and A. Kheddar, “Fast foot
+prints re-planning and motion generation during walking in physical
+human-humanoid interaction,” in Proc. of the IEEE-RAS Int. Conf. on
+Humanoid Rob., 2009, pp. 284–289.
+[13] B. J. Stephens and C. G. Atkeson, “Push recovery by stepping for
+humanoid robots with force controlled joints,” in Proc. of the IEEE-
+RAS Int. Conf. on Humanoid Rob. IEEE, 2010, pp. 52–59.
+[14] L. Sentis, “Synthesis and control of whole-body behaviors in hu-
+manoid systems,” Ph.D. dissertation, Stanford university, 2007.
+[15] N. Mansard, O. Khatib, and A. Kheddar, “A uniﬁed approach to
+integrate unilateral constraints in the stack of tasks,” IEEE Trans. on
+Rob., vol. 25, no. 3, pp. 670–685, 2009.
+[16] J. Salini, V . Padois, and P. Bidaud, “Synthesis of complex humanoid
+whole-body behavior: a focus on sequencing and tasks transitions,” in
+Proc. of the IEEE ICRA. IEEE, 2011, pp. 1283–1290.
+[17] S. Barth´ elemy and P. Bidaud, “Stability measure of postural dynamic
+equilibrium based on residual radius,” in Adv. in Robot Kinematics:
+Analysis and Design. Springer, 2008, pp. 399–407.
+[18] D. D.
+ˇ
+Siljak, “Decentralized control and computations: status and
+prospects,” in Annual Reviews in Control, vol. 20, 1996, pp. 131–141.
+[19] S. Wang and E. Davison, “On the stabilization of decentralized control
+systems,” in IEEE Trans. on Aut. Control, vol. 18, 1973, pp. 473–478.
+[20] R. Scattolini, “Architectures for distributed and hierarchical model
+predictive control - a review,” Journal of Process Control, vol. 19,
+no. 5, pp. 723–731, 2009.
+[21] L. Sentis and O. Khatib, “A whole-body control framework for
+humanoids operating in human environments,” in Proc. of the IEEE
+ICRA. IEEE, 2006, pp. 2641–2648.
+[22] B. Siciliano and J. Slotine, “A general framework for managing
+multiple tasks in highly redundant robotic systems,” in Int. Conf. on
+Adv. Rob., 1991, pp. 1211–1216.
+[23] W. Shen and J. Gu, “Multi-criteria kinematics control for the pa10-7c
+robot arm with robust singularities,” in Proc. of the IEEE Int. Conf.
+on Robotics & Biomimetics, 2007, pp. 1242–1248.
+[24] J. Nash, “Non-cooperative games,” The Annals of Math., vol. 54, no. 2,
+pp. 286–295, 1951.
+[25] A. Rantzer, “Dynamic dual decomposition for distributed control,” in
+American Control Conf., 2009. ACC’09. IEEE, 2009, pp. 884–888.
+[26] S. Barthelemy, J. Salini, and A. Micaelli, “Arboris-python.” [Online].
+Available: https://github.com/salini/arboris-python
+[27] G. Sandini, G. Metta, and D. Vernon, “The icub cognitive humanoid
+robot: An open-system research platform for enactive cognition,” in
+50 Years of Artiﬁcial Intelligence, ser. Lecture Notes in Computer
+Science. Springer, 2007, ch. 32, pp. 358–369.
+209

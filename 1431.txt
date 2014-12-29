@@ -1,0 +1,959 @@
+Semantic Segmentation with Heterogeneous Sensor Coverages
+Cesar Cadena and Jana Koˇ seck´ a
+(a) (b) (c) (d)
+Fig. 1: Our novel semantic parsing approach can seamlessly integrate evidence from multiple sensors with overlapping but possibly different ﬁelds of view
+and account for missing data, while predicting semantic labels over the spatial union of sensors coverages. The semantic segmentation is formulated on
+a graph, in a manner which depends on sensing modality. First row: (a) over-segmentation on the image; (b) graph induced by superpixels; (c) 3D point
+cloud re-projected on the image with a tree graph structure computed in 3D, and (d) the full graph as proposed here for full scene understanding. In the
+second row is the semantic segmentation (a) ground truth and results of (b) using the image graph and only visual information; (c) using the 3D graph
+and visual and 3D information, and ﬁnally (d) the result from using a graph for full coverage and all the information. Note the best semantic segmentation
+achieved over the union of the spatial coverage of both sensors. Color code: ?ground, ?objects, ?building and ?vegetation.
+Abstract— We propose a new approach to semantic parsing,
+which can seamlessly integrate evidence from multiple sensors
+with overlapping but possibly different ﬁelds of view (FOV),
+account for missing data and predict semantic labels over the
+spatial union of sensors coverages. The existing approaches typ-
+ically carry out semantic segmentation using only one modality,
+incorrectly interpolate measurements of other modalities or at
+best assign semantic labels only to the spatial intersection of
+coverages of different sensors. In this work we remedy these
+problems by proposing an effective and efﬁcient strategy for
+inducing the graph structure of Conditional Random Field used
+for inference and a novel method for computing the sensor
+domain dependent potentials. We focus on RGB cameras and
+3D data from lasers or depth sensors. The proposed approach
+achieves superior performance, compared to state of the art and
+obtains labels for the union of spatial coverages of both sensors,
+while effectively using appearance or 3D cues when they are
+available. The efﬁciency of the approach is amenable to real-
+time implementation. We quantitatively validate our proposal
+in two publicly available datasets from indoors and outdoors
+real environments. The obtained semantic understanding of the
+acquired sensory information can enable higher level tasks for
+autonomous mobile robots and facilitate semantic mapping of
+the environments.
+I. INTRODUCTION
+In recent years numerous advances have been made in
+semantic mapping of environments. Associating semantic
+C´ esar Cadena is with the Department of Computer Science, at the
+University of Adelaide, Adelaide, SA 5005, Australia.
+Jana Koˇ seck´ a is with the Computer Science Department, V olgenau School
+of Engineering at George Mason University, Fairfax, V A 20030, US.
+cesar.cadena@adelaide.edu.au, kosecka@.cs.gmu.edu.
+This research has been funded by the US Army Research Ofﬁce
+Grant W911NF-1110476 and the Australian Research Council grant
+DP130104413.
+concepts with robot’s surroundings can enhance robot’s
+autonomy and robustness, facilitate more complex tasks
+and enable better human robot interaction. One important
+component of semantic understanding is so called semantic
+segmentation, which entails simultaneous classiﬁcation and
+segmentation of the sensory data.
+In the computer vision community large variety of ap-
+proaches have been proposed using only appearance features
+computed from RGB images or sparse 3D geometric features
+computed by structure from motion techniques. The most
+successful approaches for semantic segmentation typically
+use Markov or Conditional Random Fields (MRFs or CRFs)
+framework [6,12,16,23,26] and vary in the types of features
+used, the local classiﬁers and the graph structure deﬁning the
+random ﬁeld [16,23,26]. With the exception of few [6,12],
+most commonly the graph structure is induced by super-
+pixels obtained by over-segmentation algorithms on individ-
+ual pixels.
+In robotics community an active research topic is semantic
+segmentation of 3D point clouds from laser range ﬁnders
+[9,25]. The method of Triebel et al. [25] implements an
+online clustering for the point cloud and carries out the
+inference in a CRFs setting. While Hu et al. [9] carry
+out the segmentation through a cascade of classiﬁers from
+ﬁne to coarse point cloud clusters. Nowadays many robotic
+platforms use simultaneously both cameras and 3D lasers
+for outdoor navigation, and RGB-D cameras for indoors,
+which are calibrated with respect to each other. The use of
+these modalities creates opportunities for using richer set of
+features as well as obtaining better coverage. In the common
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 2639
+approaches for semantic segmentation proposed [3,20], the
+features and the graphical model are constrained to the
+area that is covered simultaneously by both sensors. Areas
+covered by only one of the sensors are not considered. For
+example in the case of cameras and lasers often used in
+outdoors setting, due the small FOV of laser range sensors
+the upper portion of the image is typically discarded from
+the evaluation, see Fig. 1(c).
+In the case of RGB-D sensors for indoors environments,
+while the depth data cover almost the same area as the RGB
+sensor, many image regions have missing corresponding 3D
+data due to specular or transparent surfaces or large depth
+values which cannot be estimated reliably with the sensor,
+see Fig. 7 (second column). The missing depth values are
+typically ﬁlled by using different in-painting strategies to
+obtain dense depth images [10,22], resulting in a full overlap
+between the RGB and depth channels. The in-painted depth
+is used by [4,5,8,22] for RGB-D in their semantic parsing
+approaches. Both Silberman et al. [22] and Gupta et al. [8]
+also exploit computationally demanding boundary detectors
+and expensive engineered features. The work of Cadena
+and Koˇ seck´ a [4] does not require dense depth but it is
+able to obtain labels only in regions with common sensor
+coverage. While the in-painted depth images provide a partial
+solution to a missing data problem, the interpolated depth is
+often incorrect and available algorithms are computationally
+expensive (15s/frame), making them unsuitable for real-time
+operation.
+Contribution: In this work we tackle these issues by
+proposing an effective and efﬁcient strategy for inducing
+the graph structure of Conditional Random Field used for
+inference and a novel method for computing the sensor
+domain dependent potentials. We achieve superior semantic
+segmentation for the regions in the union of spatial coverage
+of the sensors, while keeping the computational cost of
+the approach low. The problem is illustrated in Fig. 1. For
+example with an image sensor note how in column (b) one
+portion of the car is confused with the ground because their
+colors are similar. When we combine the visual sensing with
+the evidence from a 3D laser sensor, we are able to mitigate
+sensor speciﬁc perceptual confusers, column (c), but now
+we are only able to explain a subset of the scene, the spatial
+intersection coverage, leaving us without output for the car
+glass and the building in the top portion of the image. With
+the strategy proposed in the remainder of the paper, we take
+the advantage of both sensor modalities without discarding
+the non-overlapping zones, column (d) in Fig. 1.
+Related work: This problem was also addressed by
+Mu˜ noz et al. [18], as a co-inference problem, where a
+cascade of classiﬁers are used over a hierarchy of over-
+segmentations in each modality, image and 3D. The prop-
+agation of evidence between modalities is achieved by using
+the partial classiﬁcation results from a modality, at each level
+of the hierarchy, as input for the classiﬁcation in the other
+modality in the overlapping regions. They validate the ap-
+proach on their own urban dataset containing images and off-
+line processed 3D point clouds, which are later re-projected
+on the camera poses to emulate an on-line acquisition. This
+strategy does not properly handle the occluded structures in
+different points of view, making the emulation a non-realistic
+one. In terms of timing, the computational cost increases
+linearly with the number of sensors as they are solving a
+classiﬁcation problem for each one. After an expensive (im-
+age and 3D) feature extraction, the co-inference takes 0.46s
+to classify one scene. Beyond the framework and features,
+our approach differs in the use of an augmented feature
+space whenever possible and our computational complexity
+depends on the size of the scene rather than on the number of
+sensors. In our case we propose to augment CRFs framework
+by proposing a uniﬁed graphical model and using simple,
+and efﬁcient to compute, features in each modality to deﬁne
+proper energy potentials.
+In the next section, we recall the general formulation of
+Conditional Random Fields, then in Section III we describe
+the application of CRFs to the semantic segmentation prob-
+lem for images, intersection of image and 3D, and at last
+our proposal for the union of image and 3D. In Section
+IV we describe the experiments in outdoors and indoors
+datasets. We show the advantages of our approach using
+all the information available, and compare the results with
+state of the art methods. Finally, in Section V we present
+discussions and conclusions of the presented work.
+II. GENERAL FORMULATION
+CRFs directly model the conditional distribution over the
+hidden variables given observations p(xSz). The nodes in a
+CRF are denoted x = ?x
+1
+;x
+2
+;?;x
+n
+?, and the observations
+are denotedz. In our framework the hidden states correspond
+to the m possible classes: x
+i
+= {ground;objects;?}. A
+CRF factorizes the conditional probability distribution over
+hidden states into a product of potentials, as:
+p(xSz)=
+1
+Z(z)
+M
+i?N
+(x
+i
+;z)M
+i;j?E
+ (x
+i
+;x
+j
+;z)M
+c?H
+(x
+c
+;z)
+(1)
+whereZ(z) is the normalizing partition function, ?N;E? are
+the set of nodes and edges on the graph, andH represents the
+set of high order cliques. The computation of this function
+is exponential in the size of x.
+The unary, or data-term, and pairwise potentials are rep-
+resented by (x
+i
+;z) and (x
+i
+;x
+j
+;z), respectively, as their
+domains span over one and two random variables or nodes in
+the graphical model. The domain for higher order potentials
+(x
+c
+;z) spans over cliques of three or more fully connected
+nodes. In the remainder we consider only the data and pair-
+wise terms, choice commonly referred to as pairwise CRFs.
+The potentials are functions that map variable conﬁgurations
+to non-negative numbers capturing the agreement among the
+involved variables: the larger a potential value, the more
+likely the conﬁguration.
+Potentials are described by log-linear combinations of
+feature functions, f and g, i.e., the conditional distribution
+in Eq. 1 can be rewritten as:
+2640
+Fig. 2: CRF over a graphical model with two different sources of informa-
+tion.
+p(xSz)=
+1
+Z(z)
+exp
+?
+?
+Q
+i?N
+w
+T
+u
+f(x
+i
+;z)+ Q
+i;j?E
+w
+T
+p
+g(x
+i;j
+;z)
+?
+?
+(2)
+whereu andp stand for unary and pairwise, respectively; and
+w
+T
+= [w
+T
+u
+;w
+T
+p
+] is a weight vector, which represents the im-
+portance of each feature function. CRFs learn these weights
+discriminatively by maximizing the conditional likelihood of
+labeled training data.
+Fig. 2 shows an example where the random variables
+capture two different sources of information A and B,
+thus we can deﬁne different unary and pairwise potentials
+depending on the type of available information. The CRFs
+formulation for the graphical model shown in Fig. 2 in terms
+of Eq. 2 is:
+p(xSz)=
+1
+Z(z)
+exp
+?
+?
+Q
+i?N
+A?B
+!
+u1
+f
+1
+(x
+i
+;z
+A
+)+
+Q
+i?N
+A?B
+!
+u2
+f
+2
+(x
+i
+;z
+A;B
+)+ Q
+i?N
+B
+!
+u3
+f
+3
+(x
+i
+;z
+B
+)+
+Q
+i;j?E
+A
+!
+p1
+g
+1
+(x
+i;j
+;z
+A
+)+ Q
+i;j?E
+B
+!
+p2
+g
+2
+(x
+i;j
+;z
+B
+)
+?
+?
+where A and B stand for “green” and “blue” domain. We
+observe different feature function depending on the available
+domain:f
+1
+is computed for nodes with access only to domain
+A;f
+3
+is computed for nodes with access to domainB; andf
+2
+is added for nodes with access to both, A and B. Similarly
+for edges, two pairwise functions are computed, g
+1
+if the
+edge connects two nodes with information from A available
+and g
+2
+with information from B.
+With this formulation we can obtain either the marginal
+distribution over the class of each variable x
+i
+by solving
+Eq. 2, or the most likely classiﬁcation of all the hidden
+variables x. The latter can be formulated as the maximum
+a posteriori (MAP) problem, seeking the assignment of x
+for which p(xSz) is maximal.
+In summary the conditional probability distribution can be
+modelled by deﬁning a graph structure relating the random
+variables, and the feature functions with the proper domain
+depending on the information available.
+Fig. 3: On top, the original image with the SLIC superpixel over-
+segmentation [1]. Below, the image graph computed from the superpixels’
+neighbourhood.
+III. SEMANTIC SEGMENTATION WITH CRFS
+Given the general formulation for CRFs, we want to apply
+it to our problem of semantic segmentation. First we show
+how to solve the problem using only visual information
+acquired from a monocular camera. Then, we describe the
+proposal of [3] when we have two sensor modalities with
+common spatial coverage, in this case visual and 3D infor-
+mation. And ﬁnally, we show our strategy for the same two
+sensor modalities but with different spatial coverage.
+A. Image only
+This is a classic problem in computer vision. The strategy
+explained here is a basic approach which allows us explain
+the recipe for semantic segmentation with CRFs.
+1st: The ﬁrst step is to deﬁne the graph. We adopt
+commonly used strategy of superpixel over-segmentation to
+obtain the nodes in the graph, and the edges are deﬁned by
+the superpixel neighbourhood in the image. To illustrate this
+step the image over-segmentation and the image graph are
+shown in Fig. 3.
+1
+2nd: In the second step we deﬁne the unary and
+pairwise feature functions. For the unary feature function
+(Eq. 3) we use a k-NN classiﬁer (Eq. 4) as deﬁned in [24].
+f
+1
+(x
+s
+;z
+im
+)=?logP
+s
+(x
+s
+Sz
+im
+) (3)
+P
+s
+(x
+s
+=l
+j
+Sz
+im
+)=
+1
+∑
+m
+j=1
+‹
+f(lj)
+F(lj)
+f(lj)
+F(lj)
+?
+f(l
+j
+)
+F(l
+j
+)
+f(l
+j
+)
+F(l
+j
+)
+(4)
+where f(l
+j
+) (resp. f(l
+j
+)) is the number of neighbours to
+superpixel s with label l
+j
+(resp. not l
+j
+) in the kd-tree. And
+F(l
+j
+) (resp. F(l
+j
+)) is the counting of all the observations in
+the training data with label l
+j
+(resp. not l
+j
+).
+In the outdoors case [3], the 13-D feature vector is
+composed from the mean and standard deviation of LAB
+and RGB color spaces of the superpixel, and by the vertical
+superpixel centroid in the image. In the indoors case [4], the
+8-D feature vector is composed from the mean and standard
+deviation of LAB color space, the vertical superpixel centroid
+in the image, and the entropy of the probability distribution
+1
+For the sake of visual clarity the example in Figs. 3, 4 and 5 use a coarser
+over-segmentation than the actually used in the experimental section.
+2641
+Fig. 4: On top, the 3D point cloud re-projected on the image. Below, the 3D
+graph (blue) computed as the minimum spanning tree over the Euclidean
+3D distances between superpixels and re-projected on the image.
+for the superpixel’s boundaries belonging to the dominant
+vanishing points.
+The pairwise feature function is deﬁned in Eq. 5.
+g
+1
+(x
+i;j
+;z
+im
+)=
+?
+?
+?
+?
+?
+?
+?
+1?exp(?Yc
+i
+?c
+j
+Y
+2
+) ? l
+i
+=l
+j
+exp(?Yc
+i
+?c
+j
+Y
+2
+) ? l
+i
+≠l
+j
+(5)
+where Yc
+i
+?c
+j
+Y
+2
+is the L2-Norm of the difference between
+the mean colors of two superpixels in the LAB-color space
+and l is the class label.
+3rd: The next step is the learning stage and ﬁnally
+the inference. Given that the graph structure contains loops
+the inference is carried out by loopy belief propagation and
+the learning of the weights [w
+u1
+;w
+p1
+] by minimizing the
+negative log pseudo-likelihood [11].
+B. Image and 3D: Intersection
+When information from another sensor becomes available
+we want to infer the class in the spatial regions that are
+covered by all the sensors. In this case, we want to use the
+visual information jointly with the 3D information from a
+laser range ﬁnder or from a depth sensor. The steps described
+here are a summary of the proposals in [3] for outdoors and
+[4] for indoors.
+1st: We use the superpixel over-segmentation to obtain
+the nodes in the graph. Hence, the 3D point cloud is clustered
+through this over-segmentation by re-projecting them on
+the image. The graph edges are deﬁned by the minimum
+spanning tree (MST) over the Euclidean distances between
+3D superpixel’s centroids in the scene. The area of coverage
+of the laser and the 3D graph are shown in Fig. 4.
+2nd: The unary and pairwise feature functions take the
+same form of Eqs. 3 and 5. But with the new information
+available we augment the feature vector for the kd-tree in
+thek-NN classiﬁer. The previous feature vector is augmented
+with a 8-D vector of 3D features, containing the 3D centroid,
+the local and neighbourhood planarity, the vertical orienta-
+tion, and the mean and std for the differences in depth for the
+superpixel wrt. its image neighbours. In the indoor case the
+horizontal coordinate for the centroid is not used, ending in
+a 7-D vector of 3D features. Eq. 6 shows the unary feature
+function using this new k-NN classiﬁer and Eq. 7 is used
+jointly with Eq. 5 as pairwise feature functions.
+Fig. 5: Full graph. The edges determined by the 3D distances are in blue,
+and those by color distances are in green. We have shaded the image area
+with no 3D data related.
+f
+2
+(x
+s
+;z
+im;3D
+)=?logP
+s
+(x
+s
+Sz
+im;3D
+) (6)
+g
+2
+(x
+i;j
+;z
+3D
+)=
+?
+?
+?
+?
+?
+?
+?
+1?exp(?Y? p
+i
+? ? p
+j
+Y
+2
+) ? l
+i
+=l
+j
+exp(?Y? p
+i
+? ? p
+j
+Y
+2
+) ? l
+i
+≠l
+j
+(7)
+where Y? p
+i
+? ? p
+j
+Y
+2
+is the L2-Norm of the difference between
+centroid’s 3D positions.
+3rd: In this case the MST over 3D has induced the tree
+graph structure, as such the inference process can be carried
+out in an exact way efﬁciently by the belief propagation
+algorithm [11]. The learning of the weights [w
+u2
+;w
+p1
+;w
+p2
+]
+is done as before.
+C. Image and 3D: Union
+In the previous approach the graphical model is induced
+by 3D point cloud, and is able to explain only the intersection
+of the ﬁeld of view of the camera and the 3D sensor.
+In the proposal presented below, we show how to assign
+semantic labels to the union of spatial coverage of both
+sensors.
+2
+We do so by augmenting the three ingredients of the
+CRFs approach (graph structure, potentials and learning and
+inference) to incorporate non-overlapping sensor coverage.
+In the experimental section we demonstrate improvements in
+the semantic segmentation accuracy, while maintaining the
+efﬁciency of the system.
+1st: To build the full graph we need edges relating the
+3D point cloud, the image and some connection between
+them. We ﬁrst rely on the approach presented in the previous
+section and construct the sub-graph over the intersection of
+sensors coverage. Namely, we use the superpixels to cluster
+the point cloud but note that any other 3D clustering method
+is suitable for this purpose if the image is not available. Then,
+the 3D sub-graph is identical to that shown in Fig. 4. For
+the image sub-graph we use the image superpixels’ neigh-
+bourhood without 3D information, a subset of Fig. 3 bottom.
+Note that some of the neighborhood edges end in the nodes
+of the 3D sub-graph giving us the connection between sub-
+graphs. Within this set of connections we ﬁnd a MST over
+the distances between the superpixels’ LAB-color space,
+inducing the image sub-graph. In Fig. 5 we show the graph
+for the full coverage, the 3D sub-graph in blue and the image
+sub-graph in green.
+2
+The 3D laser has actually360
+?
+of horizontal ﬁeld of view but the ground
+truth labels are not available outside of image ﬁeld of view. Note that the
+approach proposed here is equally applicable to parts with only 3D data
+extending the 3D graph to some point cloud over-segmentation, in which
+case the graphical model would take the form of Fig. 2.
+2642
+TABLE I: KITTI dataset, semantic segmentation recall accuracy in pixel-wise percentage.
+ground objects building vegetation sky Average Global Coverage
+road pavem. car fence post people sign.
+Image only
+Sengupta et al. [21] 98.3 91.3 93.9 48.5 49.3 — — 97.0 93.4 — 81.7 88.4 —
+CRF?Im 97.8 61.8 87.7 94.8 97.4 87.9 85.8 100
+CRF?Im? 3D
+a
+[3] 97.1 85.3 79.8 90.1 — 88.3 89.8 60.1
+CRF?Im? 3D 97.0 83.6 88.5 94.6 96.6 92.1 90.9 100
+a
+Accuracy computed over the effective coverage region.
+— stands for values that are no provided in [21] or are not possible to obtain with the approach of [3].
+Fig. 6: Results of different settings on KITTI dataset. From left to right: CRF?Im, CRF?Im? 3D and CRF?Im? 3D. Color code: ?ground, ?objects,
+?building, ?vegetation and ?sky.
+2nd: We have already shown very simple and effective
+features for each sensing modality. We will use the associated
+feature functions with their proper domain, as follows:
+f
+1
+(x
+s
+;z
+im
+) if s?im?3D
+f
+2
+(x
+s
+;z
+im;3D
+) if s?im?3D
+g
+1
+(x
+i;j
+;z
+im
+) if i?j ?im
+g
+2
+(x
+i;j
+;z
+3D
+) if i?j ?3D
+This is the same case already shown in Fig. 2 after
+removing f
+3
+.
+3rd: The weight vector to learn in this setting is
+composed by [w
+u1
+;w
+u2
+;w
+p1
+;w
+p2
+], which is again obtained
+by minimizing the negative log pseudo-likelihood. The in-
+ference is carried out by loopy belief propagation because
+even though the two sub-graphs are trees, the full graph
+contains loops. However, we have found that convergence
+was achieved in all of our experiments in very few iterations.
+IV. EXPERIMENTS
+We report the performance of the proposed method on two
+different real environments, urban outdoors and indoors. In
+outdoors we use Velodyne laser range sensor and camera and
+in indoors Kinect RGB-D sensor.
+A. Outdoors: Image + 3D laser scan
+We use the KITTI dataset [7], which contains images
+(1240x380) and 3D laser data taken for a vehicle in different
+urban scenarios. There are 70 manually labelled images as
+ground truth made available by [21], with a split of 45 for
+training and 25 for testing. The original classes released by
+[21] are: road, building, vehicle, people, pavement, vegeta-
+tion, sky, signal, post/pole and fence. We have mapped those
+to ﬁve more general classes: ground (road and pavement),
+building, vegetation, and objects (vehicle, people, signal, pole
+and fence) and sky.
+In this experiment we test the three cases of sensor
+overlap described in Section III; semantic segmentation using
+only the image information: CRF?Im, using the intersection
+between image and 3D: CRF?Im? 3D, and using the full
+coverage: CRF?Im? 3D. The results are shown in Fig. 6
+and Table I for a qualitative and quantitative evaluation,
+respectively. As reference we show the results reported in
+[21] in Table I. Using only the image information, CRF-
+Im, we can obtain very good results in classes like ground,
+vegetation and sky, but a poor performance in objects.
+Adding 3D shape evidence, CRF-Im? 3D, the performance
+on the objects class is boosted with the disadvantage of parts
+of the scene with no semantic explanation. When we use
+all the available information, CRF-Im? 3D, we obtain the
+best average performance over all the classes and solve the
+deﬁciencies of using only one modality without sacriﬁcing
+the coverage of the scene. For instance in Fig. 6(last row),
+the mistake of assigning ground to the phone cable box is
+solved with shape evidence. In the second row the propa-
+gation through the graph of building class solves the wrong
+assignment of sky to part of the house. The performance of
+CRF-Im? 3D for objects class is as good as for CRF-Im? 3D
+and for the remaining classes as good as for CRF-Im, with
+no statistically signiﬁcant differences.
+2643
+TABLE II: NYU dataset, semantic segmentation recall accuracy in pixel-wise percentage.
+ground furniture props structure Average Global In-painting Coverage
+Silberman et al. [22] 68 70 42 59 59.6 58.6 Required 100
+Couprie et al. [5] 87.3 45.3 35.5 86.1 63.5 64.5 Required 100
+CRF?Im? 3D [4] 88.4 64.1 30.5 78.6 65.4 67.2 Required 100
+CRF?Im? 3D raw-depth
+b
+88.5 69.0 23.1 78.6 64.8 67.4 No 74.6
+CRF?Im? 3D 87.9 63.8 27.1 79.7 64.3 67.0 No 100
+b
+Accuracy computed over the effective coverage region.
+Fig. 7: Results of different settings on NYU dataset. First three columns show the RGB, the raw depth and the in-painted depth images. The next two
+columns show the results of the system of [4] for CRF?Im? 3D using the raw and in-painted depths. The ﬁfth column is the result from our proposal
+CRF?Im? 3D using RGB and raw depth channels. The last column shows the ground truth provided. Labels color code: ?ground, ?structure, ?furniture
+and ?props.
+In terms of efﬁciency the average cost, after segmentation
+and feature computation, is 40ms for CRF?Im, 16ms for
+CRF?Im? 3D, and 23ms for CRF?Im? 3D. Please, see [3]
+for detailed timing.
+B. Indoors: Kinect sensor
+We use the NYU V2 RGB-D dataset [22], which contains
+1449 labeled frames. A standard split for training (795) and
+testing (654) is provided. The labeling spans over 894 differ-
+ent classes with a mapping to 4 classes: ground, structure,
+furniture and props, also used in [22].
+In this experiment we want to evaluate the effectiveness of
+in-painting techniques for obtaining dense depth vs using our
+system CRF?Im? 3D over raw depth. In Table II we show
+three state of the art results [4,5,22] using dense depth, also,
+as reference the result of [4] using the raw depth (CRF-
+Im?3D raw-depth), and in the last row the result from our
+proposal CRF?Im? 3D.
+Our solution, CRF?Im? 3D, achieves state of the art
+performance without the expensive extra in-painting stage.
+A visual comparison in Fig. 7, shows the beneﬁts of using
+the union of both modalities more than their intersection.
+For example, in the ﬁrst to fourth rows of Fig. 7 the depth
+data for the tables are missed and the in-painting does not
+estimate the correct values, leading CRF?Im? 3D to assign
+the class ground in those regions, something dangerous for
+the navigation system in a mobile robot. Also in the second
+row, the missing depth for the piano cover is ﬁlled by the in-
+painting with the depth of the wall behind, resulting in wrong
+labeling as structure. Those cases are correctly handled
+by our CRF?Im? 3D strategy, where in the missing depth
+regions only image information gives the local evidence
+and the information from regions with depth is correctly
+propagated through the graph to these regions. Note that for
+scenes without missing depth both systems (? and ?) are
+equivalent (up to no overlap for different ﬁeld of views).
+The last two rows of Fig. 7 show examples that cause
+the slight decrease in the performance of CRF?Im? 3D
+compared to CRF?Im? 3D using in-painting, (5th and 3rd
+2644
+rows of Table II). For instance, in Fig. 7(5th row) the ﬂoor is
+not detected by the depth sensor and has enough texture to
+be classiﬁed by our system as continuation of the furniture
+around, while the in-painting create some artiﬁcial depth that
+CRF?Im? 3D was able to classify as ground. In Fig. 7(6th
+row) part of the ﬂoor is not detected by the depth sensor
+and CRF?Im? 3D ﬁnds as the best assignment to extend the
+structure were the depth is missed, while the in-painted depth
+extends both, the ﬂoor and the walls, allowing CRF?Im? 3D
+to classify as ground a larger portion of the ﬂoor.
+In the indoors setting experiment the average computa-
+tional cost, after segmentation and feature computation, is
+7ms for CRF?Im? 3D using in-painting (15s), and 10ms for
+CRF?Im? 3D using raw depth, see [4] for detailed timing.
+V. CONCLUSIONS
+In this work we have addressed the problem of semantic
+mapping using the information from different sensors. We
+exploited the versatility and ﬂexibility of the conditional ran-
+dom ﬁelds, to connect and use different sensory modalities
+in case they have different coverage areas. The presented
+proposal also handles the cases of missing data commonly
+encountered in RGB-D sensors and correctly propagates
+evidence from areas with available 3D information.
+We have tested our proposal on real data, from outdoors
+and indoors environments, demonstrating its advantages over
+the existing alternatives to the problem of semantic segmen-
+tation. In our experiments due to the non-empty intersection
+between sensor coverages, we obtained a connected graph,
+but this is no a requirement for our approach. In fact, if
+the ﬁnal graph is a forest of tree we can still carry out the
+inference process. The approach presented in this paper is
+very standard, and can easily be adapted to the recursive
+approach described in [3] for on-line semantic segmentation.
+The outcome from our system can be used and enhanced
+by speciﬁc object detectors in any (combination of) sensor
+modalities.
+In the future work we plan to apply our semantic seg-
+mentation proposal to stereo cameras alone [13], and in
+combination to the 360
+?
+3D laser sensor [7]. The approach
+proposed and evaluated here is not limited to a ﬁxed number
+of sensors or sensor modalities. For instance, we can formu-
+late the system for any number, and any kind of cameras:
+CRF?Im
+1
+? Im
+2
+?::: Im
+N
+, or combination with alternative
+sensors (e.g. radar, thermal, or infra-red cameras) [15,17,19]:
+CRF?Im? Th? Radar? IR? 3D.
+The proposed augmented CRF framework which enables
+single inference of sub-graphs, induced by different sensing
+modalities, can be also applied to data association in place
+recognition tasks [2].
+REFERENCES
+[1] R. Achanta, A. Shaji, K. Smith, A. Lucchi, P. Fua, and S. S¨ usstrunk.
+SLIC superpixels compared to state-of-the-art superpixel methods.
+Pattern Analysis and Machine Intelligence, IEEE Transactions on,
+34(11):2274 –2282, nov. 2012.
+[2] C. Cadena, D. G´ alvez-L´ opez, J.D. Tard´ os, and J. Neira. Robust place
+recognition with stereo sequences. IEEE Transaction on RObotics,
+28(4):871 –885, 2012.
+[3] C. Cadena and J. Koˇ seck´ a. Recursive Inference for Prediction of
+Objects in Urban Environments. In International Symposium on
+Robotics Research, Singapore, December 2013.
+[4] C. Cadena and J. Koˇ seck´ a. Semantic Parsing for Priming Object
+Detection in RGB-D Scenes. In 3rd Workshop on Semantic Perception,
+Mapping and Exploration, Karlsruhe - Germany, June 2013.
+[5] C. Couprie, C. Farabet, L. Najman, and Y . LeCun. Indoor semantic
+segmentation using depth information. CoRR, abs/1301.3572, 2013.
+[6] C. Farabet, C. Couprie, L. Najman, and Y . LeCun. Learning hier-
+archical features for scene labeling. Pattern Analysis and Machine
+Intelligence, IEEE Transactions on, PP(99):1–1, 2013.
+[7] A. Geiger, P. Lenz, and R. Urtasun. Are we ready for autonomous
+driving? the kitti vision benchmark suite. In Conference on Computer
+Vision and PatternRecognition (CVPR), 2012.
+[8] S. Gupta, P. Arbel´ aez, and J. Malik. Perceptual Organization and
+Recognition of Indoor Scenes from RGB-D Images. In Computer
+Vision and Pattern Recognition (CVPR), IEEE Conference on, 2013.
+[9] H. Hu, D. Munoz, J.A. Bagnell, and M. Hebert. Efﬁcient 3-d scene
+analysis from streaming data. In Proc. IEEE International Conference
+on Robotics and Automation (ICRA), Karlsruhe, Germany, June 2013.
+[10] A. Janoch, S. Karayev, Y . Jia, J.T. Barron, M. Fritz, K. Saenko, and
+T. Darrell. A category-level 3-d object dataset: Putting the kinect to
+work. In ICCV Workshop on Consumer Depth Cameras for Computer
+Vision, 2011.
+[11] D. Koller and N. Friedman. Probabilistic Graphical Models: Princi-
+ples and Techniques. MIT Press, 2009.
+[12] L. Ladick´ y, P. Sturgess, K. Alahari, C. Russell, and P.H.S. Torr. What,
+Where and How Many? Combining Object Detectors and CRFs. In
+Computer Vision - ECCV 2010. Springer Berlin Heidelberg, 2010.
+[13] B. Leibe, N. Cornelis, K. Cornelis, and L. Van Gool. Dynamic 3d
+scene analysis from a moving vehicle. In Computer Vision and Pattern
+Recognition, 2007. CVPR ’07. IEEE Conference on, pages 1–8, 2007.
+[14] A. Levin, D. Lischinski, and Y . Weiss. Colorization using optimization.
+ACM Trans. Graph., 23(3):689–694, August 2004.
+[15] W. Maddern and S. Vidas. Towards robust night and day place
+recognition using visible and thermal imaging. In RSS 2012: Beyond
+laser and vision: Alternative sensing techniques for robotic perception,
+2012.
+[16] B. Micusik, J. Koˇ seck´ a, and G. Singh. Semantic parsing of street
+scenes from video. The International Journal of Robotics Research,
+31(4):484–497, 2012.
+[17] A. Milella, G. Reina, J. Underwood, and B.Douillard. Visual ground
+segmentation by radar supervision. Robotics and Autonomous Systems,
+(0):–, 2012.
+[18] D. Munoz, J.A. Bagnell, and M. Hebert. Co-inference for multi-modal
+scene analysis. In Computer Vision - ECCV 2012, volume 7577 of
+Lecture Notes in Computer Science, pages 668–681. Springer Berlin
+Heidelberg, 2012.
+[19] T. Peynot, S. Scheding, and S. Terho. The Marulan Data Sets: Multi-
+sensor Perception in a Natural Environment with Challenging Condi-
+tions. The International Journal of Robotics Research, 29(13):1602–
+1607, 2010.
+[20] I. Posner, M. Cummins, and P. Newman. A generative framework for
+fast urban labeling using spatial and temporal context. Autonomous
+Robots, 26:153–170, 2009.
+[21] S. Sengupta, E. Greveson, A. Shahrokni, and P.H.S. Torr. Urban 3D
+Semantic Modelling Using Stereo Vision. In ICRA, 2013.
+[22] N. Silberman, D. Hoiem, P. Kohli, and R. Fergus. Indoor Segmentation
+and Support Inference from RGBD Images. In ECCV, 2012.
+[23] G. Singh and J. Koˇ seck´ a. Nonparametric scene parsing with adaptive
+feature relevance and semantic context. In Computer Vision and
+Pattern Recognition (CVPR), IEEE Conference on, 2013.
+[24] J. Tighe and S. Lazebnik. Superparsing: Scalable nonparametric image
+parsing with superpixels. In Computer Vision - ECCV 2010. Springer
+Berlin Heidelberg, 2010.
+[25] R.A. Triebel, R. Paul, D. Rus, and P. Newman. Parsing outdoor
+scenes from streamed 3d laser data using online clustering and
+incremental belief updates. In Twenty-Sixth AAAI Conference on
+Artiﬁcial Intelligence, 2012.
+[26] J. Xiao and L. Quan. Multiple view semantic segmentation for street
+view images. In Computer Vision, 2009 IEEE 12th International
+Conference on, pages 686 –693, oct. 2009.
+2645

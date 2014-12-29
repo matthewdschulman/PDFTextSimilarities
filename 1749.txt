@@ -1,0 +1,1737 @@
+Incremental Sampling-based Algorithm for
+Risk-aware Planning under Motion Uncertainty
+Wei Liu and Marcelo H. Ang Jr.
+Abstract—This paper considers the problem of motion plan-
+ning for linear systems subject to Gaussian motion noise and
+proposes a risk-aware planning algorithm: CC-RRT*-D. The
+proposed CC-RRT*-D employs the chance-constraint approx-
+imation and leverages the asymptotically optimal property of
+RRT* framework to compute risk-aware and asymptotically
+optimal trajectories. By explicitly considering the state depen-
+dence for prior state estimate, the over-conservative problem
+of chance-constraint approximation can be provably solved.
+Computational experiment results show that CC-RRT*-D is
+efﬁcient and robust compared with related algorithms. The
+real-time experiment on an autonomous vehicle shows that
+our proposed algorithm is applicable to real-time obstacle
+avoidance.
+I. INTRODUCTION
+Recent advances in autonomous vehicle research have
+greatly improved the vehicles’ performance and safety. Au-
+tonomous navigation in clustered urban environment, how-
+ever,stillfacesthechallengesoftheuncertaintiesthatarising
+from either external sources (like moving agents’ intention,
+etc.)orinternalsource(likemodelerrors,controlnoise,etc.).
+Recognizing these challenges, a motion planner that is robust
+to the uncertainty is in need for autonomous vehicles to
+perform safe and complex maneuvers in a timely manner.
+The problem of motion planning with control disturbance,
+sensing noise and moving agents’ dynamics was attracting
+increasing attention recently. These uncertainties make the
+vehicle operate in partially observable space (belief space),
+where the environment and vehicle states are described as
+probability distributions. Some approaches tend to blend
+planningandcontrolbyreturningaglobalcontrolpolicyover
+the entire space. Markov Decision Processes (MDPs), for in-
+stance, can take account motion uncertainty and optimize the
+probability of success [1]. However, the discretization of the
+state and control space is required. In order to take account
+sensing uncertainty, the MDP concept can be extended to
+Partially Observable Markov Decision Processes (POMDPs)
+[3], which is, however, computationally intractable for real-
+istic problems.
+For systems with Linear dynamic, Quadratic cost and
+Gaussian noise (LQG), the optimal policy can be obtained
+via employing Kalman ﬁlter to maintain a Gaussian state
+estimate and evaluate the performance metric over the es-
+timate [4]. Blackmore et al. presented a chance-constraint
+Wei Liu and Marcelo H. Ang Jr. are with Department of Mechanical
+Engineering, National University of Singapore, Singapore fliu wei,
+mpeangg @ nus.edu.sg
+*This research was supported by the Future Urban Mobility project of
+theSingapore-MITAllianceforResearchandTechnology(SMART)Center,
+with funding from Singapore’s National Research Foundation.
+approximation approach in [5] to compute probabilistically
+robust trajectories under Gaussian disturbance. To get rid of
+the LQG limitation, this work was further improved in [6]
+to handle non-linear systems with non-Gaussian disturbance.
+In order to compute trajectories with smaller sub-optimality,
+Ono et al. in [7] presented the Iterative Risk Allocation
+(IRA) approach by intelligently allocating risk limit for each
+constraint. While these approaches have been demonstrated
+for real-time planning, they lack the adaptiveness to complex
+and high-dimension problem.
+Recognizing the recent research improvements obtained
+in sampling-based planning algorithm for deterministic sys-
+tems, many algorithms have been proposed to extend
+sampling-based algorithms to stochastic systems and lever-
+age the beneﬁts of 1) easier scalability to the high-dimension
+space, and 2) increasing planning horizon due to the piece-
+wise path property. Particle-RRT is a Rapidly-exploring
+Random Tree (RRT) based approach which uses particles
+for distribution propagation, and focuses on the particle clus-
+tering and tree expansion strategy [8]. A sampling strategy
+for Probabilistic RoadMap (PRM) to handle environmental
+uncertainty is presented in [9]. The Belief Roadmap in [10]
+performs an efﬁcient belief space planning using factorized
+covariance for linear or locally linearizable systems. Luders
+et al. proposed a Chance-Constraint RRT (CC-RRT) in [11]
+tobuildRRTtreewithaboundedcollisionprobability.While
+improvements achieved, these approaches can only return
+sub-optimal trajectories due to the non-optimality of RRT
+and PRM that proved in [12].
+With the emergence of the asymptotically optimal plan-
+ning algorithms (like RRG, RRT*, PRM*) in [12], the
+Rapidly-exploring Random Belief Tree (RRBT) algorithm
+proposed in [13] aims at constructing and reﬁning a belief
+tree within the RRT* framework to handle motion and sens-
+ing uncertainty. Recent work in [14] improves the Chance-
+Constraint RRT by using RRT* instead. Both these two ap-
+proaches, however, failed to consider the state independence
+when prior state distribution is estimated and RRT* tree is
+rewired.
+In this paper, we propose a risk-aware planning algorithm
+CC-RRT*-D for linear or locally linearizable systems under
+Gaussian motion disturbance. The proposed CC-RRT*-D ex-
+plicitly considers the state dependence for chance-constraint
+approximation and integrate it into the RRT* framework.
+Comparedtothepreviouswork,thecontributionofthispaper
+can be summarized as follows:
+• State dependence for state distribution estimate is ex-
+plicitly considered, which can provably overcome the
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 2051
+over-conservativeness introduced by chance-constraint
+approximation.
+• Risk-awareness and asymptotically optimality can be
+guaranteed by integrating chance-constraint approxima-
+tion into RRT* framework.
+The paper proceeds as follows: Section II formulates
+the planning problem. In Section III, chance-constraint ap-
+proximation, conditional state propagation and the proposed
+planning algorithm are discussed step by step. The simula-
+tion results and a real-time experiment are demonstrated in
+Section IV. Finally, this paper is concluded in Section V.
+II. PROBLEM STATEMENT
+Let theX?R
+nx
+be the state space, and letU?R
+nu
+be
+the control space. We assume that applying a control input
+u
+t
+?U at stage t brings the vehicle from state x
+t
+to state
+x
+t+1
+according to the following stochastic model:
+x
+t+1
+=f(x
+t
+,u
+t
+,m
+t
+),
+m
+t
+?N(0,M
+t
+), x
+init
+?N(^ x
+0
+,?
+x0
+), (1)
+where m
+t
+? R
+nu
+is the motion noise that imposed on the
+control input. x
+init
+is the initial state and is assumed as a
+Gaussian distribution with mean and covariance as ^ x
+0
+and
+?
+x0
+respectively. The transition function f is assumed to be
+eitherlinearorlocallywellapproximatedbyitslinearization.
+Let the obstacle free space be represented asX
+F
+, which
+can take the form as:
+X
+F
+=X?X
+1
+?...?X
+K
+, (2)
+whereX
+j
+,j?{1,...,K} is convex polyhedral that models
+theobstacleregions,andoperator
+?
+?
+?
+denotessetsubtraction.
+Let X
+goal
+denote the goal region, and let π denote a
+path that deﬁned as a series of states and control inputs
+(x
+0
+,u
+0
+,...,x
+T
+goal
+,u
+T
+goal
+) such that x
+0
+=x
+init
+and x
+T
+goal
+?
+X
+goal
+. Then a path planner with motion uncertainty seeks to
+solve the optimal control problem:
+min
+ut
+T
+goal
+∑
+t=0
+?(^ x
+t
+,X
+goal
+,u
+t
+),
+subject to Eqn. (1),
+and P(x
+t
+?X
+F
+)≥?,t : [0,T
+goal
+], (3)
+where?istheobjectfunctiontobeoptimizedand ^ x
+t
+denotes
+the expected mean value of vehicle’s state distribution at
+stage t. The usage of ^ x
+t
+here is to approximate the expected
+cost that associated withx
+t
+.? is the probabilistic safety limit
+and P(x
+t
+?X
+F
+)≥ ? is to guarantee the bounded collision
+probability.
+III. ALGORITHM
+This section describes the risk-aware and asymptotically
+optimal planning algorithm for system under motion uncer-
+tainty.
+A. Chance Constraint
+Given a convex polyhedral obstacleX
+o
+that deﬁned by L
+linear segments, the event that vehicle collides with obstacle
+X
+o
+at time t can be modeled as a conjunction of linear
+constraints on the vehicle state x
+t
+:
+?
+i=1;:::;L
+a
+T
+i
+x
+t
+<b
+i
+, (4)
+where a
+i
+and b
+i
+are the parameters that model the ith linear
+constraint.
+If x
+t
+is given as a distribution estimate at stage t, the
+collisionwiththeobstaclecanbeevaluatedastheprobability
+of Eqn. (4) being satisﬁed. Recognizing the obstacle is
+assumed as convex, thus the probability that any of the linear
+constraints in (4) being satisﬁed is an upper bound on the
+obstacle colliding probability:
+P(x
+t
+?X
+o
+) =P(
+?
+i=1;:::;L
+a
+T
+i
+x
+t
+<b
+i
+)≤P(a
+T
+i
+x
+t
+<b
+i
+).
+(5)
+Assumex
+t
+isaGaussiandistributiondeﬁnedbyameanµ
+t
+and covariance ?
+t
+, and deﬁne an afﬁne transform as V
+it
+=
+a
+T
+i
+x
+t
+?b
+i
+. The probability that the ith linear constraint is
+satisﬁed can be calculated as:
+P(V
+it
+< 0) = [1?erf((a
+T
+i
+µ
+t
+?b
+i
+)/
+√
+2a
+T
+i
+?
+t
+a
+i
+)]/2, (6)
+where erf denotes the standard error function. This result
+can be inserted into the usage of Boole’s inequality in
+Eqn. (5) to give a approximated evaluation of the obstacle
+colliding probability:
+P(x
+t
+?X
+o
+) = min
+i?{1;:::L}
+P(V
+it
+< 0). (7)
+Considering the case of multiple obstacles and let P
+j
+t
+=
+P(x
+t
+? X
+j
+),j ? {1,...,K} denotes the probability of
+collision with jth obstacle, we loosely deﬁne the overall
+collision probability as:
+P(x
+t
+/ ?X
+F
+) = max
+j?{1;:::;K}
+P
+j
+t
+, (8)
+which might not reﬂect the true risk, but provides a conser-
+vative approximation by considering the worst case.
+B. Conditional State Propagation
+In principle, our proposed approach applies to linear
+dynamics. Considering the fact that the vehicle will be
+controlled to stay close to nominal path during execution,
+the non-linear models can be locally linearized around the
+nominal path as:
+ x
+t
+=A
+t
+ x
+t?1
++B
+t
+ u
+t
++V
+t
+m
+t
+, (9)
+where
+ x
+t
+=x
+t
+?x
+?
+t
+, u
+t
+=u
+t
+?u
+?
+t
+(10)
+2052
+Obstacle
+Truncated 
+Distribution
+Deviation from
+Nominal Path
+Fig. 1. Illustration of conditional state propagation: conditional state
+propagation based state distribution is represented as red ellipses, and the
+black dashed ellipses denote the state distribution without using conditional
+state propagation.
+are the deviation from nominal state x
+?
+t
+and control u
+?
+t
+respectively, and
+A
+t
+=
+∂f
+∂x
+(x
+?
+t?1
+,u
+?
+t?1
+,0),
+B
+t
+=
+∂f
+∂u
+(x
+?
+t?1
+,u
+?
+t?1
+,0),
+V
+t
+=
+∂f
+∂m
+(x
+?
+t?1
+,u
+?
+t?1
+,0) (11)
+are the Jacobian matrices of f along nominal path.
+Sincethetruestatex
+t
+aswellas  x
+t
+arenotfullyobservable
+during the execution, the Kalman ﬁlter can be employed to
+approximate the state estimate as Gaussian distribution and
+keep track the estimate mean
+^
+ x
+t
+and the covariance?
+t
+of  x
+t
+.
+Previous works use the maximum likelihood measurement
+model to update the prediction, which cannot reﬂect the true
+state distributions, but rather a measure of how well one will
+be able to be inferred. Hence the estimate of  x
+t
+is given as
+following without measurement update:
+^
+ x
+t
+=A
+t
+^
+ x
+t?1
++B
+t
+ u
+t
+,
+?
+t
+=A
+t
+?
+t?1
+A
+T
+t
++V
+t
+M
+t
+V
+T
+t
+. (12)
+Then the estimate of x
+t
+can be given as: ~ x
+t
+? N(
+^
+ x
+t
++
+x
+?
+t
+,?
+t
+), and ^ x
+t
+=
+^
+ x
+t
++x
+?
+t
+denotes the mean of ~ x
+t
+.
+Given a feedback control system:  u
+t
+= K
+t
+^
+ x
+t
+, then
+^
+ x
+t
+is formulated as
+^
+ x
+t
+=
+∏
+=0:t?1
+(A
+
++B
+
+K
+
+)
+^
+ x
+
+. Noticed
+that
+^
+ x
+0
+= 0, thus
+^
+ x
+t
+can be controlled as 0, i.e., the
+expected mean of the prior distribution is staying exactly
+in the nominal path.
+Considering the dependency between state x
+t
+and x
+t?1
+in
+Eqn.(1),thefeasibilityofx
+t
+shouldbestrictlyconditionalon
+the previous states being collision free, i.e., P(x
+t
+?X
+F
+) =
+P(x
+t
+?X
+F
+|
+?
+i=0:t?1
+x
+i
+?X
+F
+). In this sense, we let
+~ x
+t|k
+= (~ x
+t
+|
+?
+i=0:k
+~ x
+i
+?X
+F
+) (13)
+denotes the state distribution of ~ x
+t
+that conditional on the
+state being collision free for all stages{0,...,k}, and utilize
+the method proposed in [15] to approximate the distribution
+Algorithm 1: Conditional State Propagation
+input : ~ x
+t?1|t?1
+?N(^ x
+t?1|t?1
+,?
+t?1|t?1
+)
+output: ~ x
+t|t
+1
+^
+ x
+t?1|t?1
+= ^ x
+t?1|t?1
+?x
+?
+t?1
+2
+^
+ x
+t|t?1
+=A
+t
+^
+ x
+t?1|t?1
++B
+t
+( u
+t
+)
+3 ?
+t|t?1
+=A
+t
+?
+t?1|t?1
+A
+T
+t
++V
+t
+M
+t
+V
+T
+t
+4 ^ x
+t|t?1
+=
+^
+ x
+t|t?1
++x
+?
+t
+5 ~ x
+t|t?1
+?N(^ x
+t|t?1
+,?
+t|t?1
+)
+6 if DegreeTrunc(~ x
+t|t?1
+)>? then
+7 [∆x
+t
+,∆?
+t
+]?Truncation(~ x
+t|t?1
+)
+8 ^ x
+t|t
+= ^ x
+t|t?1
+?∆x
+t
+9 ?
+t|t
+=?
+t|t?1
+?∆?
+t
+10 return ~ x
+t|t
+?N(^ x
+t|t
+,?
+t|t
+)
+11 else
+12 return ~ x
+t|t
+?N(^ x
+t|t?1
+,?
+t|t?1
+)
+13 end
+~ x
+t|t
+?N(^ x
+t|t
+,?
+t|t
+) as all collision-free states at stage t.
+As illustrated in Fig. 1, this can be done by truncating the
+distributionN(^ x
+t|t?1
+,?
+t|t?1
+) against the infeasible region
+in the environment and results in a shift of the mean and
+covariance by ∆x
+t
+and ∆?
+t
+respectively:
+^ x
+t|t
+= ^ x
+t|t?1
+?∆x
+t
+,
+?
+t|t
+=?
+t|t?1
+?∆?
+t
+. (14)
+Given a linear constraint a
+T
+~ x
+t|t?1
+≤b, the shift ∆x
+t
+and
+?
+t
+can be given as:
+∆x
+t
+=?
+?
+√
+a
+T
+?
+t|t?1
+a
+(?
+t|t?1
+a),
+∆?
+t
+=
+?
+2
+???
+a
+T
+?
+t|t?1
+a
+(?
+t|t?1
+a)(?
+t|t?1
+a)
+T
+, (15)
+where ? =
+b?a
+T
+^ x
+tjt 1
+√
+a
+T
+
+tjt 1
+a
+is the degree of truncation, and ? =
+pdf()
+1?cdf()
+is the ratio of the standard Gaussian probability
+distribution function and the cumulative distribution function
+evaluated at ?.
+Let us consider the distribution truncation w.r.t. obstacles
+that deﬁned by L linear constraints. Because of the approx-
+imation made in Eqn. (7), the truncation is only applied to
+the linear constraint that returns the minimum risk, which
+can be formulated as:
+[a,b] = arg min
+[ai;bi]
+P(a
+i
+~ x
+t|t?1
+<b
+i
+),i?{1,...,L}. (16)
+Given K obstacles, let [∆x
+j
+t
+,?
+j
+t
+] be the shift pair for jth
+obstacleX
+j
+, then the truncation w.r.t. all the obstacles is
+given as the cumulative shift:
+∆x
+t
+= 
+K
+j=0
+∆x
+j
+t
+, ∆?
+t
+= 
+K
+j=0
+∆?
+j
+t
+. (17)
+Then the conditional state propagation is summarized as
+Alg. 1. At each stage t of conditional state propagation, the
+prior distribution ~ x
+t|t?1
+is truncated if the degree of trunca-
+tion returned by functionDegreeTrunc is over the desired
+2053
+Algorithm 2: CC-RRT*-D Tree Expansion
+input : x
+init
+output: T = (V,E)
+1 T?InitializeTree()
+2 T?InsertNode(?,x
+init
+,T)
+3 for i? 1 to N do
+4 x
+rand
+?Sample()
+5 x
+nearest
+?Nearest(T,x
+rand
+)
+6 (x
+new
+,u
+new
+,π
+new
+)?Steer(x
+nearest
+,x
+rand
+)
+7 if RiskFeasible(x
+nearest
+,u
+new
+,x
+new
+) then
+8 X
+near
+?Near(T,x
+new
+,?)
+9 x
+min
+?Parent(X
+near
+,x
+new
+)
+10 T?InsertNode(x
+min
+,x
+new
+,π)
+11 T?Rewire(T,X
+near
+,x
+min
+,x
+new
+)
+12 end
+13 end
+14 return T = (V,E)
+Algorithm 3: RiskFeasible(x
+start
+,u,x
+end
+)
+input : x
+start
+,u,x
+end
+output: False,True
+1 N(^ x
+0|0
+,?
+0|0
+)?x
+start
+2 for t? 1 to k do
+3 ~ x
+t|t?1
+?Propagate(N(^ x
+t?1|t?1
+,?
+t?1|t?1
+))
+4 if P(Collision)> 1?? then
+5 return False
+6 end
+7 N(^ x
+t|t
+,?
+t|t
+)?Truncate(~ x
+t|t?1
+)
+8 end
+9 x
+end
+?N(^ x
+k|k
+,?
+k|k
+)
+10 return True
+threshold ?, then the truncated distributionN(^ x
+t|t
+,?
+t|t
+) is
+utilized for the propagation of next stage t+1. Because of
+the mean shift ∆x
+t
+, usingN(^ x
+t|t
+,?
+t|t
+) to propagate next
+stage will introduce some deviation from the nominal path
+(Black dashed curve in Fig. 1), which is assumed negligible
+when the horizon between stage t and stage t + 1 is small
+enough.
+Consequently, the probability of a path which consisting
+of states x
+t:0;:::;k
+being collision free is approximated as:
+P(
+k
+?
+t=0
+x
+t
+?X
+F
+)≈
+k
+∏
+t=0
+P(~ x
+t|t?1
+?X
+F
+|
+?
+i=0:t?1
+~ x
+i|i?1
+?X
+F
+),
+(18)
+which is less conservative than the approximation
+P(
+?
+k
+t=0
+x
+t
+? X
+F
+) ≈
+∏
+k
+t=0
+P(~ x
+t
+? X
+F
+) that given
+by some previous approaches.
+C. CC-RRT*-D Algorithm
+The tree expansion algorithm is given as Alg. 2. In each
+iteration, the Sample function generates independent, iden-
+tically distributed samples over the feasible state space for
+expansion. Then the nearest node in terms of some distance
+Algorithm 4: Parent(X
+near
+,x
+new
+)
+input : X
+near
+,x
+new
+output: x
+min
+,J
+min
+1 for x?X
+near
+do
+2 (x
+;
+,u
+;
+,π
+;
+)?Steer(x,x
+new
+)
+3 if RiskFeasible(x
+;
+,u
+;
+,x
+new
+) then
+4 X
+steer
+?InsertVertex(x)
+5 end
+6 end
+7 J
+min
+= min
+x?Xsteer
+J(x)+c(x,x
+new
+)
+8 x
+min
+= argmin
+x?Xsteer
+J(x)+c(x,x
+new
+)
+Algorithm 5: Rewire(T,X
+near
+,x
+min
+,x
+new
+)
+input : T,X
+near
+,x
+min
+,x
+new
+output: T
+1 for x?X
+near
+\x
+min
+do
+2 (x
+;
+,u
+;
+,π
+;
+)?Steer(x
+new
+,x)
+3 if RiskFeasible(x
+new
+,u
+;
+,x
+;
+) and
+J(x
+new
+)+c(x
+new
+,x)<J(x) then
+4 T?Reconnect(x
+new
+,x,π)
+5 RePropagate(x)
+6 end
+7 end
+metric is identiﬁed, and the Steer function is applied to
+computes a path π
+new
+that connecting the nearest node with
+a intermediate state x
+new
+. The function RiskFeasible in
+Alg. 3 acts as the collision checker, which employs Alg.
+1 to propagate the states’ distribution estimate along the
+nominal path, and check the probability of collision using
+Eqn. (8), which will return true if the given trajectory is
+probabilistically safe. If x
+new
+and π
+new
+are probabilistically
+feasible, a near vertex set X
+new
+will be returned by the
+function Near(T,x,?) as:
+X
+near
+={x
+?
+|||x
+?
+?x||≤ min{?(log(n)/n)
+1=d
+,?}, (19)
+where d is the dimension of the state, n is the number of
+vertex in the tree, ? is a pre-deﬁned maximum ball radius
+and ? is the constant that discussed in [12].
+For all the near vertex that has probabilistically feasible
+connectionwithx
+new
+,thebestonew.r.t.thecostfunctioncis
+setastheparentofx
+new
+(Alg.4)andisinsertedintothetree.
+ThenRewire function in Alg. 5 recalculates the best parents
+for all vertex within X
+near
+. Once the rewiring procedure is
+necessary, the tree is reconnected. Then the rewired vertex
+together with its children’s distribution is re-propagated in
+order to maintain the dependency between the vertices.
+Finally, Alg. 2 builds the probabilistically feasible tree and
+the solution path is asymptomatically optimized.
+D. Analysis
+1) Cost Function: Given two connected paths π
+1
+: [0,1],
+π
+2
+: [0,1] and π
+1
+(1) = π
+2
+(0), and let π
+1
+| π
+2
+denote their
+2054
+(a)
+(a) (b)
+0.00
+0.25
+0.50
+Fig. 2. Results for planning without motion noise after 5,000 vertex trials:
+a) RRT and b) RRT*.
+concatenation.Toensuretheoptimality,thecostfunctioncin
+Alg.2needstobemonotonic,insenseofc(π
+1
+)≤c(π
+1
+|π
+2
+),
+and bounded, in sense that there exists ? such that c(π)≤
+?||π|| [12].
+Let R(x) denote the risk of collision that associated with
+state x. The line integral of the risks along a given path
+π : [0,1] as
+∫
+1
+0
+R(π(?))d? only provides the accumulated
+risk, which, however, cannot reﬂect the signiﬁcant risky
+component of path π. Therefore, the maximum risk over the
+whole path is employed to evaluate the path’s risky level,
+and a risk based object function can be deﬁned as:
+c(π) =Length(π)+? max
+:[0;1]
+R(π(?)), (20)
+where ? is the scaling factor to balance the path length and
+risk. Because both the Length(π) and max
+:[0;1]
+R(π(?))
+are monotonic and bounded, this cost function can be easily
+veriﬁed to be able to meet the requirement of optimality.
+2) Optimality Analysis: To prove the optimality of Alg.
+2, we start from a necessary assumption.
+Assumption : There exists a ballX
+
+of radius ? at every
+point x?X such that for points x
+?
+?X
+
+,
+∫
+XF
+P(x
+?
+)dx
+?
+>
+?.
+This assumption states that it is possible to move the
+mean of the distribution within some ball and not violate
+the chance-constraint, which is necessary to give the graph
+a ﬁnite sample volume to converge in. Based on this as-
+sumption, the optimality proof can follow the Theorem 38
+in [12].
+IV. EXPERIMENT
+In this section, we will present the simulation results to
+evaluate the performance of the CC-RRT*-D, and demon-
+strate a real-time experiment on an autonomous golf-cart.
+A. Computation Experiment
+1) Simulation Setup: The computational experiments
+were implemented on a quad-core 1.6 GHz processor with
+4 GB of RAM, and the algorithms are programmed in C++.
+Consider the 2D single integrator dynamics:
+x
+t
+=
+[
+1 0
+0 1
+]
+x
+t?1
++
+[
+dt 0
+0 dt
+]
+[v
+x
++∆v
+x
+,v
+y
++∆v
+y
+]
+T
+,
+(21)
+(a) (b) (c)
+0.000
+0.025
+0.050
+Fig. 3. Comparison of probabilistically feasible trees of three algorithms
+over 2,000 vertex trials: a) CC-RRT*, b) CC-RRT*-R and c) CC-RRT*-D.
+where dt = 0.1 s and |v
+x
+| ≤ 10 m/s,|v
+y
+| ≤ 10 m/s.
+The motion noise is imposed on the input velocity as
+[∆v
+x
+,∆v
+y
+]
+T
+.
+The simulation was conducted in a constrained, two di-
+mension 10 m? 15 m environment, which contains two
+obstacles as Fig. 2. The starting location is set as the left
+lower conner and goal region is located at the right upper
+corner.
+The initial state x
+0
+is subject to a Gaussian localization
+error: x
+0
+?N(^ x
+0
+,?
+0
+), ?
+0
+= [
+0:5 0
+0 0:5
+]. The motion noise
+are given as [∆v
+x
+,∆v
+y
+]
+T
+? N
+(
+0,
+[
+0:2|vx| 0
+0 0:2|vy|
+])
+. The
+probabilistic safety limit is set as 0.95, i.e., P(collision)≤
+0.05, and the degree of truncation threshold? is set as 0.005.
+2) Simulation Results: Fig. 2 represents the planning
+results without considering motion noise using RRT and
+RRT* after 5,000 vertex, where the path length is deﬁned
+as the object function. The edge’s color indicates the risky
+level of the corresponding piecewise path, from which we
+can intuitively ﬁnd that risk is increasing when obstacles
+are approached. The region highlighted by white rectangle
+is associated with relatively higher risk and will be proved
+as a bottleneck when motion disturbance is imposed.
+Then we compared the planning results of our proposed
+algorithm (CC-RRT*-D) with a previous related approach
+CC-RRT* [14] in which state dependence is not explicitly
+considered.
+To explicitly demonstrate the difference introduced by
+consideringstatedependence,wecomparedthreealgorithms:
+1) CC-RRT*, 2) CC-RRT*-R: Same framework as Alg. 2
+but using Eqn. (12) for state propagation and 3) CC-RRT*-
+D. The comparison between CC-RRT* and CC-RRT*-R is
+to show the necessity of state re-propagation when rewiring
+procedure is proceeded. By comparing algorithm CC-RRT*-
+R and CC-RRT*-D, we can observe the improvements ob-
+tainedinsolvingover-conservativeissueofchance-constraint
+approximation.
+Without the loss of generality, path length is deﬁned as
+the cost function. 2,000 vertex trials were computed each
+time, and each algorithm was tested over 20 times. The
+probabilistically feasible tree for each algorithm is shown
+in Fig. 3.
+Firstly, we explore the necessity of state re-propagation
+whenrewiringprocedureisproceeded.InFig.3(a),thelower
+2055
+0 500 1000 1500 2000
+0
+0.5
+1
+1.5
+2
+2.5
+3
+Number of Vertex
+EigenValue
+ 
+ 
+0 500 1000 1500 2000
+0
+0.5
+1
+1.5
+2
+2.5
+3
+Number of Vertex
+EigenValue
+ 
+ 
+CC?RRT*?R
+CC?RRT*
+CC?RRT*?R
+CC?RRT*
+(b) (a)
+Fig. 4. Covariance matrix’s eigenvalues of the solution path’s end state:
+a) large eigenvalues and b) small eigenvalues.
+200 400 600 800 1000 1200 1400 1600 1800 2000
+20
+22
+24
+26
+28
+30
+32
+34
+36
+38
+40
+Number of Vertex
+Length
+ 
+ 
+CC?RRT*?R
+CC?RRT*
+CC?RRT*?D
+Fig. 5. Evolution of solution path’s length over 2,000 vertex trials.
+part of CC-RRT* tree is relatively denser than the upper part,
+and is more conservative in the constrained region when
+comparing to CC-RRT*-R tree in Fig. 3(b). By analyzing
+the tree expansion process, this is because CC-RRT* need
+to make more efforts to ﬁnd a path that is passing the
+bottleneck which highlighted in Fig. 2, hence more vertices
+are expanded in the lower part. This can also be veriﬁed by
+theresultinTableI,whereCC-RRT*usearound465vertices
+to ﬁnd a feasible solution but CC-RRT*-R only takes about
+372 vertices.
+The underlying reason is that each vertex’s covariance is
+a function of the path that linking this vertex to the tree’s
+root. And for this typical case, shorter path normally requires
+less control effort, hence less motion noise is imposed on
+state propagation. Therefore, along with the convergence of
+the vertex’s distance to the root, its estimated covariance
+should also be converging. Letx
+goal
+denotes the end state of
+solution path, the eigenvalues of x
+goal
+’s covariance matrix
+are plotted in Fig. 4, from which we can view the asymptotic
+convergence of the covariance, and CC-RRT*-R returned
+TABLE I
+NUMBER OF VERTICES NEEDED TO FIND FEASIBLE PATH (20 TRIALS)
+CC-RRT* CC-RRT*-R CC-RRT*-D
+Average 465.5 372.8 388.0
+Stdev. 229.0 174.1 166.65
+Min. 262 186 190
+Max. 958 693 690
+(a) (b)
+Fig. 6. State distribution estimate after 100 vertices (3): a) Unconditional
+state propagation, b) Conditional state propagation.
+0 200 400 600 800 1000 1200 1400 1600 1800 2000
+0
+10
+20
+30
+40
+50
+60
+70
+80
+Number of Vertex
+Time (Second)
+ 
+ 
+CC?RRT*?R
+CC?RRT*
+CC?RRT*?D
+Fig. 7. Computation time versus number of vertex over 2,000 vertex trials.
+smaller covariance more efﬁciently. This also explains why
+CC-RRT*-R can handle the bottleneck more easily.
+Then we compare the CC-RRT*-R tree (Fig. 3(b)) with
+CC-RRT*-D tree (Fig. 3(c)). CC-RRT*-R tree is obviously
+more conservative than that of CC-RRT*-D, hence the solu-
+tion path returned by CC-RRT*-D is relatively shorter. This
+is in consistence with previous discussion in Section III-B:
+because the infeasible states are truncated from the prior
+distribution, the state propagation based on the truncated
+distribution is relatively less conservative. The corresponding
+state propagation results after 100 vertices is shown in Fig.
+6.
+Fig. 5 charts the evolution of solution path’s length versus
+number of vertex. The median over all 20 trials for each al-
+gorithm is plotted, where the solution paths are demonstrated
+as being asymptotically optimized. CC-RRT*-D returned the
+shortest path, and the solution path returned by CC-RRT*-R
+is relatively shorter than that of CC-RRT*.
+Thecomputationtimeversusnumberofvertexisshownas
+Fig. 7. Due to the bottleneck, CC-RRT* need more time to
+generate vertex initially, and the CC-RRT* tree is quickly
+expanded once a feasible path is available. Overall, CC-
+RRT* is relatively more computational efﬁcient than CC-
+RRT*-R, because CC-RRT*-R consumes additional com-
+putation for state re-propagation when the tree is rewired.
+While additional computation is required by CC-RRT*-D
+for state re-propagation and distribution truncation, the less
+conservative property makes CC-RRT*-D take the least time
+to build the tree.
+2056
+(a) (b) (c)
+0.000
+0.025
+0.050
+Fig. 8. Probabilistically feasible trees of three algorithms using risk based
+cost function over 2,000 vertex trials: a) CC-RRT*, b) CC-RRT*-R and c)
+CC-RRT*-D.
+(a) (b) (c)
+0.000
+0.025
+0.050
+Fig. 9. Planning results using CC-RRT*-R and CC-RRT*-D under high
+motion noise: a) CC-RRT*-R failed to ﬁnd a solution path, b) CC-RRT*-D
+using path length as object function, and c) CC-RRT*-D using risk based
+object function.
+Fig. 8 represents the planning results using the risk based
+cost function with ? = 10. The resulting trees show signiﬁ-
+cant qualitative difference with that in Fig. 3. Trees in Fig.
+8 tend to travel toward the obstacle surfaces to minimize the
+duration spend by traveling in high risk regions, and trade
+off between path length and risky level. In Fig. 3, however,
+the paths that passing around obstacles tend to be parallel
+with the obstacle surfaces to minimize the path length.
+Then we increased the motion noise to [∆v
+x
+,∆v
+y
+]
+T
+?
+N(0,
+[
+0:4|vx| 0
+0 0:4|vy|
+]
+and implement the same simulation
+setupover5,000vertex.AsinFig.9(a),CC-RRT*-Rfailedto
+return a solution due to the over-conservativeness of chance-
+constraint approximation. On the other hand, solution can
+be efﬁciently found by CC-RRT*-D after about 1,500 vertex
+trials using two different object functions as Fig. 9(b) and
+Fig. 9(c).
+Last but not least, the extension of the conditional state
+propagation to CC-RRT [11] is also implemented. Fig. 10
+represents the comparison between the CC-RRT tree with
+and without using conditional state propagation after 1,000
+vertex trials. In contrast to CC-RRT in Fig. 10(a) which fails
+to ﬁnd solution, CC-RRT using conditional state propagation
+can efﬁciently handle the constrained region as Fig. 10(b).
+To summarize, the experiment results presented in this
+subsection has veriﬁed the necessity of re-propagation when
+tree rewiring is proceeded, and the introduction of condi-
+tional state propagation can solve the over-conservativeness
+issue of chance-constraint approximation.
+(a) (b)
+(c) (d)
+0.000
+0.025
+0.050
+Fig. 10. Conditional state propagation extended to CC-RRT: a) CC-
+RRT without using conditional state propagation and b) CC-RRT using
+conditional state propagation.
+(a) (b)
+Fig. 11. Real-time experiment Setup: a) Autonomous golf-cart mounted
+withvarioussensors;b)Experimentscenario:Theautonomousneedtoavoid
+the front golf-cart and navigate to the destination that marked as red arrow.
+B. Real-time Experiment for Obstacle Avoidance
+We implemented a real-time obstacle avoidance using our
+proposed CC-RRT*-D on an autonomous vehicle.
+1) Experiment Setup: The experiment was conducted on
+an autonomous golf-cart mounted with various affordable
+sensors [16] (Fig. 11(a)) inside the campus of National
+University of Singapore.
+Regarding the system model, the state of the vehicle
+[x,y,?] consists of its position [x,y], and its orientation ?.
+The control input u = [v,?], consists of its velocity v and
+steering angle? corrupted by motion noisem = [∆v,∆?]?
+N(0,M). Hence the stochastic dynamics model is given as:
+f(x,u,m) =
+?
+?
+x+(v +∆v)?cos?
+y +(v +∆v)?sin?
+? +(v +∆v)?tan(?+∆?)/d
+?
+?
+, (22)
+where ? is the time step and d is the distance between front
+and rear axes.
+In this experiment,|v| ≤ 1.0 m/s, motion noise m ?
+N
+(
+0,
+[
+0:1m=s 0
+0 0:1rad
+])
+and the probabilistic safety limit is
+set as 0.9. The object function is deﬁned as the path length,
+and the localization algorithm is based on Monte Carlo
+Localization algorithm using a synthetic 2D LIDAR [17].
+The experiment scenario is given as Fig. 11(b), the au-
+tonomous golf-cart received a mission of navigating to the
+exit of the parking yard (Read Arrow in the right-top of
+Fig. 11(b)) and gracefully avoiding the front golf-cart that
+occupying the road.
+2057
+(a) (b) (c) (d)
+Fig. 12. Real-time experiment on an autonomous vehicle: The planning result is shown in (a) after 86 vertex trials, the solution path is indicated as green
+curve. The execution process is in (b)-(d), the red curve is the real trajectory that executed
+2) Experiment Result: The vehicle is localized ﬁrst, and
+the initial state distribution is approximated as Gaussian
+distribution by clustering the particles: ?
+0
+? [
+0:14 0
+0 0:16
+].
+Then the obstacle detection and classiﬁcation module is
+called to detect the front golf-cart. Based on the obstacle
+classiﬁcation result, the front golf-cart is modeled as a
+rectangle that consisting of four linear constraints, which can
+be visualized in Fig. 11(b).
+After 86 vertex trials using 8.335 seconds, the CC-RRT*-
+D tree and solution path is given in Fig. 12(a). As expected,
+the tree is bounded in a probabilistically feasible region
+that imposed by chance-constraint. The solution path is then
+executed by low-level pure-pursuit controller, whose look-
+ahead distance is set as 2 meters. Fig. 12 (b)-(d) demonstrate
+the execution process, where the red curve indicates the real
+trajectory that executed. Although the solution path is not
+trackedcloselyduetothemotionnoiseandlocalizationerror,
+autonomous vehicle can still safely and smoothly avoid the
+obstacle.
+V. CONCLUSION
+This paper has proposed the CC-RRT*-D algorithm for
+risk-aware and asymptotically optimal path planning. The
+algorithmleveragestheasymptoticoptimalpropertyofRRT*
+framework and employs the chance-constraint to compute
+risk-aware and asymptotically optimal paths. The state de-
+pendence is explicitly considered in the proposed algorithm,
+whose necessity has been veriﬁed by the experiment results.
+The employment of conditional state propagation is shown
+to solve the over-conservative problem of previous related
+work. The real-time experiment in the autonomous vehicle
+has shown its applicability for real-time obstacle avoidance.
+REFERENCES
+[1] S. Thrun, W. Burgard, D. Fox, et al., Probabilistic robotics. MIT
+press Cambridge, 2005, vol. 1.
+[2] V. A. Huynh, S. Karaman, and E. Frazzoli, “An incremental sampling-
+based algorithm for stochastic optimal control,” in Robotics and
+Automation (ICRA), 2012 IEEE International Conference on. IEEE,
+2012, pp. 2865–2872.
+[3] L. P. Kaelbling, M. L. Littman, and A. R. Cassandra, “Planning and
+acting in partially observable stochastic domains,” Artiﬁcial intelli-
+gence, vol. 101, no. 1, pp. 99–134, 1998.
+[4] J. Van Den Berg, P. Abbeel, and K. Goldberg, “Lqg-mp: Optimized
+path planning for robots with motion uncertainty and imperfect state
+information,” The International Journal of Robotics Research, vol. 30,
+no. 7, pp. 895–913, 2011.
+[5] L. Blackmore, H. Li, and B. Williams, “A probabilistic approach to
+optimal robust path planning with obstacles,” in American Control
+Conference, 2006. IEEE, 2006, pp. 7–pp.
+[6] L. Blackmore, M. Ono, A. Bektassov, and B. C. Williams, “A proba-
+bilisticparticle-controlapproximationofchance-constrainedstochastic
+predictive control,” Robotics, IEEE Transactions on, vol. 26, no. 3, pp.
+502–517, 2010.
+[7] M. Ono and B. C. Williams, “Iterative risk allocation: A new approach
+to robust model predictive control with a joint chance constraint,” in
+Decision and Control, 2008. CDC 2008. 47th IEEE Conference on.
+IEEE, 2008, pp. 3427–3432.
+[8] N. A. Melchior and R. Simmons, “Particle rrt for path planning with
+uncertainty,” in Robotics and Automation, 2007 IEEE International
+Conference on. IEEE, 2007, pp. 1617–1624.
+[9] P. E. Missiuro and N. Roy, “Adapting probabilistic roadmaps to handle
+uncertain maps,” in Robotics and Automation, 2006. ICRA 2006.
+Proceedings 2006 IEEE International Conference on. IEEE, 2006,
+pp. 1261–1267.
+[10] S. Prentice and N. Roy, “The belief roadmap: Efﬁcient planning in
+belief space by factoring the covariance,” The International Journal
+of Robotics Research, vol. 28, no. 11-12, pp. 1448–1465, 2009.
+[11] B. Luders, M. Kothari, and J. P. How, “Chance constrained rrt for
+probabilistic robustness to environmental uncertainty,” in Proceeding
+of the AIAA Guidance, Navigation, and Control Conference and
+Exhibit, 2010.
+[12] S. Karaman and E. Frazzoli, “Sampling-based algorithms for optimal
+motion planning,” The International Journal of Robotics Research,
+vol. 30, no. 7, pp. 846–894, 2011.
+[13] A. Bry and N. Roy, “Rapidly-exploring random belief trees for motion
+planningunderuncertainty,”in Robotics and Automation (ICRA), 2011
+IEEE International Conference on. IEEE, 2011, pp. 723–730.
+[14] B. D. Luders, S. Karaman, and J. P. How, “Robust sampling-based
+motion planning with asymptotic optimality guarantees,” in AIAA
+Guidance, Navigation, and Control Conference (GNC), Boston, MA,
+2013.
+[15] S. Patil, J. van den Berg, and R. Alterovitz, “Estimating probability
+of collision for safe motion planning under gaussian motion and
+sensing uncertainty,” in Robotics and Automation (ICRA), 2012 IEEE
+International Conference on. IEEE, 2012, pp. 3238–3244.
+[16] Z. Chong, B. Qin, T. Bandyopadhyay, T. Wongpiromsarn, B. Reb-
+samen, P. Dai, E. Rankin, and M. Ang Jr, “Autonomy for mobility on
+demand,” in Intelligent Autonomous Systems 12. Springer, 2013, pp.
+671–682.
+[17] Z. Chong, B. Qin, T. Bandyopadhyay, Wongpiromsarn, and M. Ang Jr,
+“Synthetic2dlidarforprecisevehiclelocalizationin3durbanenviron-
+ment,” in Robotics and Automation (ICRA), 2013 IEEE International
+Conference on. IEEE, 2013.
+2058

@@ -1,0 +1,1590 @@
+Bimanual Compliant Tactile Exploration for Grasping Unknown
+Objects
+Nicolas Sommer, Miao Li and Aude Billard
+Ecole Polytechnique Federale de Lausanne (EPFL)
+fn.sommer, miao.li, aude.billardg@epﬂ.ch
+Abstract— Humans have an incredible capacity to learn
+properties of objects by pure tactile exploration with their two
+hands. With robots moving into human-centred environment,
+tactile exploration becomes more and more important as vision
+may be occluded easily by obstacles or fail because of different
+illumination conditions. In this paper, we present our ﬁrst
+results on bimanual compliant tactile exploration, with the goal
+to identify objects and grasp them. An exploration strategy is
+proposed to guide the motion of the two arms and ﬁngers
+along the object. From this tactile exploration, a point cloud
+is obtained for each object. As the point cloud is intrinsically
+noisy and un-uniformly distributed, a ﬁlter based on Gaussian
+Processes is proposed to smooth the data. This data is used
+at runtime for object identiﬁcation. Experiments on an iCub
+humanoid robot have been conducted to validate our approach.
+I. INTRODUCTION
+Tactile exploration is of primary importance for visually
+impaired people. It is also crucial in non-visually impaired
+people, in particular when manipulating objects with two
+hands. In this case, the objects are often obstructed from
+view by either or both arms and ﬁngers and one can rely
+only on tactile information to direct the manipulation. We
+explore the use of tactile information to reconstruct object’s
+shape. We develop a method whereby the two arms move
+in coordination so as to maximize the surface on the object
+that can be explored. This is used in conjunction with an
+algorithm for object recognition.
+Bimanual coordination and tactile exploration in robotics
+have been studied so-far separately. One of the ﬁrst early
+attempts to exploit active tactile exploration with passive
+stereo vision for object recognition was proposed in [1].
+There, a rigid ﬁnger-like tactile sensor is used to trace along
+the surface with predeﬁned movement cycles and to provide a
+limited amount of object surface information. This work was
+later extended to develop different exploratory procedures
+(EP) to acquire and interpret 3-D touch information [2].
+These EPs were, however, not linked to a fully autonomous
+system and a human experimenter has to specify the EPs
+for each exploration. Different strategies were proposed to
+explore the objects automatically by considering different
+objective functions for the choice of EP, such as reducing the
+maximal number of interpretations for the exploration data
+acquired so far [3] or reducing the uncertainty [4]. However,
+all of these exploration strategies only work for single-ﬁnger
+touch sensors and polyhedral objects.
+More recently, some studies have been done in the research
+area of dexterous tactile exploration. In [5], a dynamic
+(a)
+Human Teaching Results
+Object 
+Model
+Graspable 
+Space
+(b)
+Fig. 1: Left: The iCub humanoid robot is exploring an object with its
+two hands. Right: The robot is taught the shape of the object by a human
+teacher passively guiding the robot’s hand along the object, emphasizing
+the object’s part that can be grasped, e.g. the handle on the jar. The object
+model is stored as a point cloud and the graspable part is modeled using
+GMM (Gaussian Mixture Model).
+potential ﬁeld approach is used as an exploration strategy to
+guide an anthropomorphic ﬁve-ﬁnger hand along the surface
+of previously unknown objects in simulation. In [6], two
+motion primitives, i.e., explorative and exploitative grasps,
+are introduced to make a trade-off between grasping known
+regions and exploring unseen regions. However, the robust-
+ness and applicability of these strategies have only been
+evaluated on simple shaped objects (a cylinder and a sphere)
+in simulation. Other related works, such as our previous work
+[7], show that tactile exploration using an anthropomorphic
+robot hand can successfully recognize several human-like
+faces. In [8], a probabilistic approach is proposed to represent
+datapoints, which are collected from predeﬁned grasps using
+a Schunk hand with tactile sensors at high frame rates.
+All the previous works are limited to the scope of static
+scenes, which means that the object to explore is ﬁxed during
+the whole exploration. This assumption is quite restrictive as
+the robot may be not able to explore some of the unknown
+but interesting areas due to the limited workspace explorable
+by the robot’s hands.
+More complex tactile exploration has been studied in
+humans: to study dynamic exploration of objects, either using
+in-hand exploration [9] or dual-hand exploration [10]. None
+of these works has been used to drive the control of a robotic
+system. In this paper, we develop a strategy for bimanual
+compliant tactile exploration of unknown objects. The object
+is held by one hand while the other hand is exploring it,
+see Figure 1. The bimanual coordination strategy consists
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 6400
+in moving the hand holding the object so as to bring the
+interesting region on the object into the reachable space of
+the other hand so as to make it easier for the other hand to
+either explore or grab the object.
+Furthermore, because the data obtained from tactile sens-
+ing is intrinsically noisy and un-uniformly distributed (com-
+pared with point clouds obtained from vision), it is difﬁcult
+to ﬁnd the correct corresponding points in two point clouds,
+which greatly inﬂuences the object identiﬁcation’s accuracy.
+To deal with this, a ﬁlter based on Gaussian Processes
+(GP) is proposed to process the data. GP has been used
+before in tactile exploration to deﬁne the uncertainty [6].
+In [8], the authors utilize a modiﬁed Kalman ﬁlter to build
+a probabilistic model of objects, which can greatly reduce
+the number of points that need to be stored. Their modiﬁed
+Kalman ﬁlter is very similar to the proposed GP-based ﬁlter
+but for different purposes. In this work, we aim at uniformly
+sampling from the object’s surface. To this end, we assume
+that all the collected data can be generated from an implicit
+surface that can be approximated by GP [11], [12], from
+which a GP-based ﬁlter is designed to smooth the data.
+In this work, the objective of tactile exploration is to
+identify the object and thus to ﬁnd a suitable hand position
+and orientation to hold the objects with the exploration hand.
+An extensive work has been done on ﬁnding an optimal
+or suitable grasp on known, unknown or partially unknown
+objects [13]. The approaches, such as [14], are advantageous
+as they provide all possible grasps, whereas the approaches
+based on learning from demonstration require an expert
+and provide only a subset of feasible grasps, but with the
+advantage of being faster.
+The rest of the paper is organized as follows: in the next
+section, we introduce our bimanual control framework and
+the local ﬁnger exploration strategy. In Section III, methods
+about data smoothing, object identiﬁcation and grasp selec-
+tion are presented. In Section IV, we present the experimental
+setup with our humanoid robot iCub. Further, we present our
+experimental results and discussion in Section V. Finally,
+we give a conclusion and an outlook of future work in
+Section VI.
+II. BIMANUAL COMPLIANT TACTILE EXPLORATION
+Our objective involves the identiﬁcation of objects through
+tactile exploration. However, the workspace of humanoid
+robots is usually limited. Most daily objects are too large
+and cannot be explored by a single arm and hand. In order
+for the robot to gather enough information on the object’s
+shape to allow unambiguous identiﬁcation, the hand needs to
+explore a large portion of the object. To this end, we must
+extend the reachability of the exploring hand relatively to
+the object. In order to achieve this, we use one hand of the
+robot to hold an object, while the other hand explores it.
+This allows to approach and touch the object from different
+angles and with higher dexterity relatively to the workspace
+of both arms.
+? ? ? 
+? ? ? 
+? ? ? ,<? ? ? ,? ? ? > 
+Fig. 2: Schematic of the bimanual constraint. The framesT
+L
+0
+andT
+R
+0
+of
+the interest points should coincide to satisfy the bimanual constraint. The
+frameT
+L
+0
+changes depending on where the object should be scanned and
+the estimation of the object’s diameter.
+A. Bimanual coordination
+Let T
+0
+R
+and T
+0
+L
+be the homogeneous transformations
+from the robot root frame to the frames R and L attached
+respectively to the right and left arm’s ”interest points”. In
+the rest of the paper, we will refer to the ”interest points” to
+denote a) the center of the palm on the exploring hand and
+b) the point to be reached on the object held by the other
+hand.
+The goal is to have both frames coincide:T
+0
+R
+=T
+0
+L
+,
+T
+L
+R
+=I in which I is the identity matrix (see Fig. 2).
+1) Motion generation: We generate a kinematic constraint
+from the above static constraint in order for the system to
+converge to this state. We give the following translational
+and rotational velocities in Cartesian space until both frames
+coincide:
+v
+R
+=
+t
+R
+L
+k t
+R
+L
+k
+f(k t
+R
+L
+k) (1)
+and v
+L
+=  v
+R
+. With v
+x
+being the translation velocity
+vector of the frame x, expressed in the robot root frame,
+t
+R
+L
+the translation vector from R to L, and f a function
+from R
++
+to R
++
+designed to give a smooth and converging
+motion. For the rotation, a similar constraint is expressed in
+the axis-angle notation which deﬁnes a rotation with an axis
+u and a rotation angle  around this axis. Given the axis-
+angle rotation < u
+R
+L
+;
+R
+L
+> equivalent to the usual rotation
+matrix notationR
+R
+L
+, the rotational velocity is deﬁned in axis-
+angle notation: w
+R
+=< u
+R
+L
+;! > and w
+L
+=< u
+R
+L
+; ! >
+with ! = f(k 
+R
+L
+k). We chose to use the function
+f(x) =a exp( 
+w
+x
+), with parameters a and w determining
+respectively the velocity of the motion far from the target
+point and a measure of the closeness to the target.
+2) Working at the limit of the workspace: Because the
+workspace of the robot’s arms are often limited during
+bimanual manipulation (e.g. the hands of the iCub robot
+can barely reach each other), it is important to take into
+account the non-feasibility of a given inverse kinematics
+problem. Our IK solver uses a pseudo-inverse of the Jacobian
+with optimization, this way we can weight some constraints
+so as to satisfy them in priority. In our application, the
+position constraints are more important than the orientation
+constraints, and the orientation of the normal of the palm
+(the right hand’s interest point) is more important than the
+6401
+orientation of the other axes of the interest point’s frame.
+Therefore, we express the orientation Jacobian in the interest
+point’s frame and the desired axes are weighted as indicated
+previously. These weights are only taken into account when
+the IK problem has no solution and a compromise between
+the constraints has to be found, therefore their choice is not
+very sensitive and they are set empirically.
+3) Collision avoidance: During the scanning of objects,
+the goal is to keep one hand and ﬁngers in contact with the
+scanned object at all times. However, when both arms are
+changing conﬁguration to start a new “scan” from a different
+angle, there is a need for collision avoidance in order for the
+scanning hand not to hit the object while moving around it.
+Because we do not know the exact shape of the object held
+by one of the hands, we assume a cylinder with a sufﬁciently
+large diameter, and require the end-effector to move outside
+this cylinder during the motion, until the hand is aligned in
+front of the target reaching point, where it is allowed to enter
+the “collision area” (see Fig. 3). The corrected velocities for
+collision avoidance are given in Table. I.
+ 
+ 
+  
+ 
+ 
+Target 
+scanning point 
+Current hand position 
+x
+ 
+z
+ 
+Virtual avoidance enveloppe 
+?
+?
+?x
+ 
+?z
+ 
+r
+ 
+l
+ 
+Fig. 3: Scheme of an object and its collision avoidance virtual envelope.
+A lateral safety zone is delimited by the parameter l, in which the exploring
+hand can enter. The diameter of the virtual envelope is deﬁned by r.
+jxjl jxj>l
+jzj>r
+v
+R
+L
+0
+=v
+R
+L
+v
+R
+L
+0
+z
+=v
+R
+Lz
+ exp(
+ w
+out
+jz rj
+)
+jzjr v
+R
+L
+0
+z
+= vav exp(
+ w
+in
+jz rj
+)
+TABLE I: Velocity correction for collision avoidance, with vav a
+predeﬁned avoidance speed, wout and w
+in
+parameters that regulate the
+transition from collision avoidance to the normal behaviour of reaching the
+starting scanning point,v
+R
+L
+0
+the modiﬁed relative velocity between the right
+and left frames to avoid collision, andv
+R
+Lz
+the z component of the velocity,
+expressed in a coordinate system rotating around the object. Z is constrained
+to be normal to the principal axis of the object (i.e. the scanning direction
+x, see Fig. 3) and oriented around the x axis to point from the center of the
+object towards the other hand.
+B. Finger exploration strategy
+1) Compliant tactile control: During the exploration of
+the object, the tactile sensors provide contact information.
+In order to obtain this information, the ﬁngers must apply
+enough pressure on the object. The tactile response is thus
+used in a pressure loop designed to apply sufﬁcient force and
+obtain contact data, while not pressing too hard so as not to
+damage the object being touched (see Fig. 4a). Forn
+s
+tactile
+sensor patches andn
+a
+actuators, the motors are commanded
+in current with u2R
+na
+following:
+u = (S;S
+
+) (2)
+withS;S
+
+2R
+ns
+respectively the current and desired tactile
+response, 2 R
+na
+a vector of proportional gains for each
+actuator,  : R
+ns
+! R
+na
+a mapping between the tactile
+sensor patches and corresponding motors. The mapping 
+depends on the architecture of the robot hand – the number
+of actuated joints, the number and disposition of the sensors
+– and the desired behaviour
+1
+.
+2) Thumb motion: On anthropomorphic robotic hands,
+the thumb is usually equipped with an additional degree of
+freedom which enables it to control its opposition to the other
+ﬁngers. During the scanning of objects, we use this DoF to
+increase the amount of the object’s surface explored by the
+thumb, especially for reaching areas otherwise difﬁcult to ac-
+cess (see Fig. 4b). A periodic swiping motion is implemented
+and efﬁcient enough to gather data more efﬁciently.
+(a) Finger’s compliance during scan-
+ning
+(b) Thumb opposition
+Fig. 4: Left: The ﬁngers adapt to the size of the object in order to follow
+compliantly the surface. Right: Illustration of the advantage of changing
+the thumb’s opposition while scanning a glass: the thumb follows the high
+curvature of the surface.
+3) Detect loss of contact with the object: While scanning,
+the ﬁngers might slide off the object (for instance when
+reaching an extremity). In that case, they might touch each
+other and record the contact as if they were touching the
+object. When this happens, the distance between the contacts
+points on the two ﬁngers is close to 0 and this allows us to
+detect these events and to discard these contact points. This
+is also used to detect that the exploration has reached the
+end of the object and decide that the object can be scanned
+from another orientation.
+4) Approaching the object: When the exploring hand
+comes in contact with the object, we need to detect precisely
+when the hand touches the object. Tactile sensors seem a
+good way to detect this contact. However, they should be
+extremely sensitive and detect very light pressure. Otherwise,
+when the exploring hand comes into contact with the object
+for the ﬁrst time, it may apply too much force on the object
+– a small force on the object creates a high torque on the
+hand holding the object. While exploring, we overcome this
+problem by “pinching” the object so as to apply forces on
+1
+In our implementation, each ﬁnger is controlled the same way, ns = 3
+for each ﬁnger as we take directly the average value for each tactile patch as
+inputs (one per phalanx, each composed of 12 or 16 taxels), and na = 2:
+the ﬁrst actuator of the ﬁnger controls the ﬁrst phalanx and the second
+actuator controls the second and third phalanx coupled together. For each
+ﬁnger,  is deﬁned as follows: (s) =fmin(e
+0
+;e
+1
+);e
+2
+g, with s the
+average tactile response for each of the three phalanx (s
+0
+, s
+1
+and s
+2
+are
+the average pressures on respectively the ﬁrst, second and last phalanx and
+e
+i
+=s
+
+i
+ s
+i
+, with s
+
+i
+the corresponding desired pressures).
+6402
+both sides of the object. Since our tactile sensors are not
+sensitive enough, we use force-torque sensors embedded in
+the robot’s arm to detect when the hand touches the object.
+We use a ﬁrst order band-pass ﬁlter to remove both the
+low-frequency component of the signal due to the errors of
+estimation of the robot’s limb’s own weight and smooth the
+high-frequency component since the signal is very noisy.
+III. OBJECT IDENTIFICATION AND GRASPING
+In order to identify an object, the data collected from
+tactile exploration is ﬁrst ﬁltered and smoothed using a
+GP-based ﬁlter. The data can then be aligned with previ-
+ously known object models and the average distance after
+alignment is used as criterion for identiﬁcation. After the
+identiﬁcation, a grasp is computed from previously learned
+grasps.
+A. Object identiﬁcation
+1) Data ﬁltering and smoothing: As the data acquired
+from tactile exploration is noisy and un-uniformly dis-
+tributed, which is not suitable for object identiﬁcation, a GP-
+based ﬁlter is proposed in this section to smooth the data.
+The basic idea is that only points that decrease uncertainty
+are stored in the training dataset.
+Because the tactile sensors can also provide normal infor-
+mation for the points, a GP with derivative observations is
+adopted here to compute the uncertainty [15] (it requires
+the derivative of the covariance function with respect to
+the input). With the same inputs, the GP with derivative
+observations can provide the predictions on the derivative
+(the normal information). Given a set of n
+t
+training input
+points x =fx
+i
+2R
+3
+g
+i=1::nt
+, the outputs are augmented with
+normal information ^ y =fy
+i
+;!
+i
+g
+i=1::nt
+, where!
+i
+2R
+3
+is
+the normal direction of the i-th point. y
+i
+equals to 1, 0
+and 1 when the points are respectively inside, on and outside
+the estimated implicit surface, on which the collected tactile
+points are assumed located [11]. In practice, only one inside
+point is required, which is chosen as the center of all the
+collected points on the surface. For the outside points, 20
+points are randomly sampled from a sphere with its diameter
+20% larger than the distance between the center and the
+farthest collected point on the surface.
+In order to compute the prediction, the following identities
+are necessary to construct the full covariance matrix K 2
+R
+4nt4nt
+, which can be computed from the kernel function
+and its derivatives [15].
+cov(y
+i
+; y
+j
+) =k(x
+i
+; x
+j
+) (3)
+cov(!
+i
+m
+; y
+j
+) =
+@
+@x
+m
+cov(y
+i
+; y
+j
+) (4)
+cov(!
+i
+m
+;!
+j
+n
+) =
+@
+2
+@x
+m
+@x
+n
+cov(y
+i
+; y
+j
+) (5)
+m = 1; 2; 3;n = 1; 2; 3;
+In this work we use a kernel functionk that has been derived
+from the thin plate spline in [16], which is widely used in
+shape analysis and reconstruction [17].
+k(x
+i
+; x
+j
+) = 2kx
+i
+  x
+j
+k
+3
+  3
+kx
+i
+  x
+j
+k
+2
++ 
+
+3
+(6)
+Where 
+2R is the parameter that can be readily computed
+from the training dataset. 
+ = maxfkx
+i
+ x
+j
+k;i = 1::n
+t
+;j =
+1::n
+t
+g. In other words, 
+ is the maximal distance in the
+training inputs.
+With the full covariance matrix, for a new tactile point x
+
+,
+we can determine whether the point is on the surface of the
+object by computing the predicted function valueE(y
+
+) and
+its normal direction E(!
+
+) as follows:
+E(^ y
+
+) =E([y
+
+;!
+T
+
+]
+T
+) =K
+
+[K(x; x) +
+2
+I)]
+ 1
+^ y (7)
+The points x
+
+is said to be on the object surface ifE(y
+
+) =
+0. In our GP-based ﬁlter, our main novelty is to use the
+covariancecov(^ y
+
+)2R
+44
+at the testing points to ﬁlter and
+smooth our collected datapoints. In the GP prediction, the
+covariance implies the uncertainty about its prediction:
+cov(^ y
+
+) =K(x
+
+; x
+
+) K
+
+[K(x; x) +
+2
+I)]
+ 1
+K
+T
+
+(8)
+whereK
+
+=K(x
+
+; x) denotes the 4 4n
+t
+vector of covari-
+ances evaluated at all pairs of the testing and training inputs,
+and similarly for K(x; x) and K(x
+
+; x
+
+). The parameter
+
+2
+reﬂects the variance of noise in the output. This new
+datapoint x
+
+is stored in the training dataset if the uncertainty
+about the predicted function value is above a given threshold,
+i.e., cov(y
+
+) > V
+thresh
+, where cov(y
+
+) is the ﬁrst entry of
+cov(^ y
+
+). In this paper, the threshold V
+thresh
+is set to the
+same level as the noise’s variance. As the normal direction
+is also available, a new datapoint is included if the predicted
+normal direction E(!
+
+) using equation (7) is very different
+from the measured one !
+
+, i.e., E(!
+
+)
+T
+!
+
+< 
+thresh
+2
+.
+These datapoints usually mean that there is a large change
+in the curvature of the object surface. Furthermore, as GP is
+O(N
+3
+) in computation complexity, the number of training
+datapoints should be limited. Therefore, the datapoint with
+the smallest uncertainty in the training dataset is replaced
+when the size of training dataset comes to its limitation
+S
+lim
+3
+, see Algorithm 1. In Fig. 5, we give an example using
+data generated from an object point cloud. We can see that
+the ﬁltered points are more uniformly distributed and also
+that more datapoints are kept in the region of the jug handle
+where the curvature changes importantly.
+2) Object identiﬁcation: For each of the objects to ex-
+plore, we assume that there is already a point cloud model
+for it, which can be obtained either from a vision scanner
+or from human demonstrations. In Section IV, we give
+details on how we collect this point cloud model from
+human demonstrations. Herein, for the i-th object, the point
+cloud model is denoted asO
+i
+=fp
+i;j
+g
+j=1::np
+. The object’s
+identiﬁcation algorithm tries to align the datapoints collected
+so far with the available object point clouds O
+i
+and the
+one with the smallest alignment error is identiﬁed as the
+corresponding object. To this end, after each scanning, the
+2
+The value of E(!)
+T
+! can vary between -1 and 1. As the normal
+information is usually not as accurate as position information, we set
+
+thresh
+= cos(=4) ' 0:7071, which corresponds to a change in
+curvature of 45 degrees.
+3
+The limit of the training dataset is chosen by considering the computation
+time and model accuracy. In this paper, we set S
+lim
+= 120.
+6403
+Algorithm 1: GP-based ﬁlter
+Data: New collected dataX =x;y
+
+;!
+Result: The training datasetX =fx
+i
+;y
+i
+;!
+i
+g
+i=1::n
+t
+1 Compute Uncertainty: cov(y), see equation (8)
+2 if cov(y)>V
+thresh
+orE(!)
+T
+! <
+thresh
+, then
+X =fX;Xg; nt =nt +1;
+else
+Keep the sameX
+3 Size Update:
+4 if nt >S
+lim
+then
+Compute the uncertainties for all the datapoints in the
+training dataset and delete the datapoint with the smallest
+uncertainty
+?1
+?0.5
+0
+0.5
+1
+?1
+?0.5
+0
+0.5
+1
+?1
+0
+1
+Z
+X
+Y
+(a) original data
+?1
+?0.5
+0
+0.5
+1
+?1
+?0.5
+0
+0.5
+1
+?1
+0
+1
+Z
+X
+Y
+object surface
+points from uncertainty 
+points from normal information
+normal
+(b) ﬁltered data
+Fig. 5: An example to illustrate the performance of the GP-based ﬁlter.
+Left: 500 datapoints are randomly sampled from the point cloud of a jug,
+obtained from a 3D scanner. The surface is reconstructed with the method
+in [12]. Right: With the ﬁlter, only 120 datapoints are selected, either
+according to their prediction uncertainty (red dot) or from their normal
+information (black dot and arrow).
+points gathered so farX = x
+j
+;j = 1:::n
+x
+are transformed
+into the most similar pose using the iterative closest point
+(ICP) algorithm.
+As described in [18], ICP can compute the optimal trans-
+formation (R; q
+t
+) between two corresponding datasets that
+minimizes the following distance error:
+Dist(X;O
+i
+) =
+1
+n
+x
+nx
+X
+j=1
+kp
+i;j
+  (Rx
+j
++ q
+t
+)k
+2
+(9)
+In our work, the correspondence between the measured
+points and the object point cloud models are chosen with the
+nearest neighbour match without replacement
+4
+. In general,
+this method suffers from local minima. To counter this
+effect, we run 10 different comparisons with 10 different
+initializations of the initial points. These initial points are
+uniformly obtained from different rotations R around the
+object’s principal axis and its normalized translation com-
+ponents are randomly sampled in [ 0:5; 0:5].
+For each available object model, we compute the minimal
+distance after alignment, i.e. Dist(X;O
+i
+) and the object is
+identiﬁed as the object with the minimal distance.
+B. Grasp selection
+For each object, we teach a set of suitable grasps by human
+kinaesthetic teaching, see Fig. 6. We place the object in the
+4
+The same point in the object point cloud model cannot be the corre-
+spondence point for two different measured points.
+(a) (b) (c)
+Fig. 6: (a) The feasible grasps for a bottle (around the cap and the neck)
+are taught by human demonstration; (b) The grasps are stored in the object’s
+frame, only the relative hand position and orientation are used; (c) These
+grasps are trained and encoded by GMM, here is shown the trained result
+in the subspace of hand positions. The red surface corresponds to an iso-
+surface of the likelihood function, deﬁning the limit of the graspable space.
+iCub’s hand and record the position of the ﬁngers relative
+to the objects as suitable grasps. These grasps are then
+modelled with Gaussian Mixture Model (GMM), from which
+one grasp is selected in real time after object identiﬁcation.
+This method has been proven to be fast and useful for some
+real time tasks, such as catching an object in ﬂight [19].
+1) Graspable space modelling: In human kinaesthetic
+teaching, the position h2 R
+3
+and orientation o2 R
+6
+(we
+use the ﬁrst two columns of the orientation matrix) of the
+robot hand are recorded in the object frame. With these data,
+the graspable space can be modeled using GMM as follows:
+p(h; o) =
+K
+X
+k=1
+
+k
+N (h; o;j
+k
+; 
+k
+) (10)
+where K is the number of Gaussian components, 
+k
+is the
+prior of thek-th Gaussian component andN (
+k
+; 
+k
+) is the
+Gaussian distribution with mean
+k
+and covariance 
+k
+. The
+graspable space is the constitution of all the feasible grasps,
+i.e.,G =f(h; o)jp(h; oj
+) > L
+thresh
+g. L
+thresh
+is chosen
+such that the likelihood of 99% of the training data is above
+this value. For more details about learning graspable space
+using GMM, one can refer to [20]. In Fig. 6, we show the
+learned graspable space for a bottle used in our experiment.
+Note: For the graspable space, we are only interested in
+the hand position and orientation that can possibly lead to
+a feasible grasp when the ﬁngers are closed. The stability
+conditions, such as force closure, are not necessarily ensured.
+But one can also model the graspable space using grasps
+that fulﬁll force closure, from which one can infer grasps
+that are stable [20]. Note also that the method we propose
+in this paper could also include the ﬁnger joints and tactile
+response [21]. In principle, this increases the complexity of
+the model and more training data are required.
+2) Grasp selection: To determine the grasp that is closest
+to the current position of the scanning hand, we ﬁnd the
+minimum of Q(h
+
+; o
+
+1
+; o
+
+2
+):
+Q(h
+
+; o
+
+1
+; o
+
+2
+) =
+1
+kh
+
+ hk
+2
++
+2
+[(o
+
+1
+o
+1
+ 1)
+2
++(o
+
+2
+o
+2
+ 1)
+2
+]
+(11)
+h; o
+1
+; o
+2
+are the current hand position, the ﬁrst and
+second column of the hand orientation respectively. 
+1
+;
+2
+are the penalty parameters for the position and orientation.
+(h
+
+; o
+
+1
+; o
+
+2
+) are the variables and correspond to the ﬁnal
+6404
+position and orientation at the grasping point. They must lie
+in the graspable domain that is determined by the likelihood
+threshold of the GMM. Determining the closest feasible
+grasp can be formulated as a constrained based optimization
+problem of the form:
+minimize: Q(h
+
+; o
+
+1
+; o
+
+2
+)
+subject to: (h
+
+; o
+
+1
+; o
+
+2
+)2G (12)
+To solve the problem efﬁciently, a gradient descent method
+is used here. The initial points are chosen as the centers of
+the K Gaussian functions (10). Once the grasp is selected,
+we use our bimanual coordination algorithm with obstacle
+avoidance to move the hand to the graspable posture.
+IV. EXPERIMENT
+The iCub humanoid robot (Fig. 8a) is used to explore
+different everyday objects using both arms. We chose ﬁve
+objects: 2 bottles, 1 jar, 1 phone receiver and 1 glass, shown
+in Fig. 7. The two bottles are very similar and can test the
+accuracy of the identiﬁcation method. The phone’s proﬁle
+encompass sharp changes in curvature, a challenge for the
+compliant control of the ﬁngers. Scanning the glass is even
+more challenging as it requires to control precisely for the
+thumb’s motion in order to follow the edges. The jar has a
+much larger diameter and involves two particular features:
+the handle and the spout. During the exploration, one arm
+holds the object, while the other arm explores it with its
+ﬁngers. The collected data are compared with data previously
+collected manually in order to identify the object. During the
+exploration, the robot attempts to identify the objects as well
+as their positions and orientations. Then, from the previously
+learned grasps, one grasp is selected and adopted by the free
+hand, on the object (see Alg. 2).
+(a) bottle 1 (b) bottle 2 (c) jar (d) phone (e) glass
+Fig. 7: Five different everyday objects are used in our experiment. Handles
+are mounted on the bottom of the objects in order to adapt to the size of
+iCub hand.
+A. Setup
+We use both arms of iCub, each of which have 7 degrees
+of freedom (DoFs). Each hand has 9 DoFs, 3 for the thumb, 2
+for the index ﬁnger, 2 for the middle ﬁnger, 1 for the coupled
+ring and little ﬁnger and 1 for the adduction/abduction.
+Only the thumb, index and middle ﬁnger are equipped with
+Tekscan
+5
+tactile sensors (see Fig. 8b). The Tekscan sensors
+have a spatial resolution of 4mm (6:2 sensors=cm
+2
+), the
+5
+http://www.tekscan.com/
+iCub
+OptiTracker
+(a) iCub (b) iCub’s hand equipped with
+Tekscan tactile sensors
+Fig. 8: An iCub humanoid robot (a) is used in our experiment. The thumb,
+index and middle ﬁnger of the right hand are equipped with Tekscan sensors
+(b). During the experiment, the objects are ﬁrmly held by the left hand (no
+relative motion), while the right hand explores the object from different
+orientations.
+ﬁngers are equipped with 3 4 taxels – tactile pixels – per
+phalanx, and 4 4 taxels on their ﬁngertip, which makes a
+total of 120 taxels on the hand. A motion capture system
+– OptiTrack
+6
+– is used to track the position and orientation
+of both hands to compensate for the inaccuracy of iCub’s
+kinematics and obtain precise measurements. The contact
+positions are obtained through forward kinematics starting
+from the motion tracker, and given the geometry of the tactile
+sensors.
+B. Manual data collection
+Prior to the exploration, we manually collect data from
+the objects using the same setup with the difference that
+the object is held by a human demonstrator in place of the
+robot itself. An optical tracker is attached to the object while
+the ﬁngers of iCub are pressed against the object to collect
+point cloud data all over the surface (see the top left image
+on Fig. 1b). The acquired object point clouds are shown in
+Fig. 9.
+C. Exploratory procedure
+For the exploration process, we only assume that the prin-
+cipal axis of the object is available, for instance through basic
+image processing. However, we know the precise position
+of the hand holding the object through our motion capture
+system – instead of using forward kinematics, imprecise
+because of slack in the joints. This system is also used to
+track the position of the right hand.
+The right hand scans the object from one end to another
+along this principal axis, and changes the angle of approach
+iteratively around this principal axis at every scan. The
+procedure is described in Algorithm 2. During the whole
+exploration, both arms move simultaneously to achieve the
+desired relative position and orientation between the inter-
+est points (the palm and a point on the object’s surface),
+therefore the indications in Alg. 2 are given in relative terms
+between these two interest points.
+V. RESULTS, DISCUSSION
+a) Exploration Results: Each object is scanned using
+Algorithm 2. The acquired point clouds are quite noisy
+and non-uniformly distributed. As mentioned above, the raw
+6
+http://www.naturalpoint.com/optitrack/
+6405
+0.2
+0.25
+0.3
+0.35
+0.4
+?0.04
+?0.02
+0
+0.02
+0.06
+0.08
+0.1
+Y(m)
+X(m)
+bottle 1
+Z(m)
+(a) bottle 1
+0.2
+0.25
+0.3
+0.35
+0.4
+?0.04
+?0.02
+0
+0.02
+0.06
+0.08
+0.1
+Y(m)
+X(m)
+Z(m)
+(b) bottle 2
+0.2
+0.25
+0.3
+?0.06
+?0.04
+?0.02
+0
+0.02
+0.04
+0.05
+0.1
+Y(m)
+X(m)
+Z(m)
+(c) jar
+0.2
+0.22
+0.24
+0.26
+0.28
+0.3
+0.32
+0.34
+0.36
+0.38
+?0.04
+?0.02
+0
+0.02
+0.04
+0.06
+0.05
+0.1
+X(m)
+Y(m)
+Z(m)
+(d) phone
+0.2
+0.22
+0.24
+0.26
+0.28
+0.3
+0.32
+0.34
+?0.04
+?0.02
+0
+0.02
+0.05
+0.1
+Y(m)
+X(m)
+Z(m)
+(e) glass
+Fig. 9: The object point clouds obtained from human teaching.
+Algorithm 2: Exploratory procedure
+1  min;nn Angle of approach around the principal axis
+2 while <max do
+3 Go above initial scanning point;
+4 while !contact do
+Move hand and object towards each other;
+5 Close ﬁngers and activate ﬁnger compliant control;
+6 while ﬁngers in contact with object do
+7 Slide the hand along the object’s principal axis;
+8 Open ﬁngers;
+Try to identify object;
+9 if object identiﬁed then
+10 Compute and reach a grasping posture;
+11 Grasp the object;
+return 1;
+12   +increment;
+13 return 0;
+point clouds are not suitable for object identiﬁcation, due
+to the difﬁculty in ﬁnding the correct corresponding points
+for the ICP algorithm. With the GP ﬁlter in Algorithm 1,
+the ﬁltered point clouds become smoother, sparser and less
+noisy, as shown in Fig. 11.
+b) Object Identiﬁcation Results: For each explored
+object, we chose 10 different initial conﬁgurations for the
+ICP algorithm, where the rotation R in (9) is uniformly
+sampled around the principle axis of the object. The object
+is identiﬁed as the object with the smallest distance among
+the 10 different trials. The distance for each trial is shown in
+Fig. 10 and the points after alignment are shown in Fig. 11.
+We repeated the identiﬁcation algorithm 10 times for each
+object and the success rate of identiﬁcation is always above
+90%. The failure happens when bottle 2 is misidentiﬁed as
+bottle 1 and the jar is misidentiﬁed as bottle 1. The statistics
+for the distances are shown in Fig. 12.
+c) Grasp Selection: After the object is identiﬁed, a
+grasp is chosen and the right hand moves to the selected
+grasp (section III-B.2), as shown in Fig. 13. Note that as
+the object is ﬁrmly ﬁxed on the left hand for experimental
+purposes, we move the right hand to the chosen grasp without
+switching the hand holding the object.
+d) Discussion: The raw point cloud acquired with the
+tactile sensors is very noisy and would make the identiﬁ-
+cation of the object very difﬁcult without ﬁltering. In our
+experiments, we noticed that without the GP ﬁlter, it is very
+hard to identify the jar and phone from raw data as their
+bottle 1 bottle 2 jar phone glass
+0
+5
+10
+15
+20
+Dist [mm]
+ 
+ bottle 1
+bottle 2
+jar
+phone
+glass
+Fig. 12: Comparison of the aligned distance from Eq. (9) for all the
+objects. The object with the smallest distance is chosen as the identiﬁcation
+result. For each object, we ran the identiﬁcation algorithm 10 times.
+surfaces are not as “smooth” as the surfaces of the other
+objects. Also the selection of the grasp is done according
+to a general distance criterion (Eq. 11). Other criteria, such
+as manipulability and grasp stability can also be applied
+here. Furthermore, in the current work, we did not include
+the ﬁnger joints and tactile response in our graspable space
+model, which is part of the possible improvements.
+VI. CONCLUSION
+We have presented a general approach for bimanual com-
+pliant tactile exploration, with applications to object identiﬁ-
+cation, manipulation and grasping. The kinematic limitations
+of the system, i.e., workspace limitation and collisions, are
+considered in this exploration strategy, which is critical in
+tactile exploration as suggested in [5]. Also, due to the in-
+trinsically noisy and un-uniformly distributed characteristics
+of tactile datapoints, a GP-based ﬁlter is proposed to smooth
+the data, which can then be more easily used for object
+identiﬁcation. In order to grasp the object after identiﬁcation,
+we teach grasps for each object by human demonstration and
+model the graspable space with GMM. A general distance
+metric is adopted to choose a ﬁnal feasible grasp given the
+current hand conﬁguration.
+For our future work, we are interested in learning the
+exploration strategy from human demonstration, where one
+may often switch the hand holding the object during the
+exploration. This opens a challenging research perspective
+for both tactile exploration and robotic grasping.
+ACKNOWLEDGMENT
+This research was supported by the Swiss National Science
+Foundation through the National Centre of Competence in
+6406
+1 2 3 4 5 6 7 8 9 10
+0.01
+0.012
+0.014
+0.016
+0.018
+0.02
+0.022
+0.024
+Trials
+RMSE
+bottle 1
+bottle 2
+jar
+phone
+glass
+(a) bottle 1
+1 2 3 4 5 6 7 8 9 10
+0.008
+0.01
+0.012
+0.014
+0.016
+0.018
+0.02
+0.022
+0.024
+Trials
+RMSE
+bottle 1
+bottle 2
+jar
+phone
+glass
+(b) bottle 2
+1 2 3 4 5 6 7 8 9 10
+0.01
+0.015
+0.02
+0.025
+Trials
+RMSE
+bottle 1
+bottle 2
+jar
+phone
+glass
+(c) jar
+1 2 3 4 5 6 7 8 9 10
+0.006
+0.008
+0.01
+0.012
+0.014
+0.016
+0.018
+0.02
+Trials
+RMSE
+bottle 1
+bottle 2
+jar
+phone
+glass
+(d) phone
+1 2 3 4 5 6 7 8 9 10
+0.01
+0.011
+0.012
+0.013
+0.014
+0.015
+0.016
+0.017
+0.018
+0.019
+0.02
+Trials
+RMSE
+bottle 1
+bottle 2
+jar
+phone
+glass
+(e) glass
+Fig. 10: Object identiﬁcation with sparse point cloud starting from 10 different initial conﬁgurations.
+0.2
+0.25
+0.3
+0.35
+0.4
+?0.04
+?0.02
+0
+0.02
+0.06
+0.08
+0.1
+0.12
+X(m)
+Y(m)
+Z(m)
+testing object points
+original object points
+(a) bottle 1
+0.2
+0.25
+0.3
+0.35
+0.4
+?0.04
+?0.02
+0
+0.02
+0.06
+0.08
+0.1
+X(m)
+Y(m)
+Z(m)
+testing object points
+original object points
+(b) bottle 2
+0.2
+0.25
+0.3
+0.35
+?0.06
+?0.04
+?0.02
+0
+0.02
+0.04
+0.02
+0.04
+0.06
+0.08
+0.1
+0.12
+X(m) Y(m)
+Z(m)
+testing object points
+original object points
+(c) jar
+0.2
+0.25
+0.3
+0.35
+0.4
+?0.04
+?0.02
+0
+0.02
+0.04
+0.06
+0.08
+0.1
+X(m)
+Y(m)
+Z(m)
+testing object points
+original object points
+(d) phone
+0.2
+0.25
+0.3
+?0.04
+?0.02
+0
+0.02
+0.04
+0.06
+0.08
+0.1
+X(m)
+Y(m)
+Z(m)
+testing object points
+original object points
+(e) glass
+Fig. 11: The ﬁltered object point clouds aligned with the trained object points cloud. Only 400 datapoints from the trained object point clouds are
+displayed.
+(a) bottle 1 (b) bottle 2 (c) jar (d) phone (e) glass
+Fig. 13: The selected grasp (hand position and orientation) for each explored object after identiﬁcation.
+Research Robotics. The research leading to these results has
+also received funding from the European Union Seventh
+Framework Programme FP7/2007-2013 under grant agree-
+ment n
+o
+288533 ROBOHOW.COG.
+REFERENCES
+[1] P. Allen and R. Bajcsy, “Object recognition using vision and touch,”
+in Proceedings of the 9th international joint conference on Artiﬁcial
+intelligence (IJCAI), 1985.
+[2] P. Allen and P. Michelman, “Acquisition and interpretation of 3-
+d sensor data from touch,” IEEE Transactions on Robotics and
+Automation, vol. 6, pp. 397–404, Aug. 1990.
+[3] K. Roberts, “Robot active touch exploration: constraints and strate-
+gies,” in Proceedings of International Conference on Robotics and
+Automation (ICRA), 1990.
+[4] S. Caselli, C. Magnanini, F. Zanichelli, and E. Carafﬁ, “Efﬁcient
+exploration and recognition of convex objects based on haptic per-
+ception,” in Proceedings of International Conference on Robotics and
+Automation (ICRA), 1996.
+[5] A. Bierbaum, M. Rambow, T. Asfour, and R. Dillmann, “A potential
+ﬁeld approach to dexterous tactile exploration of unknown objects,”
+in International Conference on Humanoid Robots(Humanoids), 2008.
+[6] S. Dragiev, M. Toussaint, and M. Gienger, “Uncertainty aware grasp-
+ing and tactile exploration,” in Proceedings of International Confer-
+ence on Robotics and Automation (ICRA), 2013.
+[7] N. Sommer and A. Billard, “Face classiﬁcation using touch with
+a humanoid robot hand,” in International Conference on Humanoid
+Robots (Humanoids), 2012.
+[8] M. Meier, M. Schopfer, R. Haschke, and H. Ritter, “A probabilis-
+tic approach to tactile shape reconstruction,” IEEE Transactions on
+Robotics, vol. 27, no. 3, pp. 630–635, 2011.
+[9] D. Faria, R. Martins, J. Lobo, and J. Dias, “Probabilistic represen-
+tation of 3d object shape by in-hand exploration,” in International
+Conference on Intelligent Robots and Systems (IROS), 2010.
+[10] K. Charusta, D. Dimitrov, A. J. Lilienthal, and B. Iliev, “Extraction
+of grasp related features by human dual-hand object exploration,”
+in Proceedings of the IEEE International Conference on Advanced
+Robotics (ICAR), 2009.
+[11] S. Dragiev, M. Toussaint, and M. Gienger, “Gaussian process implicit
+surfaces for shape estimation and grasping,” in Proceedings of Inter-
+national Conference on Robotics and Automation (ICRA), 2011.
+[12] S. El-Khoury, M. Li, and A. Billard, “On the generation of a variety
+of grasps,” Robotics and Autonomous Systems, 2013. (In Press).
+[13] A. Sahbani, S. El-Khoury, and P. Bidaud, “An overview of 3d ob-
+ject grasp synthesis algorithms.,” Robotics and Autonomous Systems,
+vol. 60, no. 3, pp. 326–336, 2012.
+[14] S. El Khoury, M. Li, and A. Billard, “Bridging the gap: One shot
+grasp synthesis approach,” in International Conference on Intelligent
+Robots and Systems (IROS), 2012.
+[15] E. Solak, R. Murray-Smith, W. E. Leithead, D. Leith, and C. E.
+Rasmussen, “Derivative observations in gaussian process models of
+dynamic systems,” in Advances in Neural Information Processing Sys-
+tems 15 (S. Thrun, S. Becker, and K. Obermayer, eds.), (Cambridge,
+MA), pp. 1033–1040, MIT Press, 2003.
+[16] O. Williams and A. Fitzgibbon, “Gaussian process implicit surfaces,”
+in Gaussian Proc. in Practice, 2007.
+[17] F. L. Bookstein, “Principal warps: Thin-Plate splines and the decom-
+position of deformations,” IEEE Trans. Pattern Anal. Mach. Intell.,
+vol. 11, pp. 567–585, June 1989.
+[18] P. J. Besl and N. D. McKay, “A method for registration of 3-d shapes,”
+IEEE Trans. Pattern Anal. Mach. Intell., vol. 14, pp. 239–256, Feb.
+1992.
+[19] S. Kim, A. Shukla, and A. Billard, “Catching objects in ﬂight.,” IEEE
+Transactions on Robotics. (submitted).
+[20] B. Huang, S. El-Khoury, L. M., J. J. Bryson, and A. Billard, “Learning
+a real time grasping strategy,” in Proceedings of International Confer-
+ence on Robotics and Automation (ICRA), 2013.
+[21] E. L. Sauser, B. D. Argall, G. Metta, and A. G. Billard, “Iterative
+learning of grasp adaptation through human corrections,” Robotics and
+Autonomous Systems, vol. 60, pp. 55–71, Jan. 2012.
+6407

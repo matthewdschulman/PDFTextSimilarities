@@ -1,0 +1,950 @@
+RRTPI: Policy Iteration on Continuous Domains using
+Rapidly-exploring Random Trees
+Manimaran Sivasamy Sivamurugan and Balaraman Ravindran
+Abstract— Path planning in continuous spaces has been a
+central problem in robotics. In the case of systems with complex
+dynamics, the performance of sampling based techniques relies
+on identifying a good approximation to the cost-to-go distance
+metric. We propose a technique that uses reinforcement learn-
+ing to learn this distance metric on the ﬂy from samples and
+combine it with existing sampling based planners to produce
+near optimal solutions. The resulting algorithm - RRTPI can
+solve problems with complex dynamics in a sample efﬁcient
+manner while preserving asymptotic guarantees. We provide
+experimental evaluation of this technique on domains with
+underactuated and underpowered dynamics.
+I. INTRODUCTION
+The problem of ﬁnding feasible trajectories from a given
+starting conﬁguration to a goal in dynamical systems is a
+central problem in robotics. This problem is known to be at
+least PSPACE-hard [1]. One approach to solve this problem
+is to directly use numeric solutions of the Hamilton-Jacobi-
+Bellman equation. Other approaches formulate the problem
+as a discrete Markov Decision Process (MDP). However
+these methods suffer from the curse of dimensionality.
+A popular class of algorithms that are resilient to this
+issue are sampling based algorithms. These algorithms are
+reasonably fast and efﬁcient in terms of space [2]. Rapidly
+exploring Random Trees (RRTs) are one such method that
+are widely used [3]. RRTs have good space ﬁlling properties
+and possess asymptotic completeness, i.e., they eventually
+ﬁnd a solution if one exists. However, they do not provide
+any guarantees regarding optimality. In fact, it was shown
+that they almost always converge to a sub-optimal solution
+[4].
+Recently, RRT* an extended version of the RRT method
+has been developed that also guarantees asymptotic opti-
+mality, i.e., they eventually converge to an optimal solution
+as more samples are drawn [4]. However, these guarantees
+are only asymptotic and the performance of RRT based
+algorithms is highly dependent on the distance measure
+used [5]. Even solving a simple two state variable control
+problem with underpowered dynamics can require an in-
+ordinate amount of samples due to poor exploration. The
+reason being, in complex systems that are underactuated or
+underpowered, the Euclidean distance between two points is
+not a good estimate of the geodesic distance or the Carnot-
+Caratheodory metric on the sub-Riemannian manifold in-
+duced by the system dynamics. It has been shown that
+S. S. Manimaran and B. Ravindran are with The Department of Computer
+Science and Engineering, Indian Institute of Technology Madras, India
+fssm,ravig@cse.iitm.ac.in
+RRTs explore space efﬁciently only when the distance metric
+reﬂects the true cost-to-go [6].
+Thus, recent research has concentrated on identifying the
+correct domain-dependent metric for efﬁcient exploration.
+Glassman and Tedrake linearize the system dynamics and
+use afﬁne quadratic regulators to derive this metric [7]. They
+show that this results in improvemed exploration. Perez et. al.
+integrated this technique into the RRT* algorithm to improve
+exploration while aiming to obtain optimal solutions [8].
+They used linear quadratic regulation (LQR) to determine
+the cost-to-go function as well the tree extension procedure.
+These methods assume that the dynamics are linearizable
+and available in closed form. If the robot experiences failure
+of some joints or picks up new tools, then these dynamics
+may even change over time. The dynamics can also be
+discontinuous or too complex to represent in closed form as
+in the case of an octopus arm [9]. Thus in situations where
+we cannot deﬁne exact closed form dynamics, we need to
+learn the domain dependent metric from experience. This
+will extend the scope of existing RRT based planners to a
+wide range of domains that have complex dynamics.
+One ﬁeld that has traditionally looked at learning domain
+dependent metrics from sample data is Reinforcement Learn-
+ing (RL). Most RL techniques work by estimating the value
+function, which is an sample based estimate of the cost-
+to-go, of states from sample trajectories through the state
+space [10]. While these techniques have been well studied for
+discrete domains, continuous domains are more challenging
+as generalization and approximation is required to learn
+the value function. Obtaining a correct estimate depends
+directly on the quality of the samples. A crucial problem
+that limits the applicability reinforcement learning methods
+to continuous domains, is ensuring generation of sufﬁciently
+representative samples.
+In this paper we propose RRTPI a hybrid approach that
+combines RL with RRT style sampling. RL techniques
+estimate the cost-to-go of states with minimum domain
+knowledge, but they require a principled way of generating
+sufﬁciently representative sample trajectories in continuous
+space. On the other hand, RRT based algorithms possess
+good exploration properties in continuous space, but re-
+quire an estimate of the cost-to-go in order to work in
+underactuated and underpowered domains. Combining these
+approaches enable RRTPI to handle arbitrarily complex
+domains without making assumptions on the form of the
+system dynamics and costs. To the best of our knowledge
+this is the ﬁrst such hybrid approach combining these two
+paradigms.
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 4362
+We ﬁrst construct a discrete approximation to the given
+problem by drawing samples. We then estimate the cost
+to go pseudo-metric (or the value function) using policy
+evaluation methods. Following which, we use the estimated
+value function to again generate samples and form a bet-
+ter discrete approximation. The process is thus repeated,
+iteratively forming better approximations and solving them
+till the original problem is solved sufﬁciently well. This
+method, is in spirit, similar to the iMDP technique of
+Huynh et. al. [11]. However, they do not handle complex
+dynamics and rely on Euclidean distance to explore when
+sampling. Our method works on complex domains with non-
+linear dynamics and retains the asymptotic completeness and
+optimality properties of RRT based methods.
+II. PRELIMINARIES
+A. Reinforcement Learning
+We model the problem of ﬁnding an optimal path as
+solving a Markov Decision Process(MDP). A continuous
+MDPM is described ashS;A;T;Ri. S2R
+n
+is the domain of
+states. Each state has a corresponding set of allowed actions
+A
+s
+. This set may be discrete or continuous. The action set A is
+deﬁned as
+S
+s
+A
+s
+. T(s;a;s
+0
+) is the probability of transitioning
+from state s2 S on taking action a to a state s
+0
+. If the
+transitions are deterministic we may write it as T(s;a)= s
+0
+.
+R(s;a;s
+0
+) is the expectation of real valued rewards(or cost)
+associated with taking action, a from state s2 S, and reaching
+state s
+0
+. These rewards are generally bounded in[R
+min
+;R
+max
+].
+Given some starting state s
+0
+, we pick an action a
+0
+resulting
+in a state transition to some s
+1
+according to T and a reward
+r
+1
+sampled from R. After a ﬁxed time step, we pick the next
+action and so on so forth, resulting in a sequence of states
+actions and rewards s
+0
+;a
+0
+;r
+1
+;s
+1
+;a
+1
+;r
+2
+;:::. Our objective is
+to choose actions a
+0
+;a
+1
+;::: such that we obtain maximum
+cumulative reward or return. The return is deﬁned as
+¥
+å
+t=0
+g
+t
+r
+t
+,
+where r
+t
+is the reward at time step t and g2(0;1) is the
+discount factor.
+A policy p is a mapping from the state space S to the
+action space A. p : S A
+s
+![0;1] that is, it represents the
+probability of choosing some action at a given state s. A
+deterministic policy is usually denoted asp(s)= a where a2
+A
+s
+. The state value function of a state J
+p
+(s) is the expected
+return obtained by following policy p starting from the state
+s. When the set S is discrete, we may express the value
+function for a given policy using the Bellman equations as,
+8s2 S; J
+p
+(s)=
+å
+a
+p(s;a)
+å
+s
+0
+T(s;a;s
+0
+)[R(s;a;s
+0
+)+gJ
+p
+(s
+0
+)]
+(1)
+A policy p
+
+is optimal if8s;p J
+p
+
+(s) J
+p
+(s). The optimal
+value function also denoted as, J
+
+can be calculated by
+replacing the expectation over set of actions in equation 1
+with the max operator. When the state space is continuous,
+we use parametric or non-parametric function approximation
+techniques to represent J.
+B. Policy Evaluation using TD(l)
+Equations 1 can be solved using dynamic programming
+techniques [10]. In most real world scenarios however, the
+transition probabilities are not available directly or are too
+complicated to be represented explicitly. A popular class of
+RL algorithms solve this problem by sampling, and estimate
+the value function. This is known as policy evaluation.
+The TD(l) family of algorithms is a basic method that
+uses temporal differences to estimate J
+p
+[12]. Consider a set
+of N trajectories of the formfs
+0
+;a
+0
+;r
+1
+;s
+1
+;a
+1
+;r
+2
+;:::s
+M
+i
+g
+N
+i=1
+.
+the TD(0) algorithm estimates the state value function using
+the following update
+ˆ
+J(s
+t
+) (1 a)
+ˆ
+J(s
+t
+)+a(r
+t+1
++g
+ˆ
+J(s
+t+1
+)) (2)
+0 i N; 0 t M
+i
+. The parameter l is a measure of how
+much credit is assigned to earlier states in the trajectory. It
+serves to trade off bias and variance in the estimates withl =
+0 having least variance and most bias [12]. TD(l) converges
+provably with appropriately decaying values of a.
+Methods that handle continuous states usually assume a
+functional form of J
+p
+to estimate the value [13], [14]. We use
+TD(l) on the discrete MDP approximation of the continuous
+problem, as given by a RRT based sampling technique, to get
+point estimates of J. We then generalize the point estimates
+to unseen states, by using nearest neighbor methods. Details
+on the sampling technique and reasoning behind our choice
+of the policy estimation technique are given in section IV. We
+will ﬁrst describe our sampling technique in the following
+section.
+III. RAPIDLY EXPLORING RANDOM SAMPLE TREES
+In this section we brieﬂy introduce RRTs and describe
+how we use them to generate a ‘sample tree’ of trajectories to
+approximate a given problem. Given a space S, the basic RRT
+construction is as follows. The algorithm randomly samples
+a point in the space and calculates the nearest node in the
+existing tree from the sampled point. A new point is added
+to the tree by moving a ﬁxed distance in the direction of
+the sampled state. If the resulting edge from connecting the
+nearest point to the new point is collision free then the vertex
+and edge are added to the tree. This is known as extending
+the tree. Thus the tree is stretched outwards towards lesser
+explored areas. This requires a distance measure for calculat-
+ing the nearest vertex and extending the tree. RRTs possess
+several attractive properties in terms of exploration. Given a
+RRT G of size n with set of vertices V(G) and edges E(G)
+constructed in some space S, then
+lim
+n!¥
+Pr(s2 V(G))! 1; 8s2 S
+Also the probability that a node in the tree will be expanded
+is proportional to the volume of its V oronoi region. This
+accounts for the rapidly-exploring property of RRTs. We will
+preserve this property while generating samples.
+Given a control problem formulated as an MDPM , we
+would like to generate sample trajectories using a RRT-like
+procedure. We assume access to a generative model
+c
+M as
+4363
+described by Ng and Jordan [15]. Given a state s and action a,
+the model returns a sample from distribution of the next state
+and a sample reward corresponding to a ﬁxed time step. In
+our algorithm, we generate samples based on a metric deﬁned
+by the value function. Thus the Nearest and Extend
+functions are deﬁned as shown below based on the metric
+kk
+J
+.
+Function Nearest(s,X,kk
+J
+)
+Data: Set of states X, distance measure given bykk
+J
+and a state s
+Result: Return x
+near
+2 X such that,
+x
+near
+= argmax
+x2X
+kx  sk
+J
+Function Extend(s,s
+target
+,kk
+J
+)
+Data: Given state s and a target state s
+target
+and a
+distance metrickk
+J
+Result: A sample (s
+ext
+;a
+ext
+;r
+ext
+) such that s
+ext
+can be
+reached from s on performing a
+ext
+and is closest
+to s
+target
+as deﬁned by the distance metric
+d
+min
+  ¥ 1
+for every a2 A
+s
+do 2
+Sample (r
+0
+;s
+0
+) 
+c
+M(s;a) 3
+ifks
+0
+  s
+target
+k
+J
+> d
+min
+then 4
+d
+min
+ ks
+0
+  s
+target
+k
+J
+5
+(s
+ext
+;a
+ext
+;r
+ext
+) (s
+0
+;a;r
+0
+) 6
+end 7
+end 8
+Given a real valued function J (the value function in our
+case) deﬁned on the state space S, we deﬁne
+kx  yk
+J
+=(J(x)  J(y)) where x;y2 S
+Note that in the Extend function, when the action space is
+continuous, we simply sample some k actions uniformly and
+then choose the best amongst them.
+We may now deﬁne a sampling procedure that returns a
+tree of samples G from the given problem based on a distance
+measure kk
+J
+. The algorithm closely resembles the RRT
+algorithm in constructing the samples. The ConstructRRST
+procedure as deﬁned in Algorithm 3, constructs a tree with
+samples of the form (s
+t
+;a
+t
+;r
+t+1
+;s
+t+1
+).
+The tree is grown in a greedy manner with respect to
+the value function J as the action that maximizes reward(or
+minimizes cost) is chosen in the Extend function. Using
+the value function as a distance measure preserves the
+efﬁcient exploration property of RRTs discussed above. The
+probability of an edge (s;s
+0
+) being included in the tree is
+given by the product of the probability of the following two
+events - (i) Probability that vertex s is selected for expansion.
+(ii) Probability that s
+0
+is selected. The probability of the ﬁrst
+event is proportional to the volume of the V oronoi region of
+s. This is a property of RRTs. The probability of the second
+event is proportional to the value of the state J(s
+0
+). Given a
+set of samples, we re-evaluate the value function using TD(0)
+as described in the next section.
+Algorithm 3: ConstructRRST(N;kk
+J
+)
+E(G) / 0; V(G) s
+start
+1
+n 0 2
+while n< N do 3
+Sample a state s
+new
+from S 4
+s
+near
+ Nearest(s
+new
+;V(G);kk
+J
+) 5
+(a
+ext
+;s
+ext
+;r
+ext
+) Extend(s
+near
+;s
+new
+;kk
+J
+) 6
+V(G) V(G)[fs
+ext
+g 7
+E(G) E(G)[f(s
+near
+;a
+ext
+;r
+ext
+;s
+ext
+)g 8
+n n+ 1 9
+end 10
+return G 11
+IV. ESTIMATING THE VALUE FUNCTION
+Given a sample tree G as described in the previous
+section, we formulate a discrete approximation to the original
+problem as follows. From every leaf node in the tree, a
+path is traced back to the root. This gives us several sample
+trajectories. We consider a discrete problem whose states are
+the nodes of the tree V(G). We evaluate a discrete value
+function
+b
+J : V(G)7!R using the T D(0) update given in
+Equation 2 on the sample trajectories. This can be thought of
+as backing up values along the trajectories of the tree. T D(0)
+on discrete domains with a ﬁnite set of sample trajectories
+converges to a ﬁxed value [12].
+This value function is discrete and is deﬁned only on
+speciﬁc points. It has to be generalized across the entire state
+space of the original problem. This a standard regression
+task. We use nearest neighbor methods that build local
+models around a given query point. Depending on the nature
+of the model and deﬁnition of the locality there are several
+variants. We use the following techniques and compare them
+in experiments described later.
+1) Locally constant: Here we simply take the value as
+the average of the values of k-nearest-neighbors(k-nn) of x.
+The distance metric used to evaluate the nearest neighbors
+is Euclidean.
+J(x)=
+å
+s
+i
+2Nbr(x)
+1
+k
+b
+J(s
+i
+)
+For k= 1, the value of a state is generalized to its V oronoi re-
+gion. By varying k we can vary the size of the neighborhood
+over which we generalize. We can reduce the variance in the
+estimate by learning local models, such as those discussed
+by Atkeson et. al. [16].
+2) Locally linear: We assume the value of the function is
+linear within a neighborhood. The parameters of the function
+b are learnt by minimizing the least-squared error using
+simple linear regression as described below.
+J(x)=bx=
+n
+å
+j=1
+b
+j
+x
+j
++b
+0
+4364
+b = argmin
+b
+å
+s
+i
+2Nbr(x)
+(bs
+i
+ 
+b
+J(s
+i
+))
+2
+Here the loss function is deﬁned only within the neighbor-
+hood, i.e., we use only the k-nearest-neighbors as training
+for the linear regression model. In higher dimensional state
+spaces, locally constant estimates tend to perform poorly
+because of high variance. In such cases linear methods
+tend to perform better [16]. This results in a method which
+has more bias in terms of representation than simple k-nn
+regression.
+3) Locally linear with Gaussian weights: We employ a
+Gaussian weighting scheme based on the distance of the
+points in the neighborhood. Closer points are given more
+weight-age [16]. We use deﬁne a Gaussian kernel
+K(d)= exp( d
+2
+)
+where d is a distance measure between the input states in the
+neighborhood and the target point. Here we use the Euclidean
+distance. We assign weights to the inputs using this kernel
+and regress. The modiﬁed error function for estimating b
+becomes
+b = argmin
+b
+å
+s
+i
+2Nbr(x)
+K(kx  s
+i
+k)(bs
+i
+ 
+b
+J(s
+i
+))
+2
+We will call these techniques nearest neighbor temporal
+difference or NN-TD methods. We can deﬁne a procedure
+NN-TD(G) that takes a tree of sample transitions G as input
+and returns the generalized estimate of the value function.
+Note that these techniques use a ‘lazy’ approach to estimate
+the value at a given point, i.e., they do not perform any
+calculations until a point is queried and just maintain the set
+of input points and the corresponding values as such. Thus
+in an implementation of this method, the generalization is
+done only when value function is estimated as J(s) in the
+Extend and Nearest functions. Such nearest neighbor
+techniques are preferred as they have low bias in learning
+and can approximate any arbitrary function given enough
+data points. Alternatively we can evaluate the value function
+directly from the set of samples by suitably modifying
+Fitted Q-Iteration [14]. Here we may use parametric methods
+such as support vector regression and Gaussian processes
+regression. However, experimentally they did not perform
+well. One reason could be the following—these methods
+operate directly on the vector representation of a state from
+R
+n
+, whereas T D(0) runs on a tabular representation of states.
+As the vertices of the set V(G) are actually embedded on
+a manifold induced by complex dynamics of the system,
+methods that run on theR
+n
+representation perform poorly.
+Our method based on T D(0) approximates the values
+better as it operates on the latent space of the system.
+This due to the fact that the geodesic distance along the
+trajectories approximate the inherent metric of the manifold.
+Moreover, the accuracy of the approximation improves as
+the number of points in the trajectories increases. Given
+that our sampling technique RRST is asymptotically com-
+plete, T D(0) combined with nearest neighbor regression is
+a favorable method to learn the value function, since it
+allows us to give asymptotic guarantees on the correctness of
+approximation. Comparisons between various techniques for
+policy evaluation are presented in the experiments section.
+Now that we have described a class of techniques for
+estimating the value function from a set of samples, and
+a technique for generating samples by maximizing the value
+function, we can deﬁne an iterative procedure that alternates
+between RRST and NN-TD to make progressively better
+discrete approximations and solve the original problem. We
+describe our algorithm RRTPI in the following section.
+V. RRTPI
+The RRTPI algorithm is described in Algorithm 5. Given
+a control problem, we begin with a uniform estimate for the
+cost-to-go function J
+0
+. We use this to generate a set of sample
+transitions using the ConstructRRST method described in
+Section III. We then estimate the value function J
+n
+from
+these samples using NN-TD. This estimate is used in the
+subsequent iteration to construct another sampling tree such
+that it is grown greedily w.r.t the previously evaluated value
+function.
+Algorithm 4: RRTPI(N)
+Initialize uniformly J
+0
+ 0 1
+n 1 2
+while n< N do 3
+G
+n
+ ConstructRRST(M
+n
+;kk
+J
+n 1
+) 4
+J
+n
+ NN-TD(G
+n
+) 5
+n n+ 1 6
+end 7
+As we obtain better samples, the estimate of the optimal
+value function continuous to improve. This proceeds in an
+iterative manner till we obtain a sufﬁciently optimal solution.
+The size of sample set M
+n
+can be changed for different
+iterations. Typically initial iterations need more samples as
+the value function might not accurately estimate the optimal
+cost-to-go.
+This method resembles policy iteration, which is a DP
+based technique for solving discrete MDPs [10]. In policy
+iteration, an optimal policyp
+
+is found as follows. First begin
+with an random policy p. Evaluate this policy, i.e., ﬁnd the
+value function J
+p
+using some policy evaluation technique.
+Then deﬁne a new policy that is greedy w.r.t the estimated
+value function. This step is called policy improvement. The
+corresponding new value function is again estimated and the
+steps are repeated till the policy converges to an optimal
+one. The similarities with our algorithm are now apparent
+and hence the name RRTPI.
+The NN-TD step in our algorithm corresponds to policy
+evaluation, and the constructRRST step corresponds to policy
+improvement. We may think of our algorithm as extending
+policy iteration to continuous domain using samples to
+estimate both the policy and the value function. Also, we
+do not require full knowledge of the system dynamics as in
+the case of policy iteration. A generative model that allows
+4365
+us to draw samples is sufﬁcient. This is a weaker assumption
+and allows us to solve a more general class of problems.
+The LQR-RRT* technique [8] method describes a similar
+approach of learning the optimal value function from experi-
+ence, but assumes knowledge of the system dynamics in lin-
+earizable form. It is found that the accuracy of LQR methods
+falls rapidly as the dimensionality of the domain increases
+[7]. Thus the assumptions made by LQR-RRT* hinder its
+ability to model more complex problems effectively. Systems
+such as the octopus arm, are easy to generate samples from
+but hard to fully specify in closed form. Our method can
+handle such domains as it only requires samples. It can also
+handle arbitrary cost functions. Supporting results are shown
+in the results section.
+VI. RESULTS
+We evaluate our algorithm on a variety of domains having
+underpowered and underactuated dynamics - the mountain
+car, the acrobot and the octopus arm. The total discounted
+reward along the current best path to the goal is the evalu-
+ation criterion that we use. We compare the performance of
+our approach against the following baselines:
+a) Fixed Discretization: We discretize the space into
+uniform grids and run Dynamic Programming. The number
+of discretizations is taken as the no. of samples for compar-
+ison.
+b) LQR based Policy Evaluation: The policy evaluation
+technique NN-TD is replaced with an LQR based evaluation
+technique after Perez et. al. [8].
+c) RRTPI variants: We compare the three variants of
+RRTPI based on the nearest neighbor techniques discussed
+in section IV. kNN-RRTPI with different values of k corre-
+sponds to the locally constant method. LL-RRTPI and LW-
+RRTPI use the locally linear and the Gaussian weighting
+scheme correspondingly. The neighborhoods for LL-RRTPI
+and LW-RRTPI were deﬁned using 5-7 nearest neighbors.
+All results are averaged across 100 runs. Simulations were
+run on a 3.4GHz 4 core system with 16GB of RAM.
+A. Mountain Car Domain
+In this domain, the goal is to drive an underpowered car
+in a valley up a steep hill. The state is a 2 dimensional
+continuous space consisting of the position and velocity of
+the car along the hill. The actions correspond to acceleration
+in the positive or negative direction. A small negative reward
+is given every step, till the goal state is reached. A large
+positive reward is given upon reaching the target. Detailed
+descriptions of the dynamics can be found in Singh et.
+al.[17]. This is an example of a underpowered domain.
+Comparison of performance is shown in Figure 1.
+All methods were successfully able to ﬁnd feasible solu-
+tions. Although the discrete algorithm reaches the optimal
+performance roughly around the same time as the RRTPI
+algorithms, the space requirements are much higher. This
+is because at any given time, the RRTPI algorithms need
+to store a maximum of M
+n
+nodes and edges plus an addi-
+tional M
+n 1
+values representing the value function. In this
+Fig. 1. Comparison of various algorithms on the mountain car domain
+experiment M
+n
+was 2000 for all n> 1. Whereas the discrete
+case needed to store 100 100 states. This problem would
+compound as the dimensionality of the problem increases.
+Also all algorithms display more efﬁcient use of samples
+than plain discretization.
+Using LQR gives good estimates initially but eventually
+both LW-RRTPI and 1nn-RRTPI perform better with the
+same number of samples. The performance of LL-RRTPI
+is almost similar to LQR. Although as the complexity of
+the domain increases, this is expected to change. LW-RRTPI
+performs the best among the algorithms.
+B. Acrobot Domain
+In this task, an acrobot must be brought to a vertically
+upright position. The acrobot is a two link robot with one
+ﬁxed unpowered joint and a free joint powered joint. The
+system has four states consisting of the angular position and
+speed of the two joints. This is an underactuated system as
+only the free joint can be controlled and the robot has to learn
+to swing up by building momentum. The exact dynamics
+can be found in Murray and Hauser [18]. The results on this
+domain are shown in Figure 2.
+Fig. 2. Comparison of various algorithms Acrobot domain.
+In this task, LQR performs poorly compared to the nearest
+neighbor methods. This is because as the complexity of the
+dynamics increases, the accuracy of the LQR estimate falls
+rapidly [7]. Results from using discretization are not reported
+since we ran out of memory before a solution was found. LL-
+RRTPI and LW-RRTPI perform better as compare to 1nn-
+RRTPI due to lower variance in higher dimensions.
+4366
+C. Octopus arm
+The octopus arm possesses a large number of degrees
+of freedom with high redundancy. The arm is made up of
+several connected compartments and it is controlled through
+activations of the muscles on walls of these compartments.
+We follow the model of the arm in 2-D space with 10
+segments introduced by Engel et. al. [9]. The aim of the
+arm is to reach a speciﬁc goal region. The state space
+corresponds to the position and velocity of the point masses
+on each segment. Thus the dimensionality of the state space
+is 22 4= 88. We use a subset of 6 possible actions. The
+cost associated with every action is uniform and reaching
+the goal results in a positive reward. Each segment has its
+own dynamics leading to complicated dynamics for the entire
+arm. This is a case where it is much easier to generate
+samples for the next state using a one step model of the
+arm. LQR based methods cannot work because the of the
+complexity involved in linearizing the dynamics. RRTPI
+is able to solve such complex high dimensional problems
+with relatively small number of samples. We show the
+performance of 1nn-RRTPI and LW-RRTPI on the octopus
+domain in Figure 3.
+Fig. 3. Comparison of RRTPI algorithms on the octopus arm domain.
+VII. CONCLUSION AND FUTURE WORK
+We present RRTPI the ﬁrst algorithm that combines RRT
+style sampling with Reinforcement Learning to solve con-
+tinuous space control problems with complex dynamics. By
+estimating the domain dependant distance measure from
+samples, our algorithm is able to work with complex, under-
+actuated and underpowered systems. The algorithm is able
+to solve a wider class of problems as compared to previous
+techniques as it works using only samples and does not make
+any assumtions on the form of the system dynamics.
+The iterative nature of the RRTPI algorithm can be used
+to interleave planning and actual execution in a real robot.
+For instance, we may plan for a few iterations and once a
+satisfactory policy and value function are obtained, the robot
+can execute the resulting trajectory in real-time. This can be
+simply done by selecting actions greedily according to the
+value function. We may then use the resulting trajectory as
+samples for further iterations. If the same task is repeated
+several times this allows us to constantly improve perfor-
+mance. It can also be used to improve the accuracy of the
+one step model.
+Transfer learning allows us to use knowledge from solving
+one particular task in solving a new but related task [19]. The
+value function estimate can serve as a good representation
+for transfer learning [20]. From the experiments we can see
+that RRTPI is sample efﬁcient as compared to discretization
+and showing sample comlexity bounds on these algorithms
+would be an interesting direction for future research.
+REFERENCES
+[1] J. T. Schwartz and M. Sharir, “On the piano movers problem:II. Gen-
+eral techniques for computing topological properties of real algebraic
+manifolds”, Advances in Applied Mathematics, vol. 4, pp. 298-351,
+1983
+[2] S. Lavalle, Planning Algorithms. Cambridge University Press, 2006.
+[3] S. M. LaValle and J. J. Kuffner,“ Randomized kinodynamic planning”,
+International Journal of Robotics Research, vol. 20, no. 5, pp. 378-
+400, May 2001.
+[4] Sertac Karaman and Emilio Frazzoli. “Sampling-based algorithms for
+optimal motion planning”. International Journal of Robotics Research,
+30(7):846-894, June 2011.
+[5] S. M. Lavalle, “From dynamic programming to RRTs: Algorithmic
+design of feasible trajectories,” in Control Problems in Robotics.
+Springer-Verlag, 2002.
+[6] P. Cheng and S. M. Lavalle, “Reducing metric sensitivity in ran-
+domized trajectory design”, in Proceedings of the IEEE International
+Conference on Intelligent Robots and Systems, 2001, pp. 43-48.
+[7] E. Glassman and R. Tedrake, “A quadratic regulator-based heuristic
+for rapidly exploring state space”, in Proceedings of the IEEE In-
+ternational Conference on Robotics and Automation, May 2010, pp.
+5021-5028.
+[8] A. Perez, R. Platt, G. Konidaris, L. Kaelbling, and T. Lozano-
+Perez,“LQR-RRT : Optimal sampling-based motion planning with
+automatically derived extension heuristics”, in Proceedings of the
+IEEE International Conference on Robotics and Automation, May
+2012, pp. 2537-2542.
+[9] Engel, Y ., Szabo, P., V olkinshtein, D.: “Learning to control an octopus
+arm with gaussian process temporal difference methods”. Advances in
+Neural Information Processing Systems 18, 347-354 (2006)
+[10] R.S. Sutton and A.G. Barto. Reinforcement learning: An introduction,
+volume 28. MIT press, 1998.
+[11] V . A. Huynh, S. Karaman, and E. Frazzoli, “An incremental sampling-
+based algorithm for stochastic optimal control”, in Proceedings of the
+IEEE International Conference on Robotics and Automation, 2012,
+pp. 2865-2872
+[12] R. S. Sutton. “Learning to predict by the methods of temporal
+differences”. Machine Learning, 3, 1988.
+[13] Justin Boyan. “Least-squares temporal difference learning”, in The
+Proceedings of the Sixteenth International Conference on Machine
+Learning, pp. 49-56. Morgan Kaufmann, 1999.
+[14] D. Ernst, P. Geurts, and L. Wehenkel. “Tree-based batch mode rein-
+forcement learning”. Journal of Machine Learning Research, 6:503-
+556, 2005
+[15] Andrew Ng and Michael Jordan. “Pegasus: A policy search method for
+large mdps and pomdps.” In Proceedings of the Sixteenth Conference
+on Uncertainty in Artiﬁcial Intelligence, pages 406-415, 2000
+[16] Christopher G. Atkeson, Andrew W. Moore, and Stefan Schaal.
+“Locally Weighted Learning”. Artiﬁcial Intelligence, Rev. 11, 1-5
+(February 1997), 11-73
+[17] Satinder Singh, Richard S. Sutton, and P. Kaelbling. “Reinforcement
+learning with replacing eligibility traces.” In Machine Learning, pages
+123-158, 1996.
+[18] R. Murray and J. Hauser, “A case study in approximate lineariza-
+tion:The acrobot example”, EECS Department, University of Califor-
+nia,Berkeley, Tech. Rep. UCB/ERL M91/46, 1991
+[19] Matthew E. Taylor and Peter Stone. “Transfer Learning for Reinforce-
+ment Learning Domains: A Survey.” Journal of Machine Learning
+Research, 10(1):1633-1685, 2009.
+[20] Matthew E. Taylor and Peter Stone. “Behavior Transfer for Value-
+Function-Based Reinforcement Learning.”In The Fourth International
+Joint Conference on Autonomous Agents and Multiagent Systems, pp.
+53-59, ACM Press, New York, NY , July 2005.
+4367

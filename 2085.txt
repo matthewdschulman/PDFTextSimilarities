@@ -1,0 +1,1650 @@
+C-KLAM: Constrained Keyframe-Based Localization and Mapping
+Esha D. Nerurkar
+ 
+, Kejian J. Wu
+à
+, and Stergios I. Roumeliotis
+ 
+AbstractÑ In this paper, we present C-KLAM, a Maximum
+A Posteriori (MAP) estimator-based keyframe approach for
+SLAM. Instead of discarding information from non-keyframes
+for reducing the computational complexity, the proposed C-
+KLAM presents a novel, elegant, and computationally-efÞcient
+technique for incorporating most of this information in a
+consistent manner, resulting in improved estimation accu-
+racy. To achieve this, C-KLAM projects both proprioceptive
+and exteroceptive information from the non-keyframes to the
+keyframes, using marginalization, while maintaining the sparse
+structure of the associated information matrix, resulting in fast
+and efÞcient solutions. The performance of C-KLAM has been
+tested in experiments, using visual and inertial measurements,
+to demonstrate that it achieves performance comparable to that
+of the computationally-intensive batch MAP-based 3D SLAM,
+that uses all available measurement information.
+I. INTRODUCTION AND RELATED WORK
+One of the main challenges in designing an estima-
+tion algorithm for large-scale Simultaneous Localization
+and Mapping (SLAM) is its inherently high computational
+complexity. For example, the computational complexity of
+the Minimum Mean Squared Error (MMSE) estimator for
+SLAM, i.e., the Extended Kalman Þlter [1], is O(N
+2
+) at
+each time step, where N is the number of landmarks in the
+map. Similarly, for the batch Maximum A Posteriori (MAP)
+estimator-based SLAM (smoothing and mapping) [2], the
+worst-case computational complexity isO([K+N]
+3
+), where
+K is the number of robot poses in the trajectory. While
+existing batch MAP-based SLAM approaches such as the
+Ã
+SAM [2],g
+2
+o [3], and SPA [4] generate efÞcient solutions
+by exploiting the sparsity of the information matrix, for large-
+scale SLAM with frequent loop closures, this cost eventually
+prohibits real-time operation.
+The approximate solutions developed to reduce MAP-
+based SLAMÕs computational complexity can be classiÞed
+into three main categories. The Þrst category of approaches
+such as iSAM [5] and iSAM2 [6] incrementally optimize
+over all robot poses and landmarks, using all available mea-
+surement information. However, for trajectories with frequent
+loop closures, (i) nonzero Þll-ins into the information matrix
+are generated between periodic batch updates for iSAM,
+when the number of constraints is greater than Þve times
+the number of robot poses [5], and (ii) many nodes in
+the Bayes tree used by iSAM2 have to be relinearized,
+ 
+E. D. Nerurkar, and S. I. Roumeliotis are with the Department of
+Computer Science and Engineering, Univ. of Minnesota, Minneapolis, USA
+{nerurkar,stergios}@cs.umn.edu
+à
+K. J. Wu is with the Department of Electrical and Computer Engineer-
+ing, Univ. of Minnesota, Minneapolis, USA kejian@cs.umn.edu
+This work was supported by the University of Minnesota through the
+Digital Technology Center (DTC), and AFOSR (FA9550-10-1-0567).
+hence degrading the performance of these approaches. The
+graphical SLAM approach of [7] provides efÞcient solutions
+by employing block coordinate descent-based minimization
+and by postponing relinearization. Besides the approximation
+used for minimizing the cost function, this methodÕs accuracy
+also suffers due to the accumulation of linearization errors
+when frequent loop closures occur.
+The second category includes Þxed-lag smoothing ap-
+proaches such as [8], [9] that consider a constant-size,
+sliding-window of recent robot poses and landmarks, along
+with measurements only in that time window. Here, old robot
+poses and landmarks are marginalized and the correspond-
+ing measurements are discarded. However, marginalization
+destroys the sparsity of the information matrix, and the cost
+of this approach becomesO(R
+3
+), hence limiting the number
+of poses, R, in the sliding window. Moreover, this approach
+is unable to close loops for long trajectories.
+The third category consists of keyframe-based approaches,
+such as PTAM [10]. PTAM processes measurement infor-
+mation from only a subset of all available views, hence
+information from non-keyframes is discarded (as opposed
+to marginalized) in order to retain the sparsity of the infor-
+mation matrix. Keyframe-based pose-graph approaches [11],
+[12], [13], [14], [15], [16], on the other hand, make use
+of all information from both key and non-key frames, but
+measurements from each frame are used multiple times to
+generate relative pose-to-pose constraints, especially in loop
+closure events. Re-using information results in inconsistent
+estimates, hence degrading the estimation accuracy.
+In this paper, we present the Constrained Keyframe-
+based Localization and Mapping (C-KLAM), an approximate
+batch MAP-based algorithm, which estimates only keyframes
+(key robot poses) and key landmarks while also exploiting
+information (e.g., visual observations and odometry mea-
+surements) available to the non-keyframes. In particular, this
+information is projected onto the keyframes, by generating
+consistent pose constraints between them. Our main contri-
+butions are as follows:
+¥ C-KLAM utilizes both proprioceptive [e.g., inertial
+measurement unit (IMU)] and exteroceptive (e.g., cam-
+era) measurements from non-keyframes to generate
+pose constraints between the keyframes in a consistent
+manner. This is achieved by marginalizing the non-
+keyframes along with the landmarks observed from
+them.
+¥ In contrast to sliding-window approaches, C-KLAM
+incorporates information from marginalized frames and
+landmarks without destroying the sparsity of the infor-
+mation matrix, and hence generates fast and efÞcient
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 3638
+Fig. 1: An example of the exploration epoch before (left) and after (right) the approximation employed in C-KLAM. x
+0
+, x
+4
+are the keyframes to be
+retained, andx
+1
+,x
+2
+, andx
+3
+are the non-keyframes to be marginalized. Similarly, f
+1
+,f
+5
+are key landmarks (observed from the keyframes) to be retained,
+while f
+2
+, f
+3
+, and f
+4
+are non-key landmarks (observed exclusively from the non-keyframes) to be marginalized. In the left Þgure, the arrows denote the
+measurements between different states. In the right Þgure, the blue arrow represents the pose constraint generated between the keyframes using C-KLAM.
+solutions.
+¥ The cost of marginalization in C-KLAM is cubic,
+O(M
+3
+r
+), only in the number of non-keyframes,M
+r
+, be-
+tween consecutive keyframes, and linear in the number
+of landmarks, M
+f
+, observed exclusively from the M
+r
+non-keyframes, where M
+r
+? M
+f
+.
+¥ The keyframes and the associated landmark-map are
+maintained over the entire robot trajectory, and thus
+C-KLAM enables efÞcient loop closures, necessary for
+ensuring accurate and consistent long-term navigation.
+II. ALGORITHM DESCRIPTION
+In this section, we Þrst present a brief overview of batch
+MAP-based SLAM, followed by the details of the proposed
+C-KLAM algorithm. Moreover, to facilitate the description
+of these estimation algorithms, we will use the speciÞc
+example scenario depicted in Fig. 1. Note, however, that
+C-KLAM is a general approach that can be used for any
+number of key and non-key poses
+1
+and landmarks.
+A. Batch MAP-based SLAM
+Consider a robot, equipped with proprioceptive (e.g., IMU)
+and exteroceptive (e.g., camera) sensors, navigating in a 3D
+environment. The motion model for the robot is given by:
+x
+i+1
+=f(x
+i
+,u
+i
+?w
+i
+) (1)
+wheref is a general nonlinear function
+2
+,x
+i
+andx
+i+1
+denote
+the robot poses at time-steps i and i + 1, respectively,
+u
+i
+= u
+it
++ w
+i
+, is the measured control input (linear
+acceleration and rotational velocity), where u
+it
+denotes the
+true control input, andw
+i
+is the zero-mean, white Gaussian
+measurement noise with covariance Q
+i
+. The measurement
+model for the robot at time-step i, obtaining an observation,
+z
+ij
+, to landmarkf
+j
+is given by:
+z
+ij
+=h(x
+i
+,f
+j
+)+v
+ij
+(2)
+where h is a general nonlinear measurement function
+2
+and
+v
+ij
+is the zero-mean, white Gaussian measurement noise
+with covarianceR
+ij
+.
+1
+The terms key poses and keyframes are used interchangeably in this
+paper.
+2
+The details of the IMU motion model as well as the camera measurement
+model can be found in [8].
+Consider the current exploration epoch shown in Fig. 1,
+consisting of Þve robot poses, x
+i
+, i = 0,1,...,4, and of
+Þve point landmarks, f
+j
+, j = 1,2,...,5, observed from
+these poses. The batch MAP estimates, ö x
+MAP
+0:4
+,
+ö
+f
+MAP
+1:5
+, of
+all robot poses,x
+0:4
+, and all landmark positions,f
+1:5
+, using
+all available proprioceptive, u
+0:3
+, and exteroceptive, Z
+0:4
+,
+measurements are given by:
+ö x
+MAP
+0:4
+,
+ö
+f
+MAP
+1:5
+, arg max
+x0:4,f1:5
+p(x
+0:4
+,f
+1:5
+|Z
+0:4
+,u
+0:3
+) (3)
+whereZ
+i
+denotes the set of all exteroceptive measurements
+obtained at robot pose x
+i
+, i = 0,1,...,4. Under the Gaus-
+sian and independent noise assumptions, (3) is equivalent
+to minimizing the following nonlinear least-squares cost
+function:
+C(x
+0:4
+,f
+1:5
+;Z
+0:4
+,u
+0:3
+)
+=
+1
+2
+||x
+0
+?ö x
+0|0
+||
+2
+P
+0|0
++
+3
+X
+i=0
+1
+2
+||x
+i+1
+?f(x
+i
+,u
+i
+)||
+2
+Q
+? i
++
+X
+zij?Z0:4
+1
+2
+||z
+ij
+?h(x
+i
+,f
+j
+)||
+2
+Rij
+,C
+P
+(x
+0
+;ö x
+0|0
+)+
+3
+X
+i=0
+C
+M
+(x
+i+1
+,x
+i
+;u
+i
+)
++
+X
+zij?Z0:4
+C
+O
+(x
+i
+,f
+j
+;z
+ij
+) (4)
+where x
+0
+? N(ö x
+0|0
+,P
+0|0
+) denotes the prior for the robot
+pose, Q
+? i
+= G
+i
+Q
+i
+G
+T
+i
+, and G
+i
+is the Jacobian of f with
+respect to the noise w
+i
+. In what follows, we denote the
+cost terms arising from the prior, the robot motion, and the
+landmark observations byC
+P
+,C
+M
+, andC
+O
+, respectively.
+A standard approach for minimizing (4) is to employ the
+Gauss-Newton iterative minimization algorithm [17] with
+computational complexity up to O([K + N]
+3
+), where K
+and N denote the number of robot poses and landmarks,
+respectively. Note that, as the robot explores the environment
+and observes new landmarks, the size of the optimization
+problem (both K and N) in (4) continuously increases.
+Therefore, for long trajectories with many features and
+frequent loop closures, the cost of solving (4) may prohibit
+real-time operation.
+3639
+Fig. 2: Structure of the Hessian matrices, H
+C
+1
+and H
+C
+2
+, corresponding
+to the cost functions C
+1
+and C
+2
+[see (5)], respectively. The colored blocks
+denote non-zero elements. SpeciÞcally, for H
+C
+2
+, associated with the mea-
+surements denoted by red arrows in Fig. 1, the block-diagonal sub-matrices
+A
+k
+and A
+b
+correspond to key poses and key landmarks, respectively.
+Ar and A
+f
+correspond to non-key poses and non-key landmarks to be
+marginalized, respectively. Here A
+k
+and Ar are, in general, block tri-
+diagonal, while A
+b
+and A
+f
+are block diagonal.
+B. C-KLAM Algorithm
+1) Problem Formulation: In order to reduce the com-
+putational complexity of MAP-based SLAM and ensure
+accurate and real-time navigation over long time durations,
+the proposed C-KLAM approach (i) builds a sparse map of
+the environment consisting of only the key robot poses and
+the distinctive landmarks observed from these key poses, and
+(ii) uses measurement information from non-key poses to
+create constraints between the key poses, in order to improve
+estimation accuracy.
+SpeciÞcally, for the example in Fig. 1, let us assume that
+we retain: (i)x
+0
+andx
+4
+as key poses, and (ii) landmarks,f
+1
+andf
+5
+, observed from these key poses as key landmarks
+3
+. In
+this case, (4) can be split into two parts as follows:
+C = C
+P
+(x
+0
+;ö x
+0|0
+)+C
+O
+(x
+0
+,f
+1
+;z
+01
+)+C
+O
+(x
+4
+,f
+5
+;z
+45
+)
+| {z }
+C1(x0,x4,f1,f5;ö x
+0|0
+,z01,z45)
++
+3
+X
+i=0
+C
+M
+(x
+i+1
+,x
+i
+;u
+i
+)+
+X
+zij?Z1:3
+C
+O
+(x
+i
+,f
+j
+;z
+ij
+)
+| {z }
+C2(x1:3,f2:4,x0,x4,f1,f5;Z1:3,u0:3)
+(5)
+The Þrst part of the cost function,C
+1
+, depends only upon the
+key poses, key landmarks, and the measurements between
+them (denoted by thin black arrows in Fig. 1). This part
+consists of cost terms arising from the prior term and from
+the two exteroceptive measurements, z
+01
+and z
+45
+, obtained
+at the key posesx
+0
+andx
+4
+, respectively. The second part of
+the cost function, C
+2
+, contains all cost terms that involve
+non-key poses and non-key landmarks. SpeciÞcally, these
+3
+Note that we retain only two key poses/landmarks in this example, in
+order to simplify the explanation. However, C-KLAM can be used to retain
+any number of key poses/landmarks. The key poses are selected based on
+certain criteria, e.g., distance traveled between two key poses, poses that
+observe points of interest, uniqueness of a image, etc. Furthermore, for the
+example in Fig. 1, we assume that the depth to the features is available (e.g.,
+from an RGB-D camera), in order to reduce the number of measurements
+and poses required. However, if a regular camera is used, at least two
+observations of a key feature and the corresponding poses will need to
+be retained.
+correspond to two types of cost terms: (i) terms that involve
+only non-key poses and non-key landmarks (corresponding
+to measurements denoted by solid red lines in Fig. 1), e.g.,
+C
+O
+(x
+1
+,f
+2
+;z
+12
+), and (ii) terms that involve both key and
+non-key elements (corresponding to measurements denoted
+by dashed red lines in Fig. 1), e.g., C
+O
+(x
+1
+,f
+1
+;z
+11
+) and
+C
+M
+(x
+1
+,x
+0
+;u
+0
+).
+2) Marginalization and Na¬ õve Approximation: Before we
+proceed, we note that some keyframe-based approaches such
+as PTAM [10] optimize only over C
+1
+in order to reduce
+the computational complexity, i.e., the cost terms in C
+2
+and the corresponding measurements are discarded, resulting
+in signiÞcant information loss. An alternative approach to
+retain a part of the information in C
+2
+, is to marginalize the
+non-key poses and landmarks, x
+1:3
+and f
+2:4
+, respectively.
+Mathematically, this is equivalent to approximating the cost
+functionC byC
+? as follows (see Fig. 2):
+C?C
+? (x
+0
+,x
+4
+,f
+1
+,f
+5
+;ö x
+0|0
+,z
+01
+,z
+45
+,ö x
+0
+,ö x
+4
+,
+ö
+f
+1
+,
+ö
+f
+5
+)
+=C
+1
++C
+? 2
+(x
+0
+,x
+4
+,f
+1
+,f
+5
+;ö x
+0
+,ö x
+4
+,
+ö
+f
+1
+,
+ö
+f
+5
+) (6)
+where,
+C
+? 2
+=?
+? +g
+T
+C
+? 2
+?
+?
+?
+?
+x
+0
+?ö x
+0
+x
+4
+?ö x
+4
+f
+1
+?
+ö
+f
+1
+f
+5
+?
+ö
+f
+5
+?
+?
+?
+?
++
+1
+2
+?
+?
+?
+?
+x
+0
+?ö x
+0
+x
+4
+?ö x
+4
+f
+1
+?
+ö
+f
+1
+f
+5
+?
+ö
+f
+5
+?
+?
+?
+?
+T
+H
+C
+? 2
+?
+?
+?
+?
+x
+0
+?ö x
+0
+x
+4
+?ö x
+4
+f
+1
+?
+ö
+f
+1
+f
+5
+?
+ö
+f
+5
+?
+?
+?
+?
+(7)
+with,
+H
+C
+? 2
+=
+
+A
+k
+0
+0 A
+b
+
+?
+
+B
+k
+0
+B
+b
+0
+
+A
+r
+A
+rf
+A
+fr
+A
+f
+
+?1
+
+B
+T
+k
+B
+T
+b
+0 0
+
+(8)
+g
+C
+? 2
+=
+
+g
+k
+g
+b
+
+?
+
+B
+k
+0
+B
+b
+0
+
+A
+r
+A
+rf
+A
+fr
+A
+f
+
+?1
+
+g
+r
+g
+f
+
+,
+
+g
+C
+? 2
+,k
+g
+C
+? 2
+,b
+
+.
+(9)
+Here, ö x
+0
+, ö x
+4
+,
+ö
+f
+1
+, and
+ö
+f
+5
+are the estimates of x
+0
+, x
+4
+, f
+1
+,
+and f
+5
+, respectively, at the time of marginalization, ?
+? is
+a constant term independent of the optimization variables,
+and g
+k
+,g
+b
+,g
+r
+, and g
+f
+are the gradient vectors of C
+2
+with
+respect to{x
+0
+,x
+4
+},{f
+1
+,f
+5
+},{x
+1:3
+}, and{f
+2:4
+}, respectively.
+Also,g
+C
+? 2
+andH
+C
+? 2
+denote the Jacobian and Hessian matrix,
+respectively. Lastly, we note that H
+C
+? 2
+, as expected, is the
+Schur complement of the diagonal block, corresponding to
+non-key poses and non-key landmarks, of the Hessian,H
+C2
+,
+of the original cost function,C
+2
+(see Fig. 2).
+As expected, however, this marginalization of non-key
+elements creates additional constraints between the key poses
+and the key landmarks, which directly translates into Þll-
+ins in the reduced Hessian matrix, H
+C
+? 2
+. This destroys the
+sparse structure of the Hessian matrix, H
+C
+? =H
+C1
++H
+C
+? 2
+,
+that corresponds to the cost function C
+? [see (6)], and
+substantially increases the computational cost of obtaining
+a solution to the minimization problem. By studying the
+relationship between the measurement graph corresponding
+to Fig. 1 and the sparsity pattern of the resulting Hessian
+matrix, we note that the exteroceptive measurements from
+3640
+Fig. 3: Pictorial depiction of the approximation carried out by C-KLAM
+in order to ensure sparsity of the Hessian matrix. Instead of associating
+the measurements z
+11
+and z
+35
+, to the key features f
+1
+and f
+5
+(see Fig. 1),
+respectively, C-KLAM assumes that these are measurements to different
+landmarks f
+? 1
+and f
+? 5
+.
+non-key poses to key features, i.e.,z
+11
+andz
+35
+, are the ones
+responsible for generating Þll-ins in the Hessian matrix,H
+C
+? ,
+after marginalization
+4
+.
+A straightforward solution to retain the sparsity of the
+Hessian matrix would be to Þrst discard any exteroceptive
+measurements between non-key poses and key features (e.g.,
+z
+11
+andz
+35
+in Fig. 1), and then proceed with the marginaliza-
+tion of non-key elements. However, in real-world scenarios,
+f
+1
+and f
+5
+are not single features, but they each correspond
+to a group of features. Hence, such an approximation would
+discard numerous measurements, resulting in substantial in-
+formation loss.
+3) C-KLAM Approximation: In order to address this
+problem and maintain the sparse structure of the Hessian
+(information) matrix while incorporating information from
+C
+2
+, C-KLAM carries out an additional approximation step,
+i.e., it further approximates C
+? 2
+in (6) by a quadratic cost
+term, C
+?? 2
+(x
+0
+,x
+4
+;ö x
+0
+,ö x
+4
+) that constraints only the key poses
+x
+0
+andx
+4
+.
+SpeciÞcally, along with the non-key poses/landmarks, C-
+KLAM marginalizes the key landmarks f
+1
+and f
+5
+, but only
+fromC
+2
+; these key landmarks will still appear as optimization
+variables in C
+1
+[see (5)]. Moreover, marginalizing f
+1
+and
+f
+5
+from C
+2
+, while retaining them in C
+1
+, implies that we
+ignore their data association
+5
+and treat them as different
+features (say f
+? 1
+and f
+? 5
+) in C
+2
+. Mathematically, this process
+can be described by Þrst considering the following equivalent
+optimization problems [see (4), (5), and Fig. 3]:
+minC(x
+0:4
+,f
+1:5
+;Z
+0:4
+,u
+0:3
+)
+? min
+ø
+C(x
+0:4
+,f
+1:5
+,f
+? 1
+,f
+? 5
+;Z
+0:4
+,u
+0:3
+)
+s.t.f
+1
+=f
+? 1
+,f
+5
+=f
+? 5
+(10)
+where,
+ø
+C =C
+1
+(x
+0
+,x
+4
+,f
+1
+,f
+5
+;ö x
+0|0
+,z
+01
+,z
+45
+)
++
+ø
+C
+2
+(x
+1:3
+,f
+2:4
+,x
+0
+,x
+4
+,f
+? 1
+,f
+? 5
+;Z
+1:3
+,u
+0:3
+) (11)
+4
+Note that the proprioceptive measurements between key and non-key
+poses, i.e.,u
+0
+and u
+3
+, also generate Þll-ins, but these Þll-ins are desirable
+for our problem as they represent constraints between two consecutive key
+poses after marginalization.
+5
+Besides the inability to relinearize marginalized states, ignoring this data
+association is the main information loss incurred by C-KLAM as compared
+to the batch MAP-based SLAM.
+Fig. 4: Structure of the Hessian matrix, Hø
+C
+2
+, corresponding to the cost
+function
+ø
+C
+2
+[see (11)]. The colored blocks denote non-zero elements. Note
+that this Hessian matrix does not have any entries corresponding to the key
+features f
+1
+and f
+5
+. Instead, it has entries for the features f
+? 1
+and f
+? 5
+.
+Note that minimizing the batch-MAP cost function in (4) is
+exactly equivalent to the constrained optimization problem
+presented in (10). Now, in order to maintain the sparsity of
+the Hessian matrix after marginalizing the non-key elements,
+C-KLAM discards the constraint in (10) and hence assumes
+that the features f
+? 1
+and f
+? 5
+are distinct from f
+1
+and f
+5
+,
+respectively (see Fig. 3). Due to this relaxation,
+ø
+C
+2
+no longer
+depends on the key features f
+1
+and f
+5
+, and hence has no
+cost terms corresponding to measurements between non-key
+poses and key features. Due to this approximation, C-KLAM
+can now marginalize the features f
+? 1
+and f
+? 5
+, along with the
+non-key elementsx
+1:3
+andf
+2:4
+, from
+ø
+C in (11), thus ensuring
+that the resulting Hessian matrix remains sparse. SpeciÞcally,
+C-KLAM approximates
+ø
+C
+2
+in (11) by [see Fig.s 2 and 4]:
+ø
+C
+2
+?C
+?? 2
+(x
+0
+,x
+4
+;ö x
+0
+,ö x
+4
+) (12)
+= ?
+?? +g
+T
+C
+?? 2
+
+x
+0
+?ö x
+0
+x
+4
+?ö x
+4
+
++
+1
+2
+
+x
+0
+?ö x
+0
+x
+4
+?ö x
+4
+
+T
+H
+C
+?? 2
+
+x
+0
+?ö x
+0
+x
+4
+?ö x
+4
+
+with,
+H
+C
+?? 2
+=A
+k
+?B
+k
+(D?B
+T
+b
+A
+?1
+b
+B
+b
+)
+?1
+B
+T
+k
+(13)
+g
+C
+?? 2
+=g
+C
+? 2
+,k
++B
+k
+D
+?1
+B
+T
+b
+(14)
+á(A
+?1
+b
++A
+?1
+b
+B
+b
+(D?B
+T
+b
+A
+?1
+b
+B
+b
+)
+?1
+B
+T
+b
+A
+?1
+b
+)g
+C
+? 2
+,b
+and
+D =A
+r
+?A
+rf
+A
+?1
+f
+A
+fr
+. (15)
+where ?
+?? is a constant, independent of the optimization
+variables, and g
+C
+?? 2
+, H
+C
+?? 2
+denote the Jacobian and Hessian
+matrix, respectively.
+After this approximation, the Þnal C-KLAM cost function
+becomes:
+C
+CKLAM
+= C
+1
+(x
+0
+,x
+4
+,f
+1
+,f
+5
+;ö x
+0|0
+,z
+01
+,z
+45
+)
++C
+?? 2
+(x
+0
+,x
+4
+;ö x
+0
+,ö x
+4
+) (16)
+whose corresponding Hessian would be the same as that of
+C
+1
+(and thus sparse) plus an additional information (relative
+pose) constraint betweenx
+0
+andx
+4
+due toC
+?? 2
+. In summary,
+by approximatingC
+2
+byC
+?? 2
+, C-KLAM is able to incorporate
+most of the information from the non-key poses/landmarks,
+3641
+0
+5
+10
+15
+20
+?20 ?10 0 10 20 30
+ 
+Trajectory & Landmark Positions
+y (m)
+ 
+x (m)
+BA
+C?KLAM
+BA Landmarks
+C?KLAM Landmarks
+Fig. 5: Overhead x?y view of the estimated 3D trajectory and landmark positions. The C-KLAM estimates only keyframes (marked with red squares)
+and key features (marked with magenta circles), while BA estimates the entire trajectory (marked by blue line) and all features (marked by black x-s).
+while maintaining the sparsity of the Hessian matrix. More-
+over, the part of the cost function,C
+1
+, corresponding to the
+key poses/landmarks, remains intact.
+4) C-KLAM Computational Complexity: Lastly, we show
+that the approximation (marginalization) described above can
+be carried out with cost cubic in the number of marginalized
+non-key poses, and only linear in the number of marginal-
+ized non-key landmarks. For the complexity analysis, let
+us assume that we have M
+r
+non-key poses and M
+f
+non-
+key features to be marginalized, and M
+b
+features that are
+observed from both key and non-key frames, where M
+f
+? M
+r
+and M
+f
+? M
+b
+. The marginalization step involves the
+computation of the Hessian matrix,H
+C
+?? 2
+, and the Jacobian,
+g
+C
+?? 2
+, according to (13) - (15). For computing both the
+Hessian and the Jacobian, we Þrst need to calculate D
+in (15). Since A
+f
+is block-diagonal, A
+?1
+f
+in (15) can
+be computed with cost only O(M
+f
+). Moreover, since the
+number of marginalized non-key features, M
+f
+, far exceeds
+M
+r
+and M
+b
+, the cost of computingD remains O(M
+f
+). To
+compute the Hessian [see (13)], note thatA
+b
+is also block-
+diagonal, hence obtaining (D?B
+T
+b
+A
+?1
+b
+B
+b
+)
+?1
+, which is the
+most computationally-intensive operation in (13), requires
+O(M
+3
+r
+) operations. The cost of calculating the remaining
+matrix multiplications and additions in (13) is signiÞcantly
+lower as compared to this cubic cost.
+To compute the Jacobian, g
+C
+?? 2
+[see (14)], we can reuse
+the values of D, (D ? B
+T
+b
+A
+?1
+b
+B
+b
+)
+?1
+, and A
+?1
+b
+, which
+have already been calculated when computing the Hessian. In
+addition, we need to computeD
+?1
+, which can be found with
+complexity O(M
+3
+r
+). The rest of the computations involve
+only matrix-vector multiplications and vector additions at a
+negligible cost.
+Hence, the overall cost of the marginalization step is cubic
+in the number of marginalized non-key poses, and only linear
+in the number of marginalized non-key landmarks. SinceM
+r
+is bounded (user deÞned), the marginalization in C-KLAM
+can be carried out with minimal computational overhead.
+III. EXPERIMENTAL RESULTS
+The experimental setup consists of a PointGrey
+Chameleon camera and a Navchip IMU, rigidly attached
+on a light-weight (100 g) platform. The IMU signals were
+sampled at a frequency of 100 Hz while camera images
+were acquired at 7.5 Hz. SIFT features [18] were detected
+in the camera images and matched using a vocabulary
+tree [19]. The experiment was conducted in an indoor
+environment where the sensor platform followed a 3D
+rectangular trajectory, of total length of 144 m, and returned
+back to the initial position in order to provide an estimate
+of the Þnal position error.
+In the C-KLAM implementation, the corresponding ap-
+proximate batch-MAP optimization problem was solved ev-
+ery 20 incoming camera frames. The exploration epoch
+(see Fig. 1) was set to 60 camera frames, from which the
+Þrst and last 10 consecutive camera frames were retained
+as keyframes, while the rest were marginalized using the
+C-KLAM algorithm. We compared the performance of C-
+KLAM to that of the computationally-intensive, batch MAP-
+based SLAM [bundle adjustment (BA)], which optimizes
+over all camera poses and landmarks, using all available
+measurements, to provide high-accuracy estimates as the
+comparison baseline. In the BA implementation, the batch-
+MAP optimization problem was solved every 20 incoming
+camera frames.
+Fig. 5 shows thex?y view of the estimated trajectory and
+landmark positions. As evident, the estimates of the robot
+trajectory and landmark positions generated by C-KLAM
+are almost identical to those of the BA. Loop closure was
+performed and the Þnal position error was 7 cm for C-
+KLAM, only 5% more than that of the BA.
+3642
+In terms of speed, C-KLAM took only 4% of the time
+required for the entire BA. At the end of this experiment,
+C-KLAM retained 238 keyframes and 349 key landmarks,
+while BA had 1038 camera frames and 1281 landmarks.
+This signiÞcant reduction in the number of estimated states
+in C-KLAM led to substantial improvement in efÞciency.
+Moreover, by using information from non-keyframes to
+constrain the keyframes, C-KLAM was able to achieve
+estimation performance comparable to that of the BA. See
+the accompanying video for results of a more challenging
+experiment with a ßying quadrotor.
+IV. CONCLUSION
+In this paper, we presented C-KLAM, an approximate
+MAP estimator-based SLAM algorithm. In order to re-
+duce the computational complexity of the batch MAP-
+based SLAM, C-KLAM estimates only the keyframes and
+key landmarks, observed from these keyframes. However,
+instead of discarding the measurement information from
+non-keyframes and non-key landmarks, C-KLAM uses most
+of this information to generate consistent pose constraints
+between the keyframes, resulting in substantial information
+gain. Moreover, the approximations performed in C-KLAM
+retain the sparsity of the information matrix, and hence the
+resulting optimization problem can be solved efÞciently. We
+presented experimental results for validating the performance
+of C-KLAM and compared it with that of the batch MAP-
+based SLAM (bundle adjustment). Our results demonstrated
+that C-KLAM not only obtains substantial speed-up, but
+also achieves estimation accuracy comparable to that of the
+batch MAP-based SLAM that uses all available measurement
+information.
+REFERENCES
+[1] R. Smith and P. Cheeseman, ÒOn the representation and estimation
+of spatial uncertainty,Ó International Journal of Robotics Research,
+vol. 5, no. 4, pp. 56Ð68, Dec. 1986.
+[2] F. Dellaert and M. Kaess, ÒSquare root SAM: Simultaneous Local-
+ization and Mapping via square root information smoothing,Ó Interna-
+tional Journal of Robotics Research, vol. 25, no. 12, pp. 1181Ð1203,
+Dec. 2006.
+[3] R. Kummerle, G. Grisetti, H. Strasdat, K. Konolige, and W. Burgard,
+Òg2o: A general framework for graph optimization,Ó in Proc. of
+the IEEE International Conference on Robotics and Automation,
+Shanghai, China, May 9Ð13 2011, pp. 3607Ð3613.
+[4] K. Konolige, G. Grisetti, R. Kummerle, W. Burgard, B. Limketkai, and
+R. Vincent, ÒEfÞcient Sparse Pose Adjustment for 2D mapping,Ó in
+Proc. of the IEEE/RSJ International Conference on Intelligent Robots
+and Systems, Taipei, Taiwan, Oct. 18Ð22 2010, pp. 22Ð29.
+[5] M. Kaess, A. Ranganathan, and F. Dellaert, ÒiSAM: Incremental
+smoothing and mapping,Ó IEEE Transactions on Robotics, vol. 24,
+no. 6, pp. 1365Ð1378, Dec. 2008.
+[6] M. Kaess, H. Johannsson, R. Roberts, V . Ila, J. Leonard, and F. Del-
+laert, ÒiSAM2: Incremental smoothing and mapping using the bayes
+tree,Ó International Journal of Robotics Research, vol. 31, no. 2, pp.
+216Ð235, Feb. 2012.
+[7] J. Folkesson and H. Christensen, ÒGraphical slam - a self-correcting
+map,Ó in Proc. of the IEEE International Conference on Robotics and
+Automation, New Orleans, LA, Apr. 26 Ð May 1, 2004, pp. 383Ð390.
+[8] A. I. Mourikis, N. Trawny, S. I. Roumeliotis, A. Johnson, A. Ansar,
+and L. Matthies, ÒVision-aided inertial navigation for spacecraft entry,
+descent, and landing,Ó IEEE Transactions on Robotics, vol. 25, no. 2,
+pp. 264Ð280, Apr. 2009.
+[9] G. Sibley, L. Matthies, and G. Sukhatme, ÒSliding window Þlter with
+application to planetary landing,Ó Journal of Field Robotics, vol. 27,
+no. 5, pp. 587Ð608, Sep./Oct. 2010.
+[10] G. Klein and D. Murray, ÒParallel tracking and mapping for small AR
+workspaces,Ó in Proc. of the IEEE and ACM International Symposium
+on Mixed and Augmented Reality, Nara, Japan, Nov. 13Ð16 2007, pp.
+225Ð234.
+[11] K. Konolige and M. Agrawal, ÒFrameSLAM: From bundle adjustment
+to real-time visual mapping,Ó IEEE Transactions on Robotics, vol. 24,
+no. 5, pp. 1066Ð1077, Oct. 2008.
+[12] H. Strasdat, J. Montiel, and A. Davison, ÒScale drift-aware large scale
+monocular slam,Ó in Proc. of Robotics: Science and Systems, Zaragoza,
+Spain, Jun. 27Ð30 2010.
+[13] H. Strasdat, A. Davison, J. Montiel, and K. Konolige, ÒDouble window
+optimisation for constant time visual slam,Ó in Proc. of the IEEE
+International Conference on Computer Vision, Barcelona, Spain, Nov.
+6Ð13 2011, pp. 2352Ð2359.
+[14] K. Konolige, J. Bowman, J. D. Chen, P. Mihelich, M. Calonder,
+V . Lepetit, and P. Fua, ÒView-based maps,Ó International Journal of
+Robotics Research, vol. 29, no. 29, pp. 941Ð957, Jul. 2010.
+[15] R. M. Eustice, H. Singh, and J. J. Leonard, ÒExactly sparse delayed-
+state Þlters for view-based SLAM,Ó IEEE Transactions on Robotics,
+vol. 22, no. 6, pp. 1100Ð1114, Dec. 2006.
+[16] H. Johannsson, M. Kaess, M. Fallon, and J. Leonard, ÒTemporally
+scalable visual SLAM using a reduced pose graph,Ó in Proc. of
+the IEEE International Conference on Robotics and Automation,
+Karlsruhe, Germany, May 6Ð10 2013, pp. 54Ð61.
+[17] B. Triggs, P. F. McLauchlan, R. I. Hartley, and A. W. Fitzgibbon,
+ÒBundle Adjustment - A Modern Synthesis,Ó Lecture Notes in Com-
+puter Science, vol. 1883, pp. 298Ð372, Jan. 2000.
+[18] D. G. Lowe, ÒDistinctive image features from scale-invariant key-
+points,Ó International Journal of Computer Vision, vol. 60, no. 2, pp.
+91Ð110, Nov. 2004.
+[19] D. Nister and H. Stewenius, ÒScalable recognition with a vocabulary
+tree,Ó in Proc. of the IEEE Computer Society Conference on Computer
+Vision and Pattern Recognition, New York, NY , Jun. 17Ð22 2006, pp.
+2161Ð2168.
+3643

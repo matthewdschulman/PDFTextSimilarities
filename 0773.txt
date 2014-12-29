@@ -1,0 +1,1593 @@
+Control-Limited Differential Dynamic Programming
+Yuval Tassa
+ 
+, Nicolas Mansard
+?
+and Emo Todorov
+ 
+AbstractÑ Trajectory optimizers are a powerful class of
+methods for generating goal-directed robot motion. Differential
+Dynamic Programming (DDP) is an indirect method which
+optimizes only over the unconstrained control-space and is
+therefore fast enough to allow real-time control of a full hu-
+manoid robot on modern computers. Although indirect methods
+automatically take into account state constraints, control limits
+pose a difÞculty. This is particularly problematic when an
+expensive robot is strong enough to break itself.
+In this paper, we demonstrate that simple heuristics used
+to enforce limits (clamping and penalizing) are not efÞcient in
+general. We then propose a generalization of DDP which ac-
+commodates box inequality constraints on the controls, without
+signiÞcantly sacriÞcing convergence quality or computational
+effort. We apply our algorithm to three simulated problems,
+including the 36-DoF HRP-2 robot. A movie of our results can
+be found here goo.gl/eeiMnn
+I. INTRODUCTION
+It would be appealing to specify the behavior of a robot in
+terms of simple cost functions, and let an intelligent control
+algorithm handle the details. This is also the idea behind
+the task-function [1] or the operational-space [2] approaches:
+instead of working in the conÞguration space, the motion is
+speciÞed with a more abstract function related, for example,
+to the position of the end effector or to the output value
+of a sensor. The task-function approach naturally leads to
+inverse kinematics [3] or operational-space inverse dynamics
+[4] and is particularly active nowadays in humanoid robotics
+[5], [6], [7] where it is turned into control machinery by
+using task sequencing [7]. Classically, a simple proportional
+or proportional-derivative controller in the task space is
+used [8], but it results in simple trajectories that behave
+badly when coming close to obstacles or joint limits. The
+convergence basin of these local methods is then very small.
+Ad-hoc task trajectories can be learned [9], which enlarge
+the convergence basin with a-priori knowledge and provide
+a consistent way to deÞne complex task trajectories, but this
+is difÞcult to generalize to new situations.
+Trajectory optimization is the process of Þnding a state-
+control sequence which locally minimizes a given cost func-
+tion. Shooting methods Ð which trace their ancestry to the
+two-point boundary-value problem of the venerable Maxi-
+mum Principle [10] Ð are an important sub-class of trajec-
+tory optimization methods. Unlike so-called direct methods
+which explicitly represent the state, these methods parame-
+terize only the controls, and obtain the states from forward
+integration (hence ÒshootingÓ). States are never explicitly
+represented in the optimization space and consequently these
+ 
+Computer Science & Engineering, Univ. of Washington, Seattle, USA
+(ftassa,todorovg@cs.washington.edu).
+?
+LAAS-CNRS, Univ. Toulouse, France (nmansard@laas.fr).
+Fig. 1. Left: The humanoid robot HRP-2. Right: Real-time reaching and
+balancing behaviors are described in Section IV and in the attached movie.
+methods are also known as indirect [11]. Because the dynam-
+ics are folded into the optimization, state-control trajectories
+are always strictly feasible and Òdynamic constraintsÓ are
+unnecessary. If additionally the controls are unconstrained,
+so is the optimization search-space and shooting methods
+can enjoy the beneÞts of fully unconstrained optimization.
+DDP is a second-order shooting method [12] which under
+mild assumptions admits quadratic convergence for any sys-
+tem with smooth dynamics [13]. It has been shown to posses
+convergence properties similar, to or slightly better than,
+NewtonÕs method performed on the entire control sequence
+[14]. Classic DDP requires second-order derivatives of the
+dynamics, which are usually the most expensive part of
+the computation. If only the Þrst-order terms are kept, one
+obtains a Gauss-Newton approximation known as iterative-
+Linear-Quadratic Regulator (iLQR) [15], [16], which is sim-
+ilar to Riccati iterations, but accounts for the regularization
+and line-search required to handle the nonlinearity.
+Work on constrained indirect methods began with [17],
+see [18] for a review. The work most closely related to
+ours is [19], see section III-C below. The reader may notice
+that these papers had been published several decades ago.
+More recent work on constrained trajectory optimization for
+robotics has mostly focused on direct methods [20][21][22].
+In that context the problem is transcribed into a generic
+sequential quadratic programming (SQP) which easily admits
+both equality and inequality constraints. We suspect that the
+reason these methods have been more popular is the general
+availability of off-the-shelf optimization software for generic
+SQPs. Both types of methods display different characteristics
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 1168
+and tradeoffs. The direct approach discards the temporal
+structure and is forced to search in a constrained space
+which is slower, however it is far easier to Þnd better optima
+through continuation. The indirect approach is faster and
+better suited for warm-starting, but is far more sensitive to
+local minima.
+In this paper, we consider the solution of control-
+constrained problems using indirect methods. We show ex-
+perimentally in simulation that simplistic ways of handling
+them are inefÞcient and detrimental to convergence. We then
+propose an original solution to explicitly take the inequalities
+into account using a projected-Newton QP solver which is in
+the general class of active-set methods. The capability of the
+method is shown in simulation on a wide range of systems
+(random linear systems, a nonholonomic car and a humanoid
+robot). In Section II, we quickly recall the Differential
+Dynamic Programming algorithm. We characterize the box-
+constrained control problem in Section III, along with the
+proposed original solution. Finally, Section IV describes the
+results, illustrating the usefulness of our approach.
+II. DIFFERENTIAL DYNAMIC PROGRAMMING
+This section recalls the basics of DDP that are necessary
+for the algorithm proposed in Section III. More details are
+available, see e.g. [12] for the historical presentation or [23]
+for a modern treatment using the same notations as below.
+A. Local Dynamic Programming
+We consider a system with discrete-time dynamics, but a
+similar derivation holds for the continuous case [12]. The
+dynamics is modeled by the generic function f
+x
+i+1
+= f(x
+i
+;u
+i
+); (1)
+which describes the evolution from timei toi+1 of the state
+x?R
+n
+, given the control u?R
+m
+. A trajectory {X;U} is a
+sequence of states X? {x
+0
+;x
+1
+:::;x
+N
+}, and corresponding
+controls U? {u
+0
+;u
+1
+:::;u
+N?1
+} satisfying (1).
+The total cost denoted by J is the sum of running costs
+` and Þnal cost `
+f
+, incurred when starting from x
+0
+and
+applying U until the horizon N is reached:
+J(x
+0
+;U)=
+N?1
+Q
+i=0
+`(x
+i
+;u
+i
+)+`
+f
+(x
+N
+):
+As discussed above, indirect methods represent the trajectory
+implicitly using only the controls U. The states X are
+recovered by integration of (1) from the initial state x
+0
+. The
+solution of the optimal control problem is the minimizing
+control sequence
+U
+?
+? argmin
+U
+J(x
+0
+;U):
+Letting U
+i
+? {u
+i
+;u
+i+1
+:::;u
+N?1
+} be the tail of the control
+sequence, the cost-to-go J
+i
+is the partial sum of costs from
+i to N:
+J
+i
+(x;U
+i
+)=
+N?1
+Q
+j=i
+`(x
+j
+;u
+j
+)+`
+f
+(x
+N
+):
+The Value at time i is the optimal cost-to-go starting at x:
+V
+i
+(x)? min
+Ui
+J
+i
+(x;U
+i
+):
+The Value of the Þnal time is deÞned as V
+N
+(x) ?`
+f
+(x
+N
+).
+The Dynamic Programming Principle then reduces the min-
+imization over a sequence of controls U
+i
+, to a sequence of
+minimizations over a single control, proceeding backwards
+in time:
+V (x)= min
+u
+[`(x;u)+V
+?
+(f(x;u))] (2)
+In (2) and below we omit the time index i and use V
+?
+to
+denote the Value at the next time step.
+B. Quadratic Approximation
+DDP involves iterating a forward pass (or rollout) which
+integrates (1) for a given U, followed by a backward pass
+which compute a local solution to (2) using a quadratic Tay-
+lor expansion. LetQ(x;u) be the change in the argument
+of the RHS of (2) as a function of small perturbations of the
+i-th nominal (x;u) pair:
+Q(x;u)=`(x+x;u+u)+V
+?
+(f(x+x;u+u)) (3)
+The Q-function is the discrete-time analogue of the Hamil-
+tonian, sometimes known as the pseudo-Hamiltonian. The
+second-order expansion of Q is given by:
+Q
+x
+=`
+x
++f
+T
+x
+V
+?
+x
+(4a)
+Q
+u
+=`
+u
++f
+T
+u
+V
+?
+x
+(4b)
+Q
+xx
+=`
+xx
++f
+T
+x
+V
+?
+xx
+f
+x
++V
+?
+x
+? f
+xx
+(4c)
+Q
+ux
+=`
+ux
++f
+T
+u
+V
+?
+xx
+f
+x
++V
+?
+x
+? f
+ux
+(4d)
+Q
+uu
+=`
+uu
++f
+T
+u
+V
+?
+xx
+f
+u
++V
+?
+x
+? f
+uu
+: (4e)
+where the last terms of (4c, 4d, 4e) denote the product of a
+vector with a tensor. The optimal control modiÞcation u
+?
+for some state perturbation x, is obtained by minimizing
+the quadratic model:
+u
+?
+(x)= argmin
+u
+Q(x;u)= k+ Kx: (5a)
+This is a locally-linear feedback policy with
+k??Q
+?1
+uu
+Q
+u
+and K??Q
+?1
+uu
+Q
+ux
+(5b)
+the feed-forward modiÞcation and feedback gain matrix,
+respectively. Plugging this policy back into the expansion of
+Q, a quadratic model of V is obtained. After simpliÞcation
+it is
+V = ?
+1
+2
+k
+T
+Q
+uu
+k (6a)
+V
+x
+=Q
+x
+?K
+T
+Q
+uu
+k (6b)
+V
+xx
+=Q
+xx
+?K
+T
+Q
+uu
+K: (6c)
+The backward pass begins by initializing the Value function
+with the terminal cost and its derivatives V
+N
+=`
+f
+(x
+N
+), and
+then recursively computing (5) and (6).
+1169
+C. Line Search
+Once the backward pass is completed, the proposed
+locally-linear policy is evaluated with a forward pass:
+^ x
+0
+= x
+0
+(7a)
+^ u
+i
+= u
+i
++k
+i
++ K
+i
+(^ x
+i
+? x
+i
+) (7b)
+^ x
+i+1
+= f(^ x
+i
+; ^ u
+i
+); (7c)
+where is a backtracking search parameter, set to 1 and then
+iteratively reduced. Finally, this backward-forward process is
+repeated until convergence to the (locally) optimal trajectory.
+D. Complexity and Regularization
+The step taken by DDP corresponds to a Newton-Raphson
+step on the whole unconstrained optimal-control problem
+[14]. Although DDP searches in the space of control tra-
+jectories U ?R
+m?N
+, it solves the m-dimensional problem
+N times, not a single problem of sizemN. The difference is
+made stark when consideringN Hessians of sizem?m rather
+than a largeNm?Nm matrix, as in the direct representation.
+Since factorization complexity is cubic in the dimension, the
+respective complexities are O(Nm
+3
+) and O(N
+3
+m
+3
+).
+As with all second-order methods, in order to guarantee a
+descent direction, regularization must be used when the Hes-
+sian loses positive deÞniteness. Typically, a Tikhonov regu-
+larization term is added when inverting Q
+uu
+in (5). When
+the costs are least-square residuals c(x;u) =
+1
+2
+SSr(x;u)SS
+2
+,
+then the Hessians of `
+xx
+, `
+ux
+and `
+uu
+are approximated
+by the square of the Jacobian (`
+xx
+Å r
+T
+x
+r
+x
+etc.), while the
+Hessians of f are neglected. This approximation corresponds
+to the Gauss-Newton variation and is referred as iLQR or
+iLQG [16]. The regularization parameter and the descent
+step length  are adapted online following a Levenberg-
+Marquardt heuristic. Finally, the suboptimal solution ob-
+tained after a Þxed number of iterations (typically 1) can be
+used immediately in a Model Predictive Control setting [23].
+III. CONTROL LIMITS
+Due to the strict feasibility property of indirect methods,
+inequality constraints on the state are handled automatically
+under the condition that f maintains regularity, which is
+obtained by smoothing hard constraints like rigid contacts
+[24]. This has been shown to be very efÞcient, even in
+non-smooth situations like bipedal locomotion, both with
+direct [25] and indirect [23] optimization. However, the
+same solution cannot be applied directly to handle inequality
+constraints on the control. This is an important drawback, as
+the control might be the joint torques (limited by the motor
+limits [26]), air pressure or valve aperture of pneumatic robot
+[27], or as shown in the experiments robot reference angles
+(limited by the joint range).
+In the following, we consider inequality constraints of the
+form:
+
+b? u?
+
+b (8)
+with elementwise inequality and
+
+b;
+
+b the respective lower
+and upper bounds. The box constraint accurately describes
+nearly any set of standard mechanical actuators, and will
+allow us to use a specialized active-set algorithm which is
+more efÞcient and easier to implement. A box-constraint
+solver can be immediately generalized to any linear inequal-
+ity constraints using slack variables [28].
+In the next sections, two classical ways to enforce the con-
+trol limits are formalized. These easy-to-implement heuristics
+will be shown to have signiÞcant drawbacks. The last section
+presents our original solution.
+A. Na¬ õve Clamping
+A Þrst attempt to enforce box constraints is to clamp the
+controls in the forward-pass. The element-wise clamping,
+or projection operator, is denoted by the double square
+brackets ???
+b
+:
+?u?
+b
+= min(max(u;
+
+b);
+
+b);
+It is tempting to simply replace (7b) in the forward-pass with
+^ u
+i
+= ?u
+i
++k
+i
++ K
+i
+(^ x
+i
+? x
+i
+)?
+b
+; (9)
+however the corresponding search direction may not be a
+descent direction anymore, harming convergence. Clamping
+can also be introduced to the control modiÞcation k in (5):
+k ? ?k+ u?
+b
+? u;
+and it might also seem sensible that the rows of K cor-
+responding to clamped controls should be nulliÞed, since
+the feedback is inactive in these dimensions. Though this
+might seem reasonable and intuitive, it is demonstrated in
+the experimental section to be very inefÞcient.
+B. Squashing Functions
+Another way to enforce box constraints is to introduce a
+sigmoidal squashing function s(u) on the controls
+x
+i+1
+= f(x
+i
+;s(u
+i
+)) (10)
+where s() is an element-wise sigmoid with the vector limits
+lim
+u??°
+s(u)=
+
+b lim
+u?°
+s(u)=
+
+b:
+For example s(u)=
+
+b?
+
+b
+2
+tanh(u)+
+
+b+
+
+b
+2
+is such a function.
+A cost term should be kept on the original u and not only
+on the squashed s(u), otherwise it will reach very high
+or low values and get stuck on the plateau (see Section
+IV-B for a practical discussion). An intuition for the poor
+practical performance of squashing is given by the non-
+linearity of the sigmoid. Since the backward pass uses a
+locally quadratic approximation of the dynamics, signiÞcant
+higher order terms will always have a detrimental effect on
+convergence.
+C. Proposed Algorithm
+1) Problem Formulation: Clamping does not produce
+satisfying results since the clamped directions are not taken
+into account during the inversion of Q
+uu
+. On the other
+hand, squashing introduces an artiÞcial non-linearity in the
+saturated directions in a way that prevents good performance.
+We propose to directly take into account the control limits
+1170
+while minimizing the quadratic model ofQ, which amounts
+to solving a quadratic program (QP) subject to the box
+constraints (8) at each timestep. The problem is written:
+minimize
+u
+Q(x;u) (11)
+subject to
+
+b? u+u?
+
+b
+The QP is a well understood problem with many methods
+of solution [29] which together form the backbone of the
+Sequential-QP approach to nonlinear optimization. When
+choosing an appropriate solver, two characteristics of the
+problem at hand should be considered. First, thanks to the
+Bellman principle, we are solving several small QPÕs rather
+than a single big one. Second, since each QP along the
+backward pass is similar to the next one, an algorithm that
+can enjoy warm starts should be preferred. The warm-start re-
+quirement rules out some classes of algorithms, for example
+interior-point methods. Since these methods glide smoothly
+to the solution from the interior, they do not beneÞt from
+being initialized at the boundary. Standard active-set methods
+do traverse the boundary and can be warm-started, but
+account separately for each constraint activation/deactivation.
+2) Proposed Solution: The Projected-Newton class of
+algorithms are a sub-class of active set methods which were
+developed for problems with simple constraints, where the
+projection operator is trivial Ð like clamping in the case of the
+box. Their key feature is the projected line-search, whereby
+the search-point is continuously clamped, allowing multiple
+constraints to form and break in each iteration. In [30],
+Bertsekas analyses these methods and proves convergence for
+a large class of approximate Hessians. In the following we
+describe a special case thereof, which uses the exact Hessian
+at all times. Its key feature, which we prove in the Appendix,
+is that if the initial point has the same active constraint set
+as the optimum, the solution will be reached in a single
+iteration. Previous work on incorporating control limits in
+DDP [17][19], made reference to generic QP algorithms and
+did not take into account the considerations detailed above.
+Since x is not known during the backward pass, the QP
+needs to compute both the feedfoward and feedback gains k
+and K. The Þrst is obtained directly as the optimum of
+k= argmin
+u
+1
+2
+u
+T
+Q
+uu
+u+Q
+T
+x
+u
+subject to
+
+b? u+u?
+
+b
+However, we require that out QP solver also return the
+decomposition of the free dimensions of Q
+uu
+, denoted by
+Q
+uu;f
+. This decomposition is used to compute the optimal
+feedback gain K
+f
+=?Q
+uu;f
+Q
+ux
+. It follows that K
+c
+, the rows
+of K corresponding to clamped controls, are identically zero.
+See Appendix I for more details.
+3) Complexity: In problems with elaborate dynamics, the
+effort required to compute the derivatives in the RHS of (4) is
+often signiÞcantly larger than that required for the backward-
+pass. In that case the extra effort required by the box-QP
+solver will go unnoticed. If however we ignore the time re-
+quired for the derivatives, or make it very small by computing
+them in parallel, the leading complexity term comes from the
+Cholesky factorization the Projected Newton solver, which
+is O(m
+3
+). Since standard DDP requires one factorization
+anyway in (5), the question is how many extra factorizations
+on average does the box-QP solution impose. The algorithm
+performs a factorization whenever the active set changes,
+which might not be often, depending on the problem (see
+e.g. the middle row of Figure 2). As reported below, in our
+experiments the average number of factorizations was never
+larger than 2.
+IV. RESULTS
+We begin with an initial comparison of the three so-
+lution types on a set of simple linear systems randomly
+selected in Sec. IV-A. We then compare the behavior of
+squashing and quadratic programming on a nonholonomic
+car problem in Sec. IV-B. Although for this simple problem
+analytical optimality can be derived [31], the numerical
+solution provides an interesting and generic way to control it.
+Finally, we demonstrate box-DDP on a complex platform, the
+humanoid robot HRP-2. All the experiments are performed in
+simulation, which is enough to demonstrate the relationship
+with respect to unconstrained classical DDP. Applying DDP
+(and MPC at large) to complex systems such as HRP-2
+remains one of the most exciting perspective of this work,
+which we will discuss in the conclusion.
+A. Linear-Quadratic problems
+The Þnite-horizon Linear-Quadratic (LQ) optimal control
+problem is solved by exactly one full iteration of DDP. When
+constraints are added, several iteration are necessary. It is
+described by linear dynamics:
+x
+i+1
+= f
+x
+x
+i
++ f
+u
+u
+i
+:
+and the quadratic optimization criterion
+minimize
+U
+1
+2
+x
+T
+N
+`
+f;xx
+x
+N
++
+1
+2
+N?1
+Q
+i=0
+äx
+T
+i
+`
+xx
+x
+i
++ u
+T
+i
+`
+uu
+u
+i
+?:
+We generated random LQ problems as follows. The state
+dimension n was drawn uniformly from {10::: 100}. The
+control dimension m was drawn from {1:::?
+n
+2
+?}. For a
+time-step h the random dynamics matrices were f
+x
+= I
+n
++
+hN(n;n) and f
+u
+= hN(n;m), where N is a matrix with
+standard normally distributed elements N
+ij
+?N(0; 1), and
+I is the identity. The cost matrices were `
+xx
+=`
+f
+=hI
+n
+and
+`
+uu
+= c
+u
+hI
+m
+with c
+u
+the control-cost coefÞcient. Control
+bounds were
+
+b = ?1
+m
+and
+
+b = 1
+m
+. The initial state was
+drawn from the normal distribution x
+0
+= N(n; 1).
+The bottom row of Figure 2 shows a comparison between
+the clamping and squashing heuristics and the proposed
+algorithm. The clamping barely converges to any optimum.
+The squashing demonstrates a sub-linear convergence. The
+box-QP solution shows a very characteristic quadratic con-
+vergence. Quadratic convergence, which amounts to conver-
+gence like Newton method means the doubling of correct
+signiÞcant bits in the solution with each iteration. This
+manifests as quadratic-looking traces on a log-plot of the
+1171
+0 200
+state  x
+ 
+ 
+optimal
+ u = 0
+0 200
+?1
+1
+control  u
+time
+0 10 20 30
+box?DDP
+0 10 20 30
+10
+?6
+10
+?5
+10
+?4
+10
+?3
+10
+?2
+10
+?1
+10
+0
+10
+1
+10
+2
+naive clamping
+0 10 20 30
+squashing function
+Fig. 2. Control-bounded random linear systems. Here h= 0:01, n= 20,
+m= 7 andN = 200. Top: A typical state trajectory X?{x
+0
+:::x
+200
+}, the
+passive dynamics (U= 0) are shown in gray. Middle: the control trajectory
+U?{u
+0
+:::u
+199
+}. The limits b=?1;
+
+b= 1 are indicated.
+Bottom: Cost decrease J as a function of algorithm iterations during the
+solution of 20 random LQ problems using the three methods described.Left:
+Clamping barely converges to the minimum. Center: Squashing displays
+sublinear convergence. Right: The proposed box-DDP algorithm exhibits
+quadratic convergence.
+convergence trace, as seen in Figure 2. The average number
+of factorizations per iteration was 1.5. To see why this
+number is so small, observe the low frequency of constraint-
+set changes in the middle row of the Þgure.
+B. Car Parking
+For the car-like robot, one of the control variables, the an-
+gle of the front wheels, is a kinematic, rather than a dynamic
+variable. When controls specify kinematic variables, bounds
+arise naturally from the geometry of the problem rather
+than from actuator limits. This makes kinematic problems
+an important class for our proposed algorithm.
+(x;y;;v) is the 4-dimensional state. x;y is the position
+of the point midway between the back wheels. is the angle
+of the car relative to thex-axis.v is the velocity of the front
+wheels. The two control signals are ! the front wheel angle
+anda the front wheel acceleration. For Euler dynamics with
+a time-step h and letting d denote the distance between the
+front and back axles, the rolling distance of the front and
+back wheels are respectively
+f =hv (13a)
+b=f cos(!)+d?
+?
+d
+2
+?f
+2
+sin
+2
+(!); (13b)
+and the h-step dynamics are
+x
+?
+=x+b cos() (13c)
+y
+?
+=y+b sin() (13d)
+
+?
+=+ sin
+?1
+(sin(!)
+f
+d
+) (13e)
+v
+?
+=v+ha: (13f)
+The ÒparkingÓ task is encoded as a Þnal-cost on the distance
+of the last state from (0,0,0,0), i.e. at the plane origin, facing
+east and motionless. Distance was measured using the Huber-
+type functionz(x;p)=
+È
+x
+2
++p
+2
+?p. This function is roughly
+quadratic in a p-sized neighborhood of the origin and linear
+thereafter. The state cost is
+`
+f
+(x)=z(x;p
+x
+)+z(y;p
+y
+)+z(;p
+
+)+z(v;p
+v
+)
+We chose p
+x
+= p
+y
+= 0:1m, p
+
+= 0:01rad and p
+v
+= 1m~s
+to compensate for the relative difÞculty of changing each
+variable. Because it is easier to stop the car (v = 0) than to
+orient it ( = 0), we would like the optimizer to focus on the
+harder task once near enough to the goal-state. A running
+cost is added to penalize cartesian distance from the origin
+`(x)= 0:01äz(x;p
+x
+)+z(y;p
+y
+)?
+This term encourages parking maneuvers which do not take
+the car far from the origin. `(u) = c
+!
+!
+2
++c
+a
+a
+2
+with c
+!
+=
+0:01 and c
+a
+= 0:0001. Cost coefÞcients were chosen to be
+small in order to encourage the controller to hit the bounds
+b
+!
+=±0:5rad and b
+a
+=±2m~s
+2
+.
+Since the ÒclampingÓ heuristic performed so badly in the
+previous case, here we used the car parking domain to
+compare box-DDP only to the ÒsquashingÓ heuristic. The
+squashing function used was
+!(~ !)= 0:5? tanh(~ !)
+a(~ a)= 2? tanh(~ a):
+In order to prevent the Òpre-controlsÓ (~ !; ~ a) from diverging,
+a small explicit cost on these was added
+`(~ !; ~ a)=c
+!
+!
+2
++c
+a
+a
+2
++ 10
+?6
+(~ !
+2
++ ~ a
+2
+):
+This additional term is small enough to not signiÞcantly
+modify the problem, but large enough to pull (~ !; ~ a) back
+towards the origin when they are too large.
+Fig. 3 compares the results obtained with the two solvers.
+Similar trajectories are obtained, but with much higher gains
+k;K in the squashing case. Fig. 4 gives the convergence
+rate comparison. The squashing-function solution barely
+converge while the box DDP converges quadratically.
+1172
+0 500
+?4
+?2
+0
+2
+4
+6
+states
+0 500
+?2
+?1.5
+?1
+?0.5
+0
+0.5
+1
+1.5
+2
+squashing function
+controls
+0 500
+?4
+?2
+0
+2
+4
+6
+timesteps
+ 
+ 
+0 500
+?2
+?1.5
+?1
+?0.5
+0
+0.5
+1
+1.5
+2
+timesteps
+box?DDP
+ 
+ 
+x
+y
+?
+v
+w
+a
+Lw
+La
+?4
+?2
+0
+2
+4
+squashing function
+parking trajectory
+?4 ?2 0 2 4
+?4
+?2
+0
+2
+4
+box?DDP
+Fig. 3. Comparison between squashing-functions and BOX-DDP. Left column: BirdÕs eye view of the parking trajectories obtained after convergence of
+both DDP, starting from (1; 1;
+3
+2
+; 0) (gray car, background) and ending at (0; 0; 0; 0) (foreground). Both trajectories are approximations of two different
+global optima (the Þrst being the reßection of the second through the Þrst bisector). Middle column: Corresponding state trajectories (x;y;;v)
+i
+plotted
+over time. Right column: Controls (!;a) (solid) and feedback gains K (light colors). The feedback gains of the squashing heuristic are much stronger
+to overcome the sigmoid slope, and explain the worse converge behavior. Note how for the BOX-DDP solution, the rows of the 2? 4 matrices K vanish
+whenever the corresponding controls are clamped, as expected from the discussion in Sec III-C.2.
+C. Humanoid robot
+Like many modern full-size humanoid robots, HRP-2 [32]
+is powered by direct-current electrical motors coupled with
+high-ratio gears (typically, harmonic drive with ratio 1~200)
+which make it very stiff. Two solutions are possible to apply
+the DDP on a robot such as HRP-2. The Þrst one is to
+perform precise system identiÞcation, taking into account
+the well-known motor dynamics, the PD-controller transfer
+function and the harmonic gear frictions. The inverse of this
+model provides a feed-forward torque control input [33].
+However, despite some recent work in this direction [34],
+direct feed-forward current control is not yet a functional
+option, while the lack of joint torque sensor on most of hu-
+0 50 100 150 200 250 300 350 400 450 500
+10
+?10
+10
+?8
+10
+?6
+10
+?4
+10
+?2
+10
+0
+iterations
+improvement?J
+ 
+ 
+squashing function
+box?DDP
+Fig. 4. Cost decrease J of the two algorithms for the car-parking
+problem. Box-DDP converges quadratically after 64 iterations, while the
+squashing-function solution has barely converged by 500.
+manoid robots prevent feedback torque control. Alternatively,
+the low-level PD controllers of the robot can be modeled
+inside the forward dynamics. The control input u is then the
+reference joint angle. This solution is appealing, since the
+PD controllers can be considered strong enough to nullify the
+gear dry friction, which need not be modelled. The control is
+then limited by the joint range, which should not be hit as it
+would likely damage the robot. For this reason box-DDP is
+appealing since the joint references output by the algorithm
+are guaranteed to be inside the limits.
+Optimal control allows for very simple speciÞcation of
+the robot movement. In the demonstrated example, the robot
+has to reach a moving target with its right gripper, while
+standing and if necessary stepping to maintain its balance.
+Several cost functions are used to deÞne various aspects of
+the motion of the robot. The balance is enforced by setting
+three cost functions: on the chest and pelvis angles to keep
+them horizontal; on the chest altitude z; and on the capture
+point a to keep it on the line between the feet. The two last
+ones penalize the linear and angular momenta:
+`
+bal
+(x)=c
+
+äY
+pelvis
+(x)Y
+2
++Y
+chest
+(x)Y
+2
+?
++c
+z
+(z
+chest
+(x)?z
+?
+)
+2
++c
+
+z(a(x)? a
+?
+(x))
+withz
+?
+the initial chest altitude, a
+?
+the orthogonal projection
+of a on the line between the ankles, c
+
+= 0:3, c
+z
+= 0:2 and
+c
+a
+= 1. The stepping is emphasized by putting a cost to keep
+the feet parallel to the ground and oriented toward the target:
+`
+step
+(x)=c
+roll
+Y
+lf;rf
+(x)Y
+2
++c
+yaw
+(
+feet
+(x)?
+?
+)
+2
+1173
+Fig. 5. Reaching a moving target, stepping when necessary. A sequence of frames of full body motion synthesized in real-time for the HRP2 robot. The
+robot is trying to reach the moving target while stabilizing itself. When the rotation causes the legs to collide, the robot stumbles, takes a step to balance
+itself, and reaches for the target once more.
+with 
+lf;rf
+the angle of the feet with respect to the ground,
+
+feet
+the yaw angle of the line between the two ankles,
+
+?
+the yaw angle of the target in the egocentric cylindrical
+coordinates,c
+roll
+= 0:05 andc
+yaw
+= 0:1. Finally, the reaching
+is triggered by a cost on the distance to the target:
+`
+reach
+=c
+reach
+SSp(x)? p
+?
+SS
+2
+with p the gripper position and p
+?
+the target position. All
+the cost are squares of residuals, which enable us to use the
+Gauss-Newton approximation of the second derivatives. This
+is an important shortcut since the second order derivatives
+would be very expensive to compute with a system of the size
+of HRP-2. Collision avoidance is enforced by the simulator
+in the forward pass.
+An overview of the obtained motion is given in Fig. 5.
+The complete motion, along with a set of other examples,
+are displayed on the companion video.
+V. CONCLUSION
+This paper proposed a modiÞcation of the DDP which
+allows us to incorporate control limits. This is a key feature
+for applying the DDP algorithm to real robots. In particular, it
+is mandatory when the control input speciÞes some kinematic
+variables, like the steering direction of the car or the joint
+references of the humanoid. Our solution is very fast and
+keeps the good convergence properties of the DDP algorithm.
+It is also exact, in the sense that the speciÞed constraint can
+not be exceeded in any situation. It enables us to control
+the humanoid robot HRP-2 in real time with a desktop
+personal computer in simulation, while interacting with it
+using an haptic device. The next step is to apply the same
+control scheme on the real HRP-2 robot. The key point for
+that is to introduce some feedback terms in addition to the
+state estimation to make the MPC behavior more robust to
+modeling errors.
+ACKNOWLEDGMENT
+We thank Akshay Srinivasan for his useful insights. This
+work was supported by the National Science Foundation.
+APPENDIX I
+PROJECTED-NEWTON QP SOLUTION
+Consider the generic problem:
+minimize
+x
+f(x)=
+1
+2
+x
+T
+Hx+ q
+T
+x (14a)
+subject to
+
+b? x?
+
+b (14b)
+The algorithm proceeds by iteratively identifying the ac-
+tive constraints, and then performing a projected Newton step
+using the reduced Hessian in the free sub-space. Begin at
+some feasible initial guess x= ?x?
+b
+and deÞne the gradient
+g=?
+x
+f = q+Hx. The complimentary sets of clamped and
+free indices c and f are
+c(x)=
+?
+?
+?
+?
+?
+?
+?
+j ? 1:::n
+R
+R
+R
+R
+R
+R
+R
+R
+R
+R
+R
+x
+j
+=
+
+b
+j
+; g
+j
+> 0
+or
+x
+j
+=
+
+b
+j
+; g
+j
+< 0
+?
+?
+?
+?
+?
+?
+?
+(15a)
+f(x)= ªj ? 1:::n Tj ? c? (15b)
+For readability, we sort the index partition {f;c}:
+x? 
+x
+f
+x
+c
+	; q? 
+q
+f
+q
+c
+	; H? 
+H
+
+H
+fc
+H
+cf
+H
+cc
+	; (16)
+The gradient in the free subspace is
+g
+f
+=?
+x
+f
+f = q
+f
++ H
+
+x
+f
++ H
+fc
+x
+c
+;
+The Newton step in the free subspace is then:
+x
+f
+=?H
+?1
+
+g
+f
+=?H
+?1
+
+(q
+f
++ H
+fc
+x
+c
+)? x
+f
+:
+The full step is therefore:
+x= 
+x
+f
+0
+c
+	: (17)
+The projected Newton candidate point ^ x for a line-search
+parameter  is
+^ x()= ?x+x?
+b
+: (18)
+A backtracking line-search reduces  until the Armijo con-
+dition [35] is satisÞed
+f(x)?f(^ x())
+g
+T
+äx? ^ x()?
+> (19)
+with 0< <
+1
+2
+the minimally acceptable reduction ratio. We
+use the oft-quoted = 0:1 in the experiments. By design, the
+1174
+Algorithm I x
+?
+?? QP[H; q; b;
+
+b; x]
+Repeat until convergence:
+1)Getindices: Equations (15).
+2)GetNewtonstep: Equations (16).
+3)Convergence: If Yg
+f
+Y<? 1, terminate.
+4) Line search: Decrease  in (18) until (19) is satisÞed.
+Accept the candidate x? ^ x().
+key feature of the algorithm is the following:
+Lemma. If the initial point x has the same clamped con-
+straints as the optimum c(x)= c(x
+?
+), then the solution will
+be reached in a single iteration.
+Proof. Setting x
+f
+= 0 at the optimum, we have from (17)
+that x
+?
+f
+= ?H
+?1
+
+(q
+f
++ H
+fc
+x
+c
+). If c(x) = c(x
+?
+) then x
+c
+=
+x
+?
+c
+and therefore x
+f
+= x
+?
+f
+? x
+f
+taking us directly to the
+minimum in one step.
+REFERENCES
+[1] C. Samson, M. Le Borgne, and B. Espiau, Robot Control: the Task
+Function Approach. Clarendon Press, Oxford, United Kingdom, 1991.
+[2] O. Khatib, ÒA uniÞed approach for motion and force control of robot
+manipulators: The operational space formulation,Ó The International
+Journal of Robotics Research, vol. 3, no. 1, pp. 43Ð53, 1987.
+[3] B. Espiau, F. Chaumette, and P. Rives, ÒA new approach to visual
+servoing in robotics,Ó IEEE Trans. on Robotics and Automation, vol. 8,
+no. 3, pp. 313Ð326, 1992.
+[4] N. Mansard, O. Khatib, and A. Kheddar, ÒIntegrating unilateral
+constraints inside the stack of tasks,Ó IEEE Trans. on Robotics, vol. 25,
+no. 11, pp. 2493Ð2505, 2009.
+[5] P. Baerlocher, ÒInverse kinematics techniques for the interactive pos-
+ture control of articulated Þgures,Ó Ph.D. dissertation, EPFL, 2001.
+[6] L. Sentis, ÒSynthesis and control of whole-body behaviors in hu-
+manoid systems,Ó Ph.D. dissertation, Stanford University, 2007.
+[7] N. Mansard, O. Stasse, F. Chaumette, and K. Yokoi, ÒVisually-guided
+grasping while walking on a humanoid robot,Ó in IEEE Int. Conf. on
+Robotics and Automation (ICRAÕ07), 2007, pp. 3041Ð3047.
+[8] S. Hak, N. Mansard, O. Stasse, and J.-P. Laumond, ÒReverse control
+for humanoid robot task recognition,Ó IEEE Trans. Sys. Man Cyber-
+netics, vol. 42, no. 6, pp. 1524Ð1537, 2012.
+[9] S. M. Khansari-Zadeh and A. Billard, ÒLearning stable non-linear
+dynamical systems with gaussian mixture models,Ó IEEE Trans. on
+Robotics, vol. 27, no. 5, pp. 943Ð957, 2011.
+[10] L. S. Pontryagin, V . G. Boltyanskii, R. V . Gamkrelidze, and E. F.
+Mishchenko, The mathematical theory of optimal processes. Inter-
+science New York, 1962.
+[11] O. Stryk and R. Bulirsch, ÒDirect and indirect methods for trajectory
+optimization,Ó Annals of Operations Research, vol. 37, no. 1, pp. 357Ð
+373, Dec. 1992.
+[12] D. Q. Mayne, ÒA second-order gradient method of optimizing non-
+linear discrete time systems,Ó Int J Control, vol. 3, p. 8595, 1966.
+[13] D. H. Jacobson and D. Q. Mayne, Differential Dynamic Programming.
+Elsevier, 1970.
+[14] L. Z. Liao and C. A. Shoemaker, ÒAdvantages of differential dynamic
+programming over newtonÕs method for discrete-time optimal control
+problems,Ó Cornell University, Ithaca, NY, 1992.
+[15] W. Li and E. Todorov, ÒIterative linear quadratic regulator design for
+nonlinear biological movement systems,Ó in International Conference
+on Informatics in Control, Automation and Robotics (ICINCO), 2004,
+pp. 222Ð229.
+[16] E. Todorov and W. Li, ÒA generalized iterative LQG method for
+locally-optimal feedback control of constrained nonlinear stochas-
+tic systems,Ó in Proceedings of the American Control Conference
+(ACCÕ05), Portland, OR, USA, 2005, pp. 300Ð306.
+[17] D. H. Jacobson, ÒNew second-order and Þrst-order algorithms for
+determining optimal control: A differential dynamic programming
+approach,Ó Journal of Optimization Theory and Applications, vol. 2,
+no. 6, pp. 411Ð440, Nov. 1968.
+[18] D. J. W. Ruxton, Differential Dynamic Programming and Optimal
+Control of Quality Constrained Continuous Dynamic Systems. Uni-
+versity of Central Queensland, Department of Mathematics and Com-
+puting, 1991.
+[19] D. M. Murray and S. J. Yakowitz, ÒConstrained differential dynamic
+programming and its application to multireservoir control,Ó Water
+Resources Research, vol. 15, no. 5, p. 10171027, 1979.
+[20] K. Mombaur, ÒUsing optimization to create self-stable human-like
+running,Ó Robotica, vol. 27, no. 03, p. 321, Jun. 2008.
+[21] M. Diehl, H. Ferreau, and N. Haverbeke, ÒEfÞcient numerical methods
+for nonlinear mpc and moving horizon estimation,Ó Nonlinear Model
+Predictive Control, p. 391, 2009.
+[22] N. Mansard, O. Khatib, and A. Kheddar, ÒA uniÞed approach to inte-
+grate unilateral constraints in the stack of tasks,Ó IEEE Transactions
+on Robotics, vol. 25, no. 3, pp. 670Ð685, 2009.
+[23] Y . Tassa, T. Erez, and E. Todorov, ÒSynthesis and stabilization of com-
+plex behaviors through online trajectory optimization,Ó in IEEE/RSJ
+International Conference on Intelligent Robots and Systems (IROSÕ12),
+2012, pp. 4906Ð4913.
+[24] Y . Tassa and E. Todorov, ÒStochastic complementarity for local control
+of discontinuous dynamics,Ó in Proceedings of Robotics: Science and
+Systems (RSS), 2010.
+[25] I. Mordatch, E. Todorov, and Z. Popovi« c, ÒDiscovery of complex
+behaviors through contact-invariant optimization,Ó ACM Transactions
+on Graphics (Proc. SIGGRAPH), vol. 31, no. 4, p. 43, 2012.
+[26] L. Saab, O. Ramos, N. Mansard, P. Sou` eres, and J.-Y . Fourquet,
+ÒDynamic whole-body motion generation under rigid contacts and
+other unilateral constraints,Ó IEEE Transaction on Robotics, no. 2,
+pp. 346Ð362, April 2013.
+[27] Y . Tassa, T. Wu, J. Movellan, and E. Todorov, ÒModeling and iden-
+tiÞcation of pneumatic actuators,Ó in IEEE International Conference
+Mechatronics and Automation, August 2013.
+[28] S. P. Boyd and L. Vandenberghe, Convex optimization. Cambridge
+university press, 2004.
+[29] J. Nocedal and S. J. Wright, Numerical optimization. New York:
+Springer, 2006.
+[30] D. P. Bertsekas, ÒProjected newton methods for optimization problems
+with simple constraints,Ó SIAM Journal on Control and Optimization,
+vol. 20, no. 2, pp. 221Ð246, Mar. 1982.
+[31] P. Sou` eres and J.-D. Boissonnat, ÒOptimal trajectories for nonholo-
+nomic robots,Ó in Robot Motion Planning and Control, ser. Lecture
+Notes in Control and Information Sciences, J.-P. Laumond, Ed.
+Springer, 1998, vol. 229.
+[32] K. Kaneko, F. Kanehiro, S. Kajita, K. Yokoyama, K. Akachi,
+T. Kawasaki, S. Ota, and T. Isozumi, ÒDesign of prototype humanoid
+robotics platform for hrp,Ó in IEEE/RSJ Int. Conf. on Intelligent Robots
+and Systems (IROSÕ02), 2002.
+[33] T. Yoshikawa and O. Khatib, ÒCompliant motion control for a
+humanoid robot in contact with the environment and humans,Ó in
+IEEE/RSJ Int. Conf. on Intelligent Robots and Systems (IROSÕ08),
+2008.
+[34] S. Traversaro, A. Del Prete, R. Muradore, L. Natale, and F. Nori,
+ÒInertial parameter identiÞcation including friction and motor dynam-
+ics,Ó in IEEE-RAS International Conference on Humanoid Robots
+(HumanoidÕ13), Atlanta, USA, October 2013, [to appear].
+[35] L. Armijo, ÒMinimization of functions having lipschitz continuous Þrst
+partial derivatives.Ó PaciÞc Journal of Mathematics, vol. 16, no. 1, pp.
+1Ð3, 1966.
+1175

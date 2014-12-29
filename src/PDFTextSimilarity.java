@@ -14,19 +14,16 @@ import com.itextpdf.text.pdf.PdfReader;
 import com.itextpdf.text.pdf.parser.PdfReaderContentParser;
 import com.itextpdf.text.pdf.parser.SimpleTextExtractionStrategy;
 import com.itextpdf.text.pdf.parser.TextExtractionStrategy;
-
-
  
 public class PDFTextSimilarity {
  
     /** The max number of input pdf files to be converted. */
-    public static final int maxNumOfInputFiles = 100;
+    public static final int maxNumOfInputFiles = 2500;
     public static int numOfFiles = 0;
     public static ArrayList<String> orderOfFiles = new ArrayList<String>();
     public static HashMap<String, HashMap<String, Integer>> wordFreqDatabase 
     	= new HashMap<String, HashMap<String, Integer>>();
-    
- 
+     
     /**
      * Parses a PDF to a plain text file.
      * @param pdf the original PDF
@@ -159,12 +156,16 @@ public class PDFTextSimilarity {
     	//create similarity array
     	int[][] similarityArr = getSimilarityArr();
     	
-    	//write similarityArr to an Std out
+    	//write similarityArr to an Std out and to an output file
+    	@SuppressWarnings("resource")
+		PrintStream out = new PrintStream(new FileOutputStream("fileComparisons.txt"));
     	for (int i = 0; i < numOfFiles; i++) {
     		for (int j = 0; j < numOfFiles; j++) {
     			System.out.print("|" + similarityArr[i][j]);
+    			out.print("|" + similarityArr[i][j]);
     		}
     		System.out.println("|");
+    		out.println("|");
     	}
     	
     }
@@ -189,8 +190,7 @@ public class PDFTextSimilarity {
 			if (wordFreqDatabase.get(curCompFile.split(Pattern.quote("."))[0].toString() + ".words.txt").keySet().contains(baseWord)) {
 				countOfDuplicateWords++;
 			}
-		}
-		
+		}		
 		return countOfDuplicateWords;
 	}
 	

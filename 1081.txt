@@ -1,0 +1,1320 @@
+Optimizing Online Occupancy Grid Mapping
+to Capture the Residual Uncertainty
+Rehman S. Merali and Timothy D. Barfoot
+Abstract— Occupancy grids have been a popular mapping
+technique in mobile robotics for nearly 30 years. Occupancy
+grids offer a discrete representation of the world and seek to
+determine the occupancy probability of each cell. Traditional
+occupancy grid mapping methods make two assumptions for
+computational efﬁciency and it has been shown that the full
+posterior is computationally intractable for real-world mapping
+applications without these assumptions.
+The two assumptions result in tuning parameters that control
+the information gained from each distance measurement. In
+this paper, several tuning parameters found in the literature
+are optimized against the full posterior in 1D. In addition, this
+paper presents a new parameterization of the update func-
+tion that outperforms existing methods in terms of capturing
+residual uncertainty. Capturing the residual uncertainty better
+estimates the position of obstacles and prevents under- and
+over-conﬁdence in both the occupied and unoccupied cells. The
+paper concludes by showing that the new update function better
+captures the residual uncertainty in each cell when compared
+to an ofﬂine mapping method for realistic 2D simulations.
+I. INTRODUCTION
+Occupancy Grid (OG) mapping is a widely used map-
+ping technique in mobile robots. In contrast to mapping
+techniques that only seek to locate features or landmarks in
+the environment, OG mapping discretizes the environment
+into cells and seeks to determine whether each cell is occu-
+pied or unoccupied given, for example, range measurements
+gathered by a mobile robot. Occupancy grid mapping was
+ﬁrst introduced by Moravec and Elfes [18], but improved by
+Moravec [17] and Elfes [4] by representing the occupancy of
+each cell by a single binary random variable, then computing
+the probability of each cell being occupied. However, for
+computational efﬁciency, Moravec and Elfes assumed that
+cells in the occupancy grid are independent of one another
+and that measurements are conditionally independent. These
+two assumptions reduce the complexity of OG mapping from
+exponential to linear in the number of cells through which a
+measurement passes.
+Although the two assumptions offer a signiﬁcant compu-
+tation savings, neither is strictly true and they typically lead
+to an over- or under-conﬁdent estimate of the occupancy
+probability of each cell. This paper will illustrate this over-
+or under-conﬁdence by comparing traditional OG mapping to
+the full Bayesian solution, which makes no assumptions. The
+This work was supported by a Natural Sciences and Engineering Research
+Council of Canada Collaborative Research and Development (NSERC CRD)
+/ Canadian Space Agency Partnership Support Program (CSA PSP) grant
+in cooperation with MDA Space Missions.
+R. S. Merali (rehman.merali@utoronto.ca) and T. D. Barfoot
+(tim.barfoot@utoronto.ca) are with the University of Toronto Institute
+for Aerospace Studies, 4925 Dufferin St., Toronto, Canada, M3H 5T6.
+full Bayesian solution (a.k.a., full solution) will be introduced
+in Section II and is able to capture the residual uncertainty
+in the OG map, but is only computationally tractable in 1D.
+Occupancy grid maps are often thresholded on a cell-
+by-cell basis as occupied or unoccupied and then used
+for path planning, obstacle avoidance, and other tasks [5].
+However, accurately computing the residual uncertainty in
+occupancy grids is useful for applications such as entropy
+and information gain calculations. These calculations are
+often used in exploration algorithms to evaluate the expected
+information gain of scanning from a particular location on the
+map [12, 22]. Therefore, capturing the residual uncertainty
+in the map, resulting from noisy sensor measurements, is
+essential to accurately computing the information in the
+occupancy grid.
+In [15], we proposed a method known as patch map that
+extends the work of Thrun [23] to approximate the full
+solution. However, both of these methods require either the
+maximum a posteriori (MAP) estimate of the occupancy grid
+or the ground truth map (available in simulation) before
+computing the residual uncertainty in each cell. Thus, in
+[16], we applied a well-known variant of a Markov Chain
+Monte Carlo (MCMC) method known as Gibbs sampling
+[7] to the problem of capturing the residual uncertainty in
+an occupancy grid map. The paper demonstrates that the
+MCMC method is quite effective but is not fast enough to
+run online. Therefore, in this paper we seek to optimize
+traditional, two-assumption OG mapping to better capture
+the residual uncertainty in each cell.
+Traditional OG mapping incorporates each range measure-
+ment using an update function, which we call . Section III
+will further explain traditional OG mapping and illustrate ﬁve
+different parameterizations of  found in the literature as
+well as introduce a sixth parametrization that better captures
+the residual uncertainty in the occupancy grid. The tuning
+parameters of these six parameterizations are then optimized
+in Section IV by comparing them to the full solution using
+1000 1D datasets. The optimized parameters are shown to
+work in 2D in Section V where they are compared to the
+aforementioned patch map benchmark solution. Finally, we
+conclude the paper and offer possible future extensions of
+this work in Section VI. We believe that this is the ﬁrst
+paper to compare the various  functions in the literature
+and optimize them to best capture the residual uncertainty
+without sacriﬁcing the linear-time update that has made OG
+mapping a popular choice for online mapping.
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 6070
+II. FULL BAYESIAN SOLUTION
+Occupancy grid mapping discretizes an analog environ-
+ment, m, into a regular grid of K cells and then seeks to
+determine the occupancy of each cell. Each cell in the map
+is represented by a binary random variable, m
+k
+, where k =
+1:::K, that indicates whether the cell is occupied, m
+k
+=1,
+or unoccupied, m
+k
+=0. The true map, known as the ground
+truth map, correctly indicates the value of each m
+k
+. An OG
+mapping algorithm seeks to determine the state of each cell
+in the map, given a set ofN range measurements,z
+1:N
+, and
+corresponding robot poses, x
+1:N
+. To simplify the notation,
+we will not include the subscript 1:N when referring to the
+set of all measurements or poses, just as all K cells in the
+map are referred to as m. OG mapping assumes that the set
+of robot poses is known. As most range sensors measure the
+distance to the ﬁrst occupied cell, f, (and not beyond that)
+the occupancy of cells inside walls or obstacles cannot be
+measured. An omniscient ground truth map can accurately
+represent the state of these cells, but a mapping algorithm
+cannot. Therefore, it is typical in the literature to refer to
+these cells as unknown.
+Range measurements are typically noisy and occupancy
+grid mapping algorithms use Bayesian methods to compute
+the probability that each cell is occupied,p(m
+k
+), given a set
+of noisy range measurements, z, and corresponding robot
+poses, x. Since the map is divided into K cells, there are
+R = 2
+K
+possible occupancy grids. We use a superscript to
+represent these maps: m
+r
+, where r =1:::R.
+We presented the full solution to OG mapping in [15], but
+noted that it is computationally expensive to compute for R
+maps. In this section we show that by constraining the robot’s
+pose, we only need to compute the full solution forK unique
+maps. By introducing the hidden state of the ﬁrst occupied
+cell, f = 1:::F , we are able to compute the probability
+of each map given range measurements and corresponding
+poses, p(m
+r
+jz;x). Throughout this paper, we assume that
+the range sensor is a narrow-beam sensor such as a laser
+rangeﬁnder. Thus, the sensor will measure the distance to the
+ﬁrst occupied cell along the measurement ray, as opposed to
+a sensor with a wide sensing frustum (e.g., ultrasonic range
+sensor), which Thrun [23] handles by taking the expectation
+over possible obstacles in the sensing frustum. We use the
+notation f
+r;n
+to indicate the ﬁrst occupied cell on the map,
+m
+r
+, from the pose, x
+n
+.
+Therefore, the probability of each map, m
+r
+, given the
+range measurements and corresponding poses, is
+p(m
+r
+jz;x) =
+p(z
+n
+jm
+r
+;z
+1:n 1
+;x)p(m
+r
+jz
+1:n 1
+;x)
+p(z
+n
+jz
+1:n 1
+;x)
+=
+p(z
+n
+jf
+r;n
+)p(m
+r
+jz
+1:n 1
+;x
+1:n 1
+)
+P
+R
+j=1
+p(z
+n
+jf
+j;n
+)p(m
+j
+jz
+1:n 1
+;x
+1:n 1
+)
+: (1)
+Computing the probability of R maps is computationally
+expensive. In [15] we indicate that a map with K = 20
+cells takes a few hours to compute. In this paper, we use
+the full Bayesian solution to which we compare the more
+computationally efﬁcient algorithms. Speciﬁcally, our range
+sensor can trace 75 cells per measurement, so we seek to
+compute the full solution for 1D maps larger than this.
+By assuming the rover pose (position and orientation)
+is ﬁxed, we note that Equation (1) only yields K unique
+solutions. Speciﬁcally, p(m
+r
+jz;x) is only unique for each
+value of f. Therefore the R possible maps can be grouped
+by their respective value off,m
+r
+2f. To computep(m
+r
+jz),
+we compute the K possible solutions and then multiply by
+the frequency of that value of f in the denominator,
+p(m
+r
+jz) =
+p(z
+n
+jf
+r
+)p(m
+r
+jz
+1:n 1
+)
+K
+X
+j=1
+2
+(K j)
+p(z
+n
+jf =j)p(m
+j
+jz
+1:n 1
+)
+:
+Where the notation m
+j
+refers to any m
+r
+2f =j.
+This equation is written recursively to incorporate each
+new sensor measurement, z
+n
+, incrementally. We assign an
+uninformed prior probability for each map, p(m
+r
+) = 1=R.
+Finally, the probability of a cell being occupied is calculated
+by summing the map probabilities for those maps in which
+the cell of interest is occupied:
+p(m
+k
+jz) =
+R
+X
+r=1
+p(m
+k
+jm
+r
+)p(m
+r
+jz); (2)
+where p(m
+k
+jm
+r
+) 2 f0; 1g. This can be used to compare
+the full solution to traditional OG mapping algorithms that
+only calculate the probability of a cell being occupied, as
+opposed to the probability of a map. Note that computing
+the full solution is typically exponential in the number of
+cells in the map, K, because R = 2
+K
+. But the pose-
+constrained formulation presented here allows us to compute
+the probability of only K maps. Thus, we can use this
+formulation to test any size map in 1D against the full
+Bayesian solution.
+III. TRADITIONAL OCCUPANCY GRID MAPPING
+Traditional OG mapping [17] makes two simplifying
+assumptions to reduce the computational complexity of
+Equation (1). The ﬁrst is that the occupancy of a cell is
+independent of all other cells:
+p(m) =
+K
+Y
+k=1
+p(m
+k
+):
+This assumption allows us to compute the occupancy prob-
+ability of K cells as opposed to R maps. The second is
+that measurements are conditionally independent, given the
+occupancy of a single cell of interest:
+p(zjm
+k
+) =
+N
+Y
+n=1
+p(z
+n
+jm
+k
+):
+This assumption allows us to pre-compute the update term
+ofﬂine. Together, these two assumptions yield a map update
+algorithm that is linear in the number of cells that the
+measurement, z
+n
+, affects:
+p(m
+k
+jz;x) =
+p(z
+n
+jm
+k
+;z
+1:n 1
+;x)p(m
+k
+jz
+1:n 1
+;x)
+p(z
+n
+jz
+1:n 1
+;x)
+=
+p(m
+k
+jz
+n
+;x
+n
+)p(z
+n
+jx
+n
+)p(m
+k
+jz
+1:n 1
+;x
+1:n 1
+)
+p(m
+k
+jx
+n
+)p(z
+n
+jz
+1:n 1
+;x)
+:
+6071
+!!" !!# !$ !% !& !" # " & %
+!'
+!"
+!!
+#
+!
+(
+(
+?
+?
+??z
+n
+l
+occ
+l
+free
+?
+Optimized? Functions from the Literature
+!!" !!# !$ !% !& !" # " & %
+!'
+!"()
+!"
+!!()
+!!
+!#()
+#
+#()
+!
+!()
+*
+*
++,-./01.2/*3/4*5,-./*!66!
+7,-38.9*!6$$
+73-0:3;;*3/4*+3-<,,1*"##=
+>139:/200*"##%*?0,/3-@
+A;<.0*!6$6
+B*"!
+Fig. 1. Optimized update terms from ﬁve parameterizations found in the literature and our parameterization with 21 parameters (p21). The tuning
+parameters for each update term are indicated (locc , l
+free
+, , ) with the exception of the Elfes 1989 parameters which could not be displayed on this
+plot.  is the number of cells from the robot to the cell being updated and zn is the range measurement in units of cells.
+Computation of the terms that do not depend onm
+k
+in this
+expression is avoided by using the log-odds domain:
+l(m
+k
+jz;x) =l(m
+k
+jz
+1:n 1
+;x
+1:n 1
+) +l(m
+k
+jz
+n
+;x
+n
+) l(m
+k
+):
+In this equation,l(m
+k
+) is a prior andl(m
+k
+jz
+1:n 1
+;x
+1:n 1
+) is
+that value stored in the evidence grid
+1
+before incorporating
+the measurement z
+n
+. Therefore, the key is computing the
+update term, l(m
+k
+jz
+n
+;x
+n
+), which we denote . The update
+term is a function of the cell being updated, m
+k
+, relative to
+the range measurement, z
+n
+, and can be computed a priori.
+We introduce the notation, m
+
+, where  = 0:::F , to refer
+to a cellm
+k
+relative to the posex
+n
+. In other words,m
+
+is the
+set of cells that the measurementz
+n
+could possibly measure.
+Thus m
+=0
+is the cell that the robot occupies at pose x
+n
+(starting pose of the measurement ray z
+n
+) and m
+=F
+is the
+cell at the maximum range of the sensor given the position
+and orientation of the sensor, x
+n
+. The update term can now
+be written =l(m
+
+jz
+n
+). This update term is known as the
+log-odds of the inverse sensor model, p(m
+
+jz
+n
+).
+The update term governs the amount of information that
+is added to the map with each new measurement. However,
+the OG mapping literature contains several different update
+functions and they have not been compared or optimized
+to best capture the residual uncertainty in the OG map.
+Speciﬁcally, Figure 1 illustrates ﬁve update functions that
+we found in the literature and Table I speciﬁes the tuning
+parameters of each.
+TABLE I
+THE TUNING PARAMETERS FOR VARIOUS UPDATE FUNCTIONS, ,
+FOUND IN THE LITERATURE
+Tuning Parameters Optimized Values
+Borenstein and Koren [2] locc -0.2197
+Moravec [17] locc , l
+free
+0.9787, -0.7021
+Marshall and Barfoot [13] locc = l
+free
+,  0.7183, 2
+Stachniss [21] (sonar) locc , l
+free
+,  0.5115, -0.8135, 7
+Elfes [4] , l
+min
+2.9627, -12.9047
+The tuning parameters for each update term are shown
+in Figure 1. Borenstein and Koren [2] developed a reactive
+obstacle avoidance algorithm. To update the map quickly,
+they elected to use a simple update term that only adds
+information where the range sensor detected an obstacle,
+ = z
+n
+. In contrast, all of the other update terms add
+information (positive or negative) along the length of the
+measurement ray and some even beyond that. The update
+1
+An evidence grid refers to an occupancy grid in the log-odds domain
+[14].
+term ﬁrst presented by Moravec [17] is the most commonly
+found in the literature [19, 21]. This update term will add
+l
+occ
+to the evidence grid where the range sensor detected an
+obstacle,  =z
+n
+, and l
+free
+to all cells between the sensor
+and the obstacle, <z
+n
+. Arbuckle et al. [1] and H¨ ahnel [9]
+used a similar update term, but enforced the constraint that
+l
+occ
+= l
+free
+. Although not discussed in the paper, Marshall
+and Barfoot [13] also enforced this constraint but found that
+it resulted in the OG map overestimating the distance to the
+obstacle. Therefore, they allowed the update term to addl
+occ
+to the evidence grid for cells,=z
+n
+to=z
+n
++ 1, which
+solved their issue. Stachniss [21] used two update terms in
+his PhD thesis. For a laser rangeﬁnder, he used the common
+update term ﬁrst presented by Moravec [17]. However, for
+a noisier sonar sensor, he linearly interpolated between l
+free
+andl
+occ
+with the width of this interpolation centered on=
+z
+n
+. Finally, Elfes [4] presented a delta function in his PhD
+thesis that is based on a range sensor with Gaussian noise,
+p(z
+n
+jf) =N (f;
+2
+). Speciﬁcally, Elfes deﬁnes the update
+term as  =log
+P
+F
+f=1
+p(znjf)p(fjm=1)
+P
+F
+f=1
+p(znjf)p(fjm=0)
+. In our research, we
+found that thresholding the minimum value of  yields better
+results. Therefore, for this parameterization, we also include
+a variable, l
+min
+, at which we threshold the minimum value
+of . Neither of the two parameters for [4] are shown in
+Figure 1 because the l
+min
+value is beyond the range of the
+y-axis displayed and is used to compute . In Section IV
+we will optimize these various tuning parameters in 1D and
+in Section V we will demonstrate that the optimized update
+terms are applicable to 2D OG mapping.
+IV. UPDATE TERM OPTIMIZATION
+Section II explained how to compute the full Bayesian so-
+lution for OG mapping. This solution makes no assumptions,
+unlike the traditional OG mapping algorithms discussed in
+Section III. It is the goal of this paper to optimize the tuning
+parameters outlined in Section III for the various update
+terms found in the literature. We optimize these parameters
+in 1D where we can compute the full solution quickly by
+assuming the robot’s pose is constrained. These optimized
+parameters can then be used in 2D or 3D to better capture
+the residual uncertainty. Finally, we optimize the update term
+itself for an increasing number of  z
+n
+values centered
+around =z
+n
+.
+We have previously used the Kullback-Leibler divergence
+to compare ofﬂine OG mapping algorithms to the full
+solution [15, 16]. The Kullback-Leibler divergence [11],
+D
+KL
+(pjjq), quantiﬁes the difference between two probability
+6072
+50 52 54 56 58 60 62 64 66 68 70
+0
+0.5
+1
+k
+p(m
+k
+)
+OG for 8 Measurements.
+ 
+ 
+Cell Occupancy Probability after 8 Measurements 
+k (cell index)
+ROBOT 
+p(m
+k
+|z)
+Occupied 
+50 52 54 56 58 60 62 64 66 68 70
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+0.9
+k
+p(m
+k
+)
+OG for 8 Measurements.
+ 
+ 
+Full Solution
+Borenstein and Koren 1991
+Moravec 1988
+Marshall and Barfoot 2007
+Stachniss 2006 (sonar)
+Elfes 1989
+p 21
+Fig. 2. The occupancy grids computed by the various algorithms in the literature and our parametrization with 21 parameters for one of the 1D datasets.
+The full solution is also shown for reference. Note that our algorithm most closely resembles the full solution near the obstacle, f =60.
+distributions,p andq, wherep is the benchmark probability,
+and q is the estimated probability. For the purpose of
+comparing two occupancy grids, we compute D
+KL
+(p
+k
+jjq
+k
+)
+for each cell, m
+k
+, in the map between the full solution and
+estimated map. Once
+D
+KL
+(p
+k
+jjq
+k
+) =
+1
+X
+m
+k
+=0
+p(m
+k
+) log
+p(m
+k
+)
+q(m
+k
+)
+is computed for each cell, m
+k
+, the sum over all cells is the
+D
+KL
+between the two maps:
+D
+KL
+(pjjq) =
+K
+X
+k=1
+D
+KL
+(p
+k
+jjq
+k
+):
+However, to optimize the tuning parameters, we need only
+optimize the cross entropy between the two maps,
+H(p
+k
+;q
+k
+) = 
+1
+X
+m
+k
+=0
+p(m
+k
+) logq(m
+k
+);
+H(p;q) =
+K
+X
+k=1
+H(p
+k
+;q
+k
+);
+because the cross entropy and Kullback-Leibler divergence
+are equal to within an additive constant if the benchmark
+probability, p, is constant. This is known as the principal of
+minimum discrimination information [10].
+Each of the tuning parameters for the ﬁve update terms
+detailed in Section III were optimized using the BFGS
+[3, 6, 8, 20] Quasi-Newton method with a mixed quadratic
+and cubic line search procedure. Speciﬁcally, we used the
+same 1D dataset with 1000 OG maps as we did in [15] and
+[16]. However, we divided the 1000 datasets into 10 equal
+sets and performed 10-fold cross validation. In other words,
+we optimized on 900 datasets, then tested on 100 datasets
+and repeated this procedure 10 times. In this optimization,
+the range sensor had a maximum range of F = 75 cells,
+but the obstacle was f = 60 cells from the (static) robot
+and the range sensor had Gaussian noise with a standard
+deviation of  = 3 cells, p(zjf) =N (60; 3
+2
+). Each dataset
+produced an OG map using traditional two assumption OG
+mapping and the tuning parameters being optimized for the
+update term. This occupancy grid was compared to the full
+solution using cross entropy to quantify the divergence of
+the two maps. The best update terms from this optimization
+are shown in Figure 1 and the third column of Table I.
+Figure 2 illustrates a portion of the OG created by each of the
+optimized algorithms for one of the 1000 datasets. Figure 2
+also shows the full Bayesian solution for reference.
+Additionally, Figure 1 and Figure 2 show the optimized
+update term for “p21” and an example OG created by “p21”
+respectively. The “p21” algorithm refers to an optimization
+that we conducted by optimizing an increasing number of
+( z
+n
+) values centered around =z
+n
+. Visually, this can
+be seen as optimizing each bar in Figure 1 where each bar
+(value of ) is a parameter in the optimization. Since we
+optimized an increasing number of parameters, we assumed
+that  = 0 for values beyond (away from the robot) the
+parameters being optimized and we assumed that  is equal
+to the ﬁrst value being optimized (nearest to the robot) for
+the values of delta that were closer to the robot than those
+being optimized. For one parameter being optimized, p1,
+our method outperformed Borenstein and Koren [2] because
+we were able to add information to all cells between the
+rover and the obstacle. However, our method is equivalent to
+Moravec [17] for two parameters, p2. Thus, as we increase
+the number of parameters, this method should be able to
+capture and outperform all of the other algorithms in the
+literature. Figure 3 shows the optimized parameters for the
+increasing number of parameters. It is interesting to note
+that as the number of parameters increases the update term
+becomes more negative for values of  < z
+n
+. Also, near
+ =z
+n
+the update term adds less information per cell but
+distributed over more cells as the number of parameters
+increases.
+Figure 4 shows how the cross entropy decreased as we
+increased the number of parameters being optimized. Fig-
+ure 4 also shows the best cross entropy values for the other
+algorithms in the literature for reference; the parametrization
+from [2] was excluded from Figure 4 because its cross
+entropy values were signiﬁcantly higher than the rest. It is
+interesting to note that cross entropy is more dramatically
+reduced as we add parameters near the robot as opposed to
+beyond the obstacle. Intuitively this makes sense as the range
+sensor should not be changing the occupancy probability of
+cells beyond the obstacle. Furthermore, Figure 4 shows that
+the parametrization proposed by Elfes [4] did extremely well
+and our method had to optimize 19 or more parameters to
+do better. Figure 1 gives more insight into this result as
+we see where Elfes 1989 and p21 differ. Figure 5 further
+6073
+!!" !!# !$ !% !& !" # " & %
+!'
+!"
+!!
+#
+!
+(
+(
+Optimized? Functions with Increasing Number of Parameters
+??z
+n
+?
+!!"!# " #
+!$
+!%
+!!
+"
+!
+&
+&
+%
+'
+(
+)
+!"
+p3 p1 p5 p7 p9 p11 p13 p15 p17 p19 p21
+Fig. 3. The optimized update term for an increasing number of parameters centered around  =zn . The optimization was completed for parameters 1
+to 21, but only every other parametrization is illustrated here.
+highlights this result by illustrating the average D
+KL
+on
+a cell-by-cell basis for the cells near the obstacle. These
+ﬁgures show that our parameterization better models the
+full solution near the obstacle at the expense of doing
+slightly worse beyond the obstacle. We clearly see that the
+algorithms (with the exception of [2]) diverge most from the
+full solution near the obstacle and that our parametrization
+of the update function diverges the least. Particularly, the
+parametrization proposed by Moravec [17] diverges the most
+near the obstacle boundary and this is the most common OG
+mapping algorithm found in the literature.
+5 10 15 20
+1.8
+1.9
+2
+2.1
+2.2
+2.3
+x 10
+4
+numParam
+Cross Entropy
+ 
+ 
+Number of Parameters
+H(p,q)
+2 4 6 8 10 12 14 16 18 20
+1.85
+1.9
+1.95
+2
+2.05
+2.1
+2.15
+2.2
+2.25
+2.3
+x 10
+4
+numParam
+Cross Entropy
+ 
+ 
+Moravec 1988
+Marshall and Barfoot 2007
+Stachniss 2006 (sonar)
+Elfes 1989
+Increasing Parameters
+Fig. 4. Best cross entropy values for optimized two-assumption OG
+mapping algorithms as compared to the full Bayesian solution.
+50 52 54 56 58 60 62 64 66 68 70
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+k
+D
+KL
+ge D
+KL
+for Optimized Parameters for A
+ 
+ 
+k
+D
+KL
+(p
+k
+||q
+k
+)
+50 52 54 56 58 60 62 64 66 68 70
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+k
+D
+KL
+Average D
+KL
+for Optimized Parameters for All Datasets
+ 
+ 
+Borenstein and Koren 1991
+Moravec 1988
+Marshall and Barfoot 2007
+Stachniss 2006 (sonar)
+Elfes 1989
+p 21
+ROBOT 
+Occupied 
+Fig. 5. The average D
+KL
+for each of the two-assumption OG mapping
+algorithms in the literature and our solution with 21 parameters, compared
+to the full Bayesian solution. The obstacle is at k = 60, so we see
+that the largest divergence is centered around the obstacle and that our
+parametrization has the lowest average divergence.
+V. 2D RESULTS
+To show that the optimized tuning parameters from Sec-
+tion IV perform well in realistic scenarios, we have tested
+the optimized parameters from the literature and the 21-
+parameter update term on 100 2D simulations. The 2D data
+was collected on 10 different maps that range from cluttered
+ofﬁce-type environments to sparsely occupied maps. We ran
+10 mapping experiments on each of the 10 maps using an
+exploration algorithm that ensured all areas of the environ-
+ment were mapped. The robot only mapped the environment
+when stopped, as is common with exploration algorithms
+that seek to produce highly accurate maps [24]. Each map
+was 500 500 cells and the laser rangeﬁnder could measure
+a maximum of F = 75 cells with Gaussian noise on each
+measurement, p(z
+n
+jf)=N (f; 3
+2
+).
+The full Bayesian solution cannot be tractably computed
+for these large 2D maps. Therefore, we computed the patch
+map [15] for each of the 2D maps. The patch map is an
+ofﬂine algorithm that has been shown to accurately capture
+the residual uncertainty in an occupancy grid and therefore
+approximate the full Bayesian solution. Essentially, the patch
+map computes the full solution for a small patch of cells and
+uses that result to report the occupancy probability of a cell.
+We used a 3 3 patch size (W = 9) and the maximum a
+posteriori (MAP) estimate for the patch map algorithm.
+Once the update term parameters have been optimized,
+the new update term can be used online. Therefore, the
+computation time is the same as existing methods. For
+comparison, we used the update term presented by H¨ ahnel
+[9]. This update term can be seen as the parameterization
+presented by Moravec [17] or Marshall and Barfoot [13] as
+H¨ ahnel used l
+occ
+= l
+free
+= 1:3863 as parameters
+2
+. Table II
+shows the averageD
+KL
+for each set of parameters compared
+the to the patch map. As expected, we see that the optimized
+parameters of [17] and [13] outperform the unoptimized
+parameters presented in [9]. Using the unoptimized param-
+eters, the average D
+KL
+between the maps produced and the
+patch map was 1:47 10
+4
+. Furthermore, we see that our
+parameterization with 21 parameters has the lowest average
+D
+KL
+compared to the patch map with a value of 3:9710
+3
+.
+Thus, the new update term allowed us to better approximate
+the ofﬂine patch map method.
+Figure 6 illustrates the improved performance of the OG
+mapping algorithm by using the optimized delta function as
+opposed to the parameters found in the literature. The ﬁgure
+compares the performance on one of the 100 2D datasets.
+Image (a) shows the frequency with which each cell returned
+a range reading. The three black circles on each image are
+magniﬁcations. Note that the ﬁrst magniﬁcation shows a
+heavily-mapped area and the second shows an under-mapped
+area. Image (b) shows the reference patch map. Image (c)
+2
+H¨ ahnel [9] reports these values in the probability domain asp
+free
+=0:2
+and pocc =0:8.
+6074
+(d) Optimized OG Mapping
+(c) Unoptimized OG Mapping (b) Patch Map (our benchmark)
+(f)D
+KL
+of (d) and (b) (e)D
+KL
+of (c) and (b)
+1
+2
+3
+1
+2
+3
+1
+2
+3
+1
+2
+3
+1
+2
+3
+1
+2
+3
+(a) Number of positive measurements
+0 0.5 1
+p(m
+k
+|...)
+Legend for (b), (c), (d):
+D
+KL
+(p
+k
+||q
+k
+)
+0.5 ≥ 1 0
+Legend for (e), (f):
+count
+4
+8
+0
+Legend for (a):
+Fig. 6. Results from one of the 100 2D datasets. Image (a) shows the number of times the range sensor reﬂected off a cell,m
+k
+, in the dataset. Image (b)
+illustrates the patch map [15] using the MAP estimate. Image (c) is the OG created using the update term in [9]. Image (d) is the OG created using the
+optimized 21-parameter update term. Image (e) displays theD
+KL
+between (c) and (b) and image (f) displays theD
+KL
+between (d) and (b). In both images
+(e) and (f) the values have been thresholded at D
+KL
+(p
+k
+jjq
+k
+) = 1 for the purpose of this illustration. The circles in the six images are magniﬁcations.
+The ﬁrst magniﬁcation shows that the traditional OG mapping algorithm is overconﬁdent in well-mapped areas. The second magniﬁcation shows that
+the optimized parameters out-perform the traditional method, even on walls with few measurements. The third magniﬁcation shows that the optimized
+parameters also estimate the unoccupied cells more accurately. Each cell in the third magniﬁcation received few (between one and three) measurements.
+TABLE II
+D
+KL
+BETWEEN ONLINE OG MAPPING AND PATCH MAP IN 2D
+mean(D
+KL
+) min(D
+KL
+) max(D
+KL
+)
+H¨ ahnel [9] 1:47 10
+4
+8:91 10
+3
+2:37 10
+4
+Borenstein and Koren [2] 1:25 10
+5
+1:07 10
+5
+1:37 10
+5
+Moravec [17] 9:57 10
+3
+6:29 10
+3
+1:39 10
+4
+Marshall and Barfoot [13] 1:12 10
+4
+7:22 10
+3
+1:67 10
+4
+Stachniss [21] (sonar) 7:60 10
+3
+4:78 10
+3
+1:19 10
+4
+Elfes [4] 4:18 10
+3
+2:58 10
+3
+6:53 10
+3
+p 21 3:97 10
+3
+2:62 10
+3
+5:79 10
+3
+shows the OG using parameters from the literature and image
+(d) shows the OG using the optimized parameters. Images
+(e) and (f) show theD
+KL
+on a cell-by-cell basis between (c)
+and (d), respectively, compared to the patch map. The many
+dark cells in image (e) indicate that the OG created using
+parameters from the literature strongly diverges from the
+patch map, especially in heavily-mapped areas. Note that the
+largest divergence is concentrated in areas where the range
+sensor returned a reading, as seen in image (a). Furthermore,
+the third magniﬁcation highlights an unoccupied area. We
+see that the optimized parameters better capture the residual
+uncertainty in this area as well. Each of the cells in the third
+magniﬁcation had only one to three measurements. Figure 1
+shows that our parametrization of the update term reduces the
+occupancy of cells in the unoccupied areas more than others.
+Therefore, it is no surprise that our update term outperforms
+the others in unoccupied areas.
+VI. CONCLUSION AND FUTURE WORK
+This paper highlights that existing OG mapping techniques
+do not always capture the residual uncertainty in the map
+6075
+as well as they could. By comparing the full Bayesian
+solution in 1D and the patch map in 2D, we see the beneﬁt
+of using a better parametrization of the update term and
+optimizing those parameters to capture the uncertainty. We
+compared several update terms that have been presented in
+the literature and also presented our own parametrization.
+Of those found in the literature, the parameterization ﬁrst
+presented by Elfes [4] stood out as the best. However, the
+majority of OG mapping algorithms in the literature are
+using the parameterization ﬁrst presented by Moravec [17].
+Our own parameterization was able to outperform those in
+the literature. Figure 4 may lead the reader to believe that
+our performance increase was minor, but Figures 2 and 5
+illustrate that our update term yields better accuracy at
+the threshold from unoccupied to occupied at the cost of
+performing slightly worse beyond the ﬁrst-occupied-cell.
+This improvement comes at no additional computational cost
+during online operations.
+The optimized update terms presented in this paper can be
+used online for any two-assumption OG mapping algorithm.
+This is unlike our previous work to capture the residual
+uncertainty in an occupancy grid [15, 16] that was for ofﬂine
+use. It should be noted, however, that the ofﬂine algorithms
+still perform better than this online algorithm as they account
+for correlations between cells in the map. Future work on this
+topic will further compare these online and ofﬂine methods.
+In addition, better representing the residual uncertainty in
+the map should allow us to improve the common uses of
+OG maps, such as exploration and localization.
+ACKNOWLEDGMENT
+The authors thank Dr. Joseph Bakambu from MDA Space
+Missions for his valuable contribution to this work.
+REFERENCES
+[1] D. Arbuckle, A. Howard, and M. Mataric, “Temporal
+occupancy grids: a method for classifying the spatio-
+temporal properties of the environment,” in IEEE/RSJ
+Int. Conf. on Intelligent Robots and Systems (IROS),
+2002, pp. 409–414.
+[2] J. Borenstein and Y . Koren, “The vector ﬁeld histogram
+- fast obstacle avoidance for mobile robots,” IEEE
+Journal of Robotics and Automation, vol. 7, no. 3, pp.
+278–288, June 1991.
+[3] C. Broyden, “The convergence of a class of double-rank
+minimization algorithms,” Journal Inst. Math. Applic.,
+vol. 6, pp. 76–90, 1970.
+[4] A. Elfes, “Occupancy grids: A probabilistic framework
+for robot perception and navigation,” Ph.D. dissertation,
+Carnegie Mellon University, 1989.
+[5] ——, “Using occupancy grids for mobile robot percep-
+tion and navigation,” IEEE Computer, vol. 22, no. 6, pp.
+46–57, June 1989.
+[6] R. Fletcher, “A new approach to variable metric algo-
+rithms,” Computer Journal, vol. 13, pp. 317–322, 1970.
+[7] S. Geman and D. Geman, “Stochastic relaxation, gibbs
+distribution, and the bayesian restoration of images,”
+IEEE Transaction on Pattern Analysis and Machine
+Intelligence, vol. 6, pp. 721–741, 1984.
+[8] D. Goldfarb, “A family of variable metric updates
+derived by variational means,” Mathematics of Com-
+puting, vol. 24, pp. 23–26, 1970.
+[9] D. H¨ ahnel, “Mapping with mobile robots,” Ph.D. disser-
+tation, University of Freiburg, Department of Computer
+Science, December 2004.
+[10] S. Kullback, Information Theory and Statistics. New
+York, NY: John Wiley, 1959.
+[11] S. Kullback and R. A. Leibler, “On information and
+sufﬁciency,” Annals of Mathematical Statistics, vol. 22,
+no. 1, pp. 79–86, March 1951.
+[12] A. Makarenko, S. Williams, F. Bourgault, and
+H. Durrant-Whyte, “An experiment in integrated explo-
+ration,” IEEE/RSJ Int. Conf. on Intelligent Robots and
+System (IROS), vol. 1, pp. 534–539, 2002.
+[13] J. Marshall and T. Barfoot, “Design and ﬁeld testing of
+an autonomous underground tramming system,” in Int.
+Conf. on Field and Service Robotics (FSR), July 2007.
+[14] M. C. Martin and H. P. Moravec, “Robot evidence
+grids,” Carnegie Mellon University Robotics Institute,
+Pittsburgh, PA, Tech. Rep. CMU-RI-TR-96-06, March
+1996.
+[15] R. S. Merali and T. D. Barfoot, “Patch map: A
+benchmark for occupancy grid algorithm evaluation,”
+IEEE/RSJ Int. Conf. on Intelligent Robots and System
+(IROS), pp. 3481–3488, October 2012.
+[16] ——, “Occupancy grid mapping with Markov chain
+monte carlo Gibbs sampling,” Int. Conf. on Robotics
+and Automation (ICRA), pp. 3168–3174, May 2013.
+[17] H. Moravec, “Sensor fusion in certainty grids for mo-
+bile robots,” AI Magazine, vol. 9, no. 2, pp. 61–74,
+1988.
+[18] H. Moravec and A. E. Elfes, “High resolution maps
+from wide angle sonar,” in IEEE Int. Conf. on Robotics
+and Automation (ICRA), March 1985, pp. 116–121.
+[19] D. Murray and J. J. Little, “Using real-time stereo vi-
+sion for mobile robot navigation,” Autonomous Robots,
+vol. 8, no. 2, pp. 161–171, 2000.
+[20] D. Shanno, “Conditioning of quasi-newton methods
+for function minimization,” Mathematics of Computing,
+vol. 24, pp. 647–656, 1970.
+[21] C. Stachniss, “Exploration and mapping with mobile
+robots,” Ph.D. dissertation, University of Freiburg, De-
+partment of Computer Science, April 2006.
+[22] C. Stachniss and W. Burgard, “Exploring unknown
+environments with mobile robots using coverage maps,”
+Int. Conf. on Artiﬁcial Intelligence (IJCAI), vol. 1, pp.
+1127–1132, 2003.
+[23] S. Thrun, “Learning occupancy grids with forward
+sensor models,” Auton. Robots, vol. 15, pp. 111–127,
+2003.
+[24] C. Tong, T. D. Barfoot, and E. Dupuis, “Three-
+dimensional SLAM for mapping planetary worksite
+environments,” Journal of Field Robotics, special issue
+on “Space Robotics”, vol. 29, no. 3, pp. 381–412, 2012.
+6076

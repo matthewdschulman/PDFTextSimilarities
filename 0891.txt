@@ -1,0 +1,1582 @@
+Maximally Informative Surface Reconstruction from Lines
+Jonas Witt and Gerhard Mentges
+Abstract— In this paper, we propose a novel multi-view
+method for surface reconstruction from matched line segments
+with applications to robotic mapping and image-based ren-
+dering. Starting from 3D line segments, plane hypotheses are
+formed for all non-collinear and sufﬁciently coplanar segment
+pairs. The surface that is spanned by two segments is used to
+immediately prune hypotheses that do not pass a sight line
+occlusion check to keep the initial plane number tractable.
+After further merging, exhaustive intersections are computed
+in an efﬁcient way to yield a maximally informative surface
+representation. Finally, robustiﬁed visibility constraints are
+used to recover a dense surface mesh that is a pessimistic
+representation of the free space, which is desirable for path
+planning applications. The presented system is a complete and
+automatic solution suitable for mapping an environment in real-
+time scenarios like robotic exploration. We demonstrate the
+performance of our algorithm on several indoor scenes with
+varying complexity.
+I. INTRODUCTION
+In many applications, geometric reconstruction from mul-
+tiple views is an important problem. For image-based ren-
+dering and 3D scanning, accurate and visually pleasing
+models are desired, whereas higher level robotic planning
+requires concise geometrical representations of an environ-
+ment. While great progress has been made with feature
+point based structure from motion (SfM) techniques in recent
+years, the reconstruction of scenes containing non-textured
+surfaces is still a major challenge. Many man-made environ-
+ments do not even provide sufﬁcient feature points to recover
+the camera motion [1], not to mention surface reconstruction.
+Even partial lack of texture quickly gives rise to holes with
+conventional techniques [2]. For robotic planning, this is
+usually not acceptable, which is why active vision systems
+(e.g. laser scanners) are mostly employed. However despite
+the lack of point features, the structural information of
+sparsely or non-textured scenes is still visually deducible
+from edges (by which we mean intensity gradient maxima).
+Using piecewise straight line segments as a compact edge
+representation, we aim to reconstruct completely untextured
+scenes which are only partially visible in each frame as is
+the case during indoor exploration.
+This work builds upon the Iterative Closest Multiple Lines
+(ICML) algorithm from [1] extended by bundle adjustment
+to yield a complete and fully automatic Line-SLAM sys-
+tem. The resulting map of line segments along with their
+visibility graph is the input for the presented algorithm.
+Our surface reconstruction approach tries to leverage the
+maximal information content from the input data by even
+J. Witt and G. Mentges are with the Institute for Reliability Engineering,
+Hamburg University of Technology, 21073 Hamburg, Germany, email:
+jonas.witt@tuhh.de, gerhard@mentges.eu
+Fig. 1. The Room sequence has virtually no texture, large areas with
+specularities and all frames have only partial scene visibility. The image
+row shows the pose/frustum plot (center) and two input images that have
+been colored based on the normal direction of reconstructed planes. The
+upper image shows a rendering of the complete reconstructed scene with
+overlayed camera poses (blue arrow is the look at direction) and detected
+line segments (with error cuboids in red).
+incorporating planes that derive from only two line segments
+(in contrast to statistical consensus of multiple primitives).
+We generate plane hypotheses from coplanar line segment
+pairs and immediately check visibility of other line segments
+in the quad area that the candidate segments span. This
+early pruning is done to keep the plane count tractable.
+The end point covariances that are obtained from bundle
+adjustment are used to assign line segments to hypotheses
+and subsequently merge planes based on common children
+and a coplanarity criterion. The intersection of the remaining
+planes yields a three-dimensional grid for which every face
+is initially assumed to be solid. The free space is determined
+by rubustiﬁed visibility constraints that the sight lines from
+different camera poses to the line segments impose.
+Our main contributions are three-fold. First, we propose
+a novel method for generating plane hypotheses from line
+segments in N views that is capable of recovering planes
+from just two coplanar line segments while not creating
+an intractable number of false hypotheses. This enables the
+reconstruction of completely untextured scenes for which
+surfaces may only be partially visible. Secondly, an efﬁcient
+plane intersection scheme based on a scene graph is deﬁned
+by several simple rules: 1. intersections are created for all
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 2029
+Stereo Frames Stereo Line
+Matching
+6-DOF Poses 
+with ICML
+Line Map  
+using BA
+1 2
+3 4
+(a) Stereo Line SLAM
+) ICML [1] is used for
+inter-frame line associa-
+tion. Bundle adjustment
+creates the ﬁnal maps.
+!
+P
+(b) Plane Search )
+Planes P for every
+surface containing 2
+coplanar input segments.
+!
+PLX
+(c) Plane Intersection)
+Interconnected grid of
+intersection lines L and
+points X.
+!
+f
+LX
+(d) Face creation) All
+solid mesh of faces f
+across intersection grid,
+free space may be ﬁlled
+up.
+!
+f
+LX
+cam
+f
+portal
+(e) Occlusion Check)
+Classiﬁcation of faces
+into solids and perme-
+able portals. Output: sur-
+face mesh (polygons).
+Fig. 2. The shown reconstruction pipeline visualizes all steps, starting from the preceding Line SLAM which outputs 3D line segments (with error
+estimates), camera poses and sight lines. Subsequently, planes are found among the input segments, for which an intersection grid is created based on line
+segment relations. Finally, faces are computed from the intersections and free space faces are culled based on the visibility constraint (using sight lines).
+common line segments between planes, 2. line segments
+have to be enclosed by intersection points which is enforced
+by auxiliary intersections that 3. are found in planes that
+fulﬁll a spatial or graph-based adjacency criterion. Thirdly,
+we propose a robust occlusion score for convex faces and
+the sight triangle that is spanned by a camera origin and line
+segment end points. This score considers lateral and depth
+penetration severity to determine the navigable free space
+from imperfect measurements.
+Accordingly, due to the resulting concise geometric repre-
+sentation, the high efﬁciency that enables real-time use and
+pessimistic assumptions about the free space, our method is
+especially useful for robotic exploration.
+II. RELATED WORK
+A frequently chosen approach to planar reconstruction is
+plane sweeping [3], [4], [5], [6], where plane hypotheses are
+generated at locations of high feature density along a limited
+and more or less constrained set of sweeping directions.
+In [3] the camera image plane is swept across the scene
+and at every depth location where features were found, a
+Delaunay triangulation is performed. Because of the trian-
+gulation, reconstructed geometry is only indirectly related
+to the scene geometry and more importantly reconstruction
+of every plane in the scene requires a large number n of
+different perspectives, convergence is shown for n!1.
+Another approach is to sweep across principal directions
+of the scene. One way is to assume a Manhattan world as
+in [5], [4], [7] with obvious limitations considering scene
+geometry.
+More ﬂexibly, non-orthogonal vanishing directions serve
+as sweeping directions in [6]. However, underrepresented
+vanishing directions may be challenging. Furthermore plane
+hypotheses deﬁned only by parallel lines are ignored, which
+can lead to problems in some environments (e.g. corridors).
+Generally speaking, plane sweeping techniques impose
+rather strong restrictions to the solution space and it is
+difﬁcult to determine meaningful sweeping directions while
+not missing relevant but under-implied ones (e.g. untextured
+surfaces of which only few edges are detectable).
+In [8], junction points are searched among input line
+segments to generate plane hypotheses from connected line
+pairs. Faces are only created across looping sequences of
+junctions and thus many faces of the scene may be missing
+in the reconstruction, since not every junction or even line
+may be visible or detectable.
+In [9], input images are divided in planar and non planar
+areas. For planar reconstruction, a RANSAC based scoring
+method is employed to ﬁt arbitrarily oriented plane hypothe-
+ses to dense depth input point data. However, such input may
+not be available in untextured scenes.
+An approach that leverages image-space neighborhood of
+edge pixels for generating plane hypotheses is presented
+in [10]. Seed points are distributed across the input image
+according to a V oronoi diagram of the detected edges, for
+which 3D coordinates have been determined in a previous
+SLAM step. For each seed point, RANSAC is used to select
+the best hypothesis for its supporting edge pixel neighbor-
+hood. However, it seems that a ﬁxed threshold irrespective
+of error estimates is used for hypothesis scoring which is
+problematic for surfaces in a larger range of distances. Mul-
+tiple views are reconstructed individually and then stitched
+together. This makes a reconstruction of textureless regions
+at image borders difﬁcult.
+Our approach leverages information from multiple views
+while considering individual line segment error covariances.
+Plane intersections provide consistent and concise geometry
+without unnecessary holes. The use of line segments as
+sparse input allows our method to be fast enough for real-
+time applications.
+III. ALGORITHM
+The motivation behind our algorithm is that line segments
+are concise and geometrically expressive features with which
+many man-made scenes can be described. The number of
+planes that can be derived from n
+S
+line segments is O(n
+2
+S
+)
+while from n
+p
+points, O(n
+3
+p
+) planes are possible. Pairs of
+line segments even allow to immediately assess coplanarity
+as a plane likelihood criterion, whereas any 3 points are
+coplanar. Another beauty lies in the hinting towards 3D
+edges. We utilize these hints to compute plane intersections
+based on common line segments between different planes to
+extract volumes. Fig. 2 gives an overview of our pipeline
+2030
+S
+cpl
+S
+:cpl
+P
+p
+1
+(S
+cpl
+)
+p
+2
+(S
+cpl
+)
+e
+1
+(S
+cpl
+)
+e
+2
+(S
+cpl
+)
+e
+2
+(S
+:cpl
+)
+6je
+U
+2
+j
+e
+1
+(S
+:cpl
+)
+6je
+V
+2
+j
+6je
+W
+2
+j
+Fig. 3. A line segmentS is considered coplanar to a planeP , if both error
+volumes e
+1;2
+(S) of its end points p
+1;2
+(S) intersect with P .
+from generating plane hypotheses, over plane intersection
+(based on line segments), the extraction of faces from the
+intersection grid and ﬁnally culling faces that do not pass
+our robustiﬁed visibility constraint.
+A. Line Segments and Coplanarity
+Each line segment S detected by the Stereo-SLAM is
+deﬁned by its end points p
+1
+(S) and p
+2
+(S) in Euclidean
+coordinates and corresponding error description. For sim-
+pliﬁcation, the errors of the segment end points are repre-
+sented by bounding cuboids e
+1;2
+(S) around the Gaussian
+error ellipsoids, spanned by the error basesfe
+U
+1;2
+;e
+V
+1;2
+;e
+W
+1;2
+g
+which correspond to the eigenvectors of the point covariance
+matrices estimated during the SLAM optimization procedure.
+The resulting error cuboids are scaled to 3 in each direction
+to obtain volumes, which contain the ideal points to a high
+certainty of 99:7%.
+For a line segmentS to be considered coplanar to a plane
+P , the condition
+cpl(S;P ) = (e
+1
+(S)\P6=;)^ (e
+2
+(S)\P6=;) (1)
+has to be fulﬁlled, i.e. both of the described error cuboids
+e
+1;2
+(S) have to intersect withP . Accordingly, two segments
+S
+1;2
+are called coplanar, if
+cpl(S
+1
+;S
+2
+) =9P :cpl(S
+1
+;P ) ^ cpl(S
+2
+;P ): (2)
+When searching for plane hypotheses among combinations
+of segments, ﬁrst, a provisional normal n
+0
+= dir(S
+1
+)
+dir(S
+2
+) is computed, where dir(S) denotes the normalized
+segment direction. The error base vectors of each segment
+point are then projected onto n
+0
+to obtain the error e
+n
+0
+=
+je
+U;n
+0
+j +je
+V;n
+0
+j +je
+W;n
+0
+j in direction of n
+0
+. The reciprocal
+square of the projected errors e
+n
+0
+is now used to perform
+a weighted least squares ﬁt of a plane to the four segment
+points of the combination. If the ﬁtted plane intersects all
+error cuboids, a coplanar segment combination and thus a
+valid plane hypothesis is found.
+Prior to the coplanarity check, segment combinations are
+checked for collinearity using a similar projection of the
+error bases onto the relevant end point distance vectors,
+and checking the error projections for overlap, which im-
+plies collinearity. If a combination S
+1
+, S
+2
+is collinear, the
+condition cln(S
+1
+;S
+2
+) holds true. Collinear segments are
+not considered when checking for coplanarity to ensure
+geometrical stability of the constructed plane hypotheses.
+Fig. 4. A simple scene with three camera framesF
+1:::3
+from which 13 line
+segments S
+1:::13
+are visible. The planes P
+1:::3
+generate the intersection
+lines L
+1:::3
+and intersection point X
+1
+(note that the ceiling plane that
+S
+5
+and S
+13
+would generate has been omitted for visual clarity). The
+graph represents the resulting relations of visibility and geometry, which
+are created and assessed during reconstruction.
+Line segmentsS coplanar to a planeP are called the child
+segments of P , represented by the set
+cld
+S
+(P ) =fSjcpl(S;P )g: (3)
+Correspondingly, for each segment S a set pnt
+P
+(S) of
+parent planes is deﬁned, containing all planes to which S
+is coplanar.
+B. Frames and Visibility
+For each frame F , cld
+S
+(F ) deﬁnes a set of the visible
+segments as obtained from the Line-SLAM. Analogously, for
+each segment S a set pnt
+F
+(S) of parent frames is deﬁned,
+which includes all frames F , wherein S has been observed.
+From this, we derive a set of parent frames
+pnt
+F
+(P ) =
+[
+S2cld
+S
+(P)
+pnt
+F
+(S) (4)
+for each plane P , which is the union of the child segments’
+parent frames.
+The sets cld
+S
+(F ) and pnt
+F
+(P ) form a graph (Fig. 4),
+which is used to constrain interference of geometry by
+visibility. pnt
+F
+(P ) has the important property of providing
+information about overlapping geometry between frames and
+thus about regions where frame-wise geometry has to be
+seamed (Fig. 4), which is e.g. used to restrict merging and
+2031
+S
+occ
+S
+1
+S
+2
+S
+3
+S
+4
+Q
+1;2
+Q
+3;4
+cam(F
+1
+)
+cam(F
+2
+)
+S
+front
+Fig. 5. Immediate occlusion and contour check for plane hypotheses.
+The false hypothesis deﬁned by S
+1
+;S
+2
+crosses solid volume and fails the
+contour test because its spanning quad Q
+1;2
+gets occluded by S
+front
+and
+cpl(S
+1
+;S
+front
+)^cpl(S
+front
+;S
+2
+). This pairwise coplanarity requirement
+ensures the discarded hypothesis will get enclosed by the resulting planes.
+The false hypothesis between S
+3
+;S
+4
+crosses free space and will be
+discarded since its spanning quad Q
+3;4
+occludes Socc , which may be of
+arbitrary orientation. Note that most of the 10 possible false hypotheses
+between the shown parallel line segments have been left out for clarity.
+intersecting of two planes P
+1
+and P
+2
+based on the presence
+of common parent frames pnt
+F
+(P
+1
+)\pnt
+F
+(P
+2
+) .
+C. Finding Meaningful Planes
+1) Frame-wise Plane Search: First, for each frame F ,
+coplanar line segment combinations are searched among all
+S2cld
+S
+(F ). Especially the presence of many parallel seg-
+ments in the scene can lead to large numbersO(jcld
+S
+(F )j
+2
+)
+of false hypotheses, since every pair of parallels deﬁnes
+another plane. On the other hand, parallel segments cannot be
+ignored, since in many situations, we found parallel contours
+to be the only source of information, such as for untextured
+corridor ﬂoors. To make use of parallels without generating
+too many false hypotheses, each combination found to be
+coplanar has to pass a pair of tests to immediately discard
+hypotheses spanned across free space or solid volume.
+To discard hypotheses crossing free space, the spanning
+quad Q
+3;4
+of a combination S
+3;4
+2 cld
+S
+(F ) is checked
+for occluding other visible line segments S
+occ
+2 cld
+S
+(F )
+(Fig. 5). For each occlusion, a score is computed from
+length, position and average back distance of the occluded
+part of S
+occ
+, which is accumulated across frames F with
+S
+3;4
+2cld
+S
+(F ). Face occlusion checks and scoring will be
+explained in detail within section III-E. If the accumulated
+score exceeds a threshold, the hypothesis will be discarded.
+By this approach we achieve robustness against sporadic
+false occlusions, caused by segment outliers (e.g. reﬂections).
+A similar contour check is performed to detect hypotheses
+spanned across solid volume. Now, it will be checked for
+Q
+1;2
+, if it gets occluded by a segment S
+front
+2 cld
+S
+(F )
+(Fig. 5). This frontal occlusion of Q
+1;2
+is scored and pro-
+cessed analogously to the back occlusion case. The poten-
+tially dangerous process of discarding hypotheses because of
+features in front of the spanning quad Q
+1;2
+is made robust
+by an additional requirement. Such hypotheses may only be
+discarded, if
+cpl(S
+front
+;S
+1
+) ^ cpl(S
+front
+;S
+2
+); (5)
+S
+1
+S
+2
+P
+1
+P
+2
+Fig. 6. Plane Merging. A combination of planes P
+1;2
+will get merged, if
+they have at least one non-collinear segment combination S
+1;2
+in common
+and do not lose any child segments after reﬁtting to the united child
+segments.
+that is the occluding line segmentS
+front
+has to be coplanar
+with both, S
+1
+and S
+2
+. This means, the discarded hypothesis
+will be enclosed by the two resulting hypotheses between
+S
+1
+,S
+front
+and S
+2
+,S
+front
+.
+False hypotheses may remain undetected, if e.g.,Q
+1;2
+of a
+coplanar segment combination is of small extent compared to
+average distance between segments visible across the scene.
+However, at this stage, it is not required to discard every
+false hypothesis, since the ﬁnal main occlusion check of
+the algorithm will eliminate non-solid faces generated within
+false planes.
+2) Frame-wise Plane Merging: After plane hypotheses
+P2cld
+P
+(F ) passing the early occlusion and contour check
+were found, for each frame F all segments S 2 cld
+S
+(F )
+are checked for coplanarity with the generated hypotheses
+2 cld
+P
+(F ) and added to the respective sets of plane child
+segments cld
+S
+(P ).
+Now, that we obtained complete information about seg-
+ment coplanarity for the current frame, we can make use
+of this to perform a speciﬁc merging of planes, based on
+common child segments between them. A combination of
+planes P
+1
+;P
+2
+2 cld
+P
+(F ) will get merged, if it fulﬁlls the
+condition
+mrg(P
+1
+;P
+2
+) =
+9S
+1
+;S
+2
+2cld
+S
+(P
+1
+)\cld
+S
+(P
+2
+) ::cln(S
+1
+;S
+2
+)
+^8S2cld
+S
+(P
+1
+)[cld
+S
+(P
+2
+) :cpl(S;P
+mrg
+);
+(6)
+i.e. if they have at least one non-collinear combination of
+segments in common and the resulting merged plane P
+mrg
+still contains all of the united child segments, whereP
+mrg
+is
+obtained from performing a weighted least squares ﬁt across
+the united child segments. When performing merging on a
+subset of planes, those are sorted by the number of possible
+merge candidates and merged with descending candidate
+count. This procedure is iterated until no more mergings are
+possible.
+3) Frame-overlapping Plane Merging: After plane hy-
+potheses have been found and merged frame-wise, a further
+assignment of segments to planes and merging of planes
+is performed, based on the requirement they own common
+parent frames. First, segments S for which pnt
+F
+(S)\
+pnt
+F
+(P )6=; ^ cpl(S;P ) are added to the child segments
+cld
+S
+(P ) of the respective planes P . Second, planes P
+1
+;P
+2
+having common parent framespnt
+F
+(P
+1
+)\pnt
+F
+(P
+2
+)6=; get
+merged if they fulﬁll mrg(P
+1
+;P
+2
+). Through this approach,
+we obtain geometry continuously seamed across adjacent
+frames, but do not perform any merging of unrelated ge-
+2032
+(a) (b)
+Fig. 7. Comparison of (a) exhaustive intersection and (b) under require-
+ment of common child segments between intersecting planes in the ideal
+case of observed segments for every scene edge.
+ometry, which could lead to an unnecessary loss of local
+detail at higher computational cost.
+The sets of common parent frames between planes
+pnt
+F
+(P
+1
+)\pnt
+F
+(P
+2
+) and segments pnt
+F
+(S
+1
+)\pnt
+F
+(S
+2
+)
+can be determined efﬁciently by searching them among the
+intersections between the sets of child segments cld
+S
+(F )
+and child planes cld
+P
+(F ) of each frame F . In general, a
+frame based approach is more efﬁcient, instead of complex-
+ities O(n
+2
+P
+) for plane merging and O(n
+P
+n
+S
+) for child
+segment assignment, we achieve O(n
+F
+jcld
+P
+(F )j) and
+O(n
+F
+jcld
+P
+(F )jjcld
+S
+(F )j) respectively, where n
+F
+is the
+number of processed frames F . n
+P
+and n
+S
+are the total
+number of known planes and line segments, where usually
+n
+P
+jcld
+P
+(F )j and n
+S
+jcld
+S
+(F )j.
+D. Efﬁcient Robust Plane Intersection
+After plane hypotheses have been constructed, it has to
+be determined, in which way planes get intersected with
+each other to form a geometrical and topological grid of
+intersection points X connected along intersection lines L.
+1) Regular intersections: A natural choice for an inter-
+section criterion is the presence of a common child segment
+among two planes, since such a segment corresponds to
+an observed real edge of the environment geometry. Thus,
+a combination of planes P
+1
+;P
+2
+will get intersected, if the
+condition
+cmn(P
+1
+;P
+2
+) = (cld
+s
+(L
+1;2
+)6=;)
+with cld
+S
+(L
+1;2
+) = cld
+S
+(P
+1
+)\cld
+S
+(P
+2
+)
+(7)
+is fulﬁlled, whereL
+1;2
+denotes the intersection line between
+P
+1
+and P
+2
+and cld
+S
+(L
+1;2
+) is the set of child segments of
+L
+1;2
+, generally deﬁned by
+cld
+S
+(L) =
+\
+P2pnt
+P
+(L)
+cld
+S
+(P ): (8)
+Through this, every observed environment edge will get rep-
+resented by an intersection lineL within the constructed grid.
+After planes have been intersected according to (7), intersec-
+tions points X are calculated plane-wise from combinations
+of linesL
+1;2
+. Note that restricting the plane intersection leads
+to the existence of intersection points X with less than 3
+parent planes pnt
+P
+(X) and lines pnt
+L
+(X) connected to it,
+while they still intersect geometrically inX. This leads to an
+intersection grid, only containing intersection points, colinear
+to observed scene edges represented by segments (Fig. 7).
+Line segments S
+pln
+for which jpnt
+P
+(S
+pln
+)j = 1, i.e.
+which only have a single parent plane, are called planar
+segments. Such segments stem from planar contours part
+of observed planes and deﬁne borders between different
+untextured planar areas. To represent those borders, artiﬁcial
+intersection lines L
+pln
+are constructed from the projection
+of those planar segments onto their parent plane, which get
+otherwise intersected regularly with all other intersections
+lines of their parent plane.
+2) Line Segment Enclosement: Since we do not assume
+perfect line detection for every environment edge, we cannot
+rely on the presence of line segments as cues for plane
+intersections. This section explains the fundamental rule that
+we use to determine the need for auxiliary intersections
+(after performing regular intersections according to (7)). The
+main idea is the enforcement of line segment enclosement by
+intersection pointsX along all intersection linesL (see Fig.
+8). This is motivated by the fact, that the ﬁnal mesh is a
+3D-grid of connected intersection point pairs and only these
+sections of intersection lines can make up the face edges
+of the ﬁnal reconstruction. Accordingly, since we assume
+that every line segment is relevant, we have to enforce
+enclosement by intersection points to assure that all line
+segments are represented in the resulting reconstruction.
+Only the outermost segment end points p
+min;max
+(S 2
+cld
+S
+(L)) along each intersection line L need to be checked
+for enclosement, since the line segments in between are
+naturally enclosed as well. Therefore, an intersection line
+L is enclosed if and only if the condition
+enc(L) =9X
+1
+2cld
+X
+(L) :
+L
+(X
+1
+)
+L
+(p
+max
+)
+^9X
+2
+2cld
+X
+(L) :
+L
+(X
+2
+)
+L
+(p
+min
+)
+^jpnt
+L
+(X
+1;2
+)j 3 ^ jpnt
+P
+(X
+1;2
+)j 3
+(9)
+is true, where
+L
+(p) is the scalar line parameter of a pointp
+that corresponds to the closest point on L, cld
+X
+(L) denotes
+the set of child intersection points along L and pnt
+L
+(X)
+the set of parent intersection lines crossing in an intersection
+point X.
+The sub predicatejpnt
+L
+(X
+1;2
+)j 3 ^ jpnt
+P
+(X
+1;2
+)j 3
+requires an enclosing intersection point to stem from the
+intersection of at least 3 planes, instead of just from intersec-
+tions between 2 or more intersection lines of a single plane
+(e.g. of planar line segments). The reason for this (as shown
+in Fig. 8) is that only one of theL-adjacent facesf would be
+closed if an intersection point X is not a three-dimensional,
+but a planar intersection. However, an auxiliary intersection
+of the parent planes pnt
+P
+(L) with a further plane P
+aux
+always yields enclosing intersection points X
+aux
+fulﬁlling
+this requirement.
+3) Auxiliary Intersections: Ifenc(L) evaluates to false for
+any line L, the best plane P
+aux
+for an auxiliary intersection
+has to be found. In general, we want to generate the tightest
+possible enclosement that minimizes the distance between
+X
+aux
+and an unenclosed segment endpoint p(S). For this,
+we search among the planes of the following groups:
+1) common parent frame: pnt
+F
+(L)\pnt
+F
+(P
+aux
+)6=;,
+2) spatially close:9P2pnt
+P
+(L) :close(L;P;P
+aux
+),
+3) artiﬁcial scene bounding planes.
+2033
+f
+f
+P
+aux
+P
+0
+P
+P
+2pnt
+P
+(L)
+2pnt
+P
+(L)
+L
+L
+0
+L
+0
+L
+aux
+L
+aux
+X
+X
+aux
+X
+aux
+X
+aux
+S
+Fig. 8. To obtain a consistent 3D intersection line grid that represents all
+segmentsS, it is essential to enforce intersection pointsX on both segment
+sides. The lack of intersection points is usually a result of undetected line
+segments (e.g. due to lighting or occlusion). We solve this problem by
+searching for an auxiliary plane Paux to generate the missing intersection
+lines Laux and points Xaux (dashed). The requirement for intersection
+points to have 3 parent lines and planes guarantees that allS-adjacent faces
+f can be closed and thus 3D volumes are terminated by planes to all sides.
+While the ﬁrst group of planes is close in terms of their
+scene graph relation, the spatial closeness of planes is has to
+be deﬁned. Since a plane P is spatially related to its child
+segments, we deﬁne the spatial adjacence of planes by their
+segment bounding boxes
+close(L;P2pnt
+P
+(L);P
+aux
+) =
+jj(L\P
+aux
+) C(P )jj<R(P )
+^jj(L\P
+aux
+) C(P
+aux
+)jj<R(P
+aux
+);
+(10)
+where C(P ) denotes the center and R(P ) the radius of
+the bounding box of all child segment end points p
+1;2
+(S2
+cld
+S
+(P )) and  serves as a safety factor (chosen dependent
+on the observed/expected line segment density).
+Often, surfaces like untextured walls extend beyond the
+ﬁeld of view and cannot be enclosed by planes that where
+generated from the visible geometry. If those faces shall
+be reconstructed (as is desirable in most cases, especially
+robotics), artiﬁcial bounding planes in all 6 principal direc-
+tions need to be introduced. We parameterize these planes
+to form a bounding box around all detected line segments,
+scaled by a safety factor.
+4) Face Creation: After obtaining an intersection grid
+from the found plane hypotheses, convex faces f are
+searched along the planar sub grids of intersection lines by
+employing a left turning search.
+E. Main Occlusion Check And Solid Surface Extraction
+Now, we have obtained a 3D-intersection-grid spanned
+with faces, that subdivides the reconstructed geometry into
+separate volumes. Since we initially assume that all faces are
+solid, we recover the free space by enforcing the visibility
+constraint. However, hard culling of faces that are penetrated
+by sightlines can be problematic with real world data.
+Reﬂections, inaccuracies or outliers could quickly destroy
+geometry. We use a robustiﬁed occlusion score occ(f) that
+S
+e
+1
+(S)
+e
+2
+(S)
+P
+f
+cam(F )
+L
+s
+1
+L
+s
+2
+S
+P
+S
+f
+r
+min
+d
+min
+d
+back;1 e
+L
+s
+1
+1
+Fig. 9. Every face f is checked for occlusions of line segments. Our
+occlusion score uses the border distanced
+min
+and penetration depthd
+back
+to compute an occlusion severity2 [0;1]. The border distance d
+min
+is
+normalized by the maximal inner face circle radiusr
+min
+andd
+back
+by the
+segment error in sightline direction.
+factors in the severity in lateral and depth direction to assess
+the likelihood that a face f actually needs to be culled.
+After all faces have been scored in this way, the free volume
+is obtained by thresholding. By this approach we obtain a
+pessimistic estimation of the navigable space that surrounds
+the observer.
+1) Segment Sightline Projection: For every parent frame
+F2 pnt
+F
+(P ) of a plane P all visible child segments S2
+cld
+S
+(F ) with at least one end point behind P are projected
+onto P , with the exception of plane child segments S 2
+cld
+S
+(P ). The sightline projection S
+P
+of a segment S with
+end points p
+1;2
+(S;F ) is deﬁned by the segment between
+the projected end points p
+P
+1;2
+(S;F ), which are obtained by
+intersecting the sight lines
+L
+s
+1;2
+() =cam(F ) +(p
+1;2
+(S;F ) cam(F ));
+2 [0; 1]
+(11)
+with P , where cam(F ) is the camera position for frame F .
+Segments intersecting P are trimmed to the part behind P
+before sight line intersection. Note, that every segmentS can
+have different and multiple sets of end pointsp
+1;2
+(S;F ) per
+parent frame F , since different parts of a segment can be
+visible in each frame, e.g. due to occlusions or unfavorable
+lighting.
+Once the projection S
+P
+of a segment S onto P is
+computed, it will be used to perform the occlusion check
+for all faces f 2 cld
+f
+(P ), i.e. all faces among the planar
+sub grid of intersection lines2cld
+L
+(P ).
+2) Occlusion Score: To perform the check for a single
+face f, ﬁrst, the face-overlapping sub segment S
+f
+is deter-
+mined by intersecting S
+P
+with the border edges of f. If S
+f
+exists, an occlusion score
+occ(f;S) =
+d
+overlap
+(S
+f
+;f)d
+back
+(S
+f
+;S;f)
+jpnt
+F
+(f)j
+(12)
+is computed, where d
+overlap
+is an overlap score2 [0; 1]
+weighting the face border distance of the planar overlap of
+S
+f
+withf andd
+back
+is a back distance score2 [0; 1] weight-
+ing the average back distance of the part ofS behindS
+f
+with
+respect to the camera cam(F ). The score is normalized by
+the number of parent framesjpnt
+F
+(f)j off, i.e. the number
+2034
+of frames the face has been visible in, where pnt
+F
+(f) is
+deﬁned by
+pnt
+F
+(f) =
+\
+L2L(f)
+\
+P2pnt
+P
+(L)
+pnt
+F
+(P )
+| {z }
+pnt
+F
+(L)
+; (13)
+whereinL(f) denotes the set of lines deﬁning the border of
+f and pnt
+F
+(L) the parent frames of a line L.
+3) Overlap Score: Let e
+i
+(f) be the edges of a face f
+spanned between intersection points X , then the score
+d
+overlap
+(S
+f
+;f) = min
+
+1; d
+min
+(S
+f
+;f)=r
+min
+	
+(14)
+with
+d
+min
+(S
+f
+;f) = min
+e2ei(f)
+
+max
+p2fp1;2(S
+f
+)g
+fd(p;e)g
+
+(15)
+relates border distance of S
+f
+to the radius r
+min
+(f) of the
+biggest circle around the centroid ctr(f) of f. The value
+d
+min
+(S
+f
+;f) is the minimal distance of S
+f
+to any of the
+face edges e
+i
+(f), where d(p;e) is the distance of an end
+point p of S
+f
+to an edge e2e
+i
+(f). By relating to r
+min
+(f),
+d
+max
+is weighted evenly along every direction for faces of
+varying aspect ratio.
+4) Back Distance Score: By linear interpolation between
+the end points of a segmentS, the back distancesd
+back
+(S
+f
+)
+and the sightline parallel errors e
+back
+(S
+f
+) of the segment
+part behind S
+f
+(i.e. the part occluded by f) are computed
+from the back distancesd
+back;1;2
+and sight line parallel errors
+e
+L
+s
+1;2
+1;2
+=
+P
+R=U;V;W
+je
+L
+s
+1;2
+R
+j ofS. Let
+
+d
+back
+(S
+f
+) be the mean
+back distance and  e
+back
+(S
+f
+) the mean error behindS
+f
+, then
+the back distance score deﬁnes as
+d
+back
+(S
+f
+;S;f) = min
+
+1;
+
+d
+back
+(S
+f
+)
+ e
+back
+(S
+f
+)
+
+: (16)
+Visually spoken, occ(f;S) expresses the depth error rel-
+ative back distance, weighted by the amount of overlap be-
+tween truncated segment projectionS
+f
+and facef, averaged
+over the frames the face f has been visible in. By this
+averaging,occ(f;S) gains robustness against occurrences of
+implausible sight lines, e.g. caused by segment outliers.
+After having occ(f;S) computed for each face f, we
+can now robustly determine non-solid portals f
+portal
+by
+thresholding withocc
+max
+. In our experimentsocc
+max
+= 0:25
+proved to deliver good results, meaning in every 4th frame, a
+face has been visible in, an ideal occlusion withocc(f;S) =
+1 needs to occur.
+5) Complexity: With the present implementation, the
+check is performed by iterating linearly over all faces of
+a plane, yielding an execution time O(jcld
+f
+(P )j) per plane.
+This could be reduced to O(logjcld
+f
+(P )j) by employing a
+binary space partitioning of the planar grids, ideally using
+the existing intersection lines as the partitioning hyperplanes.
+While point queries appeared trivial, a solution to handling
+line segment queries with respect to occlusions still has to
+be found.
+Fig. 10. The ﬁrst row shows reconstructions of the Corridor sequence
+for increasing numbers of frames, as one would compute during robotic
+exploration. The middle plot shows the texture-mapped result with overlaid
+line segments (backfaces culled, as in the top row). The bottom row shows
+renderings from novel viewpoints inside the corridor (coloring shows plane
+normal direction). Note the open door in the bottom right rendering.
+Fig. 11. The left rendering visualizes the different plane normal directions
+in the reconstructed Blackboard sequence. The free space is not entirely
+accurate, as some non-solid faces are not violating the visibility constraint
+from the given frames. However, the reconstruction is still useable for
+robotic planning, and as a robot continues to explore, it will generate more
+sightlines to carve out the free volume.
+IV. EXPERIMENTAL RESULTS
+The complete SLAM and reconstruction system that we
+developed is fully line-based and functions down to only two
+visible line segments per frame – even in complete absence
+of point features. For visual odometry, line segments are
+stereo-matched in every frame. The triangulated lines from
+the previous frame are iteratively reprojected and matched
+to the image-space lines of the current frame, as proposed
+in [1] (similar to the Iterative Closest Points algorithm). The
+pose updates are used to bootstrap line bundle adjustment,
+which outputs reﬁned camera poses and world-space line
+segments along with their corresponding covariances. This
+system allows us to reconstruct challenging datasets such as
+the Room sequence that is virtually textureless and never
+shows a long shot of the complete scene geometry (Fig. 1).
+Our stereo camera has a baseline of 16 cm, a resolution
+of 12801024 and a ﬁeld-of-view of about 100
+
+80
+
+. The
+high resolution was used to preserve the sharpness during
+rectiﬁcation. All datasets have 640 512 pixels resolution.
+The experiments were run on a single core of an Intel Core
+2035
+Fig. 12. Renderings of a reconstructed spiral staircase. Note the curved wall
+approximated by tangential planes. The coloring reﬂects the plane normal
+orientation.
+i7 with 2.8 GHz. No GPU acceleration was used. See Tab. I
+for time measurements (excluding Line SLAM which usually
+takes 50-150ms per frame including bundle adjustment).
+The Room sequence from Fig. 1 is the most extreme exam-
+ple of scene sparsity that we present in this evaluation. The
+white walls have large areas with bright moving specularities
+which may even provide false information for dense stereo
+or multi-view reconstruction approaches [2], [11]. Due to the
+small distance to the wall, the camera is only able to capture
+excerpts of the whole geometry (see the frustum plot that
+shows the trajectory from above). The plots with colored
+plane direction overlay exemplarily show two frames of the
+sequence. The large textureless border regions are especially
+challenging to reconstruct for other methods. The number
+of frames could be signiﬁcantly reduced in this case, but
+we generally favor large numbers of sightlines to be able to
+cull more non-solid faces in our visibility test. Due to the
+low geometric complexity, the average computation time was
+only 0:5ms per frame.
+The Corridor sequence consists of 90 frames from a 25m
+long trajectory in a moderately textured environment with
+reﬂections in the metallic ceiling and ceramic ﬂoor (see Fig.
+10). The top image row illustrates how the reconstruction
+evolves during exploration and new sightlines continuously
+carve out the free volume. The reconstruction successfully
+recovers the two 20 cm ledges in the middle of the corridor
+(blue plane direction color) and the open door with portions
+of the dark room behind it (right image in bottom row).
+The Blackboard scene in Fig. 11 is geometrically more
+complex. It is challenging that the line segment errors are
+relatively large due to the increased viewing distance and
+short camera trajectory (see the red error cuboids). However,
+this is a common situation for robots. Also, due to various
+occlusions and lighting, our Line-SLAM cannot track all line
+segments, which leads to an incomplete line map. While the
+resulting reconstruction is not entirely accurate, the correct
+planes are found and a robot could continue exploration
+while generating additional sightlines to improve its estimate
+of free space.
+Finally, the Spiral Stairs sequence demonstrates the re-
+construction of curved surfaces and various different plane
+orientations (Fig. 12). Of course, this is limited to curved
+surfaces for which a sufﬁcient number of line segments can
+be detected. However, the sequence shows that the concept
+of our algorithm is general enough to be applied to such
+challenging cases.
+TABLE I
+EXECUTION TIMES PER FRAME BY PIPELINE STAGE
+Room Corridor Blackboard Spiral Stairs
+Frames 239 90 44 40
+Plane Search 0:1ms 1:6ms 2:1ms 0:4ms
+Intersection 0:1ms 1:6ms 1:1ms 9:2ms
+Face Creation 0:1ms 1ms 0:1ms 7:2ms
+Occlusion Check 0:2ms 3:1ms 2:8ms 53ms
+Total per Frame 0:5ms 7:3ms 6:1ms 70ms
+Total 109ms 655ms 265ms 2:73s
+V. DISCUSSION
+We presented a fast reconstruction method that can infer
+geometry from line segments with a pessimistic assumption
+about the free space. Plane hypotheses are efﬁciently gener-
+ated and an intersection grid is created based on child line
+segment relations. The use of auxiliary plane intersections
+to close open contours allows reconstructions even when
+facing partial line detection failures. With this scheme, we
+try to leverage the maximal information content. However,
+the quality of the result still depends on the success of the
+Line-SLAM. Accordingly, highly textured objects have to be
+handled with conventional reconstruction methods. Another
+issue concerns the visibility constraint. The number of sight-
+lines from line segments can be insufﬁcient in some scenes
+and we may not be able to cull some non-solid faces that re-
+sulted from the intersection step. Future research will explore
+the addition of a simple dense stereo matching algorithm
+to generate supplementary sightlines for sufﬁciently textured
+regions. This will also allow to reduce the number of required
+frames signiﬁcantly. The currently achieved reconstructions
+are already very useful for structured scenarios and could be
+even widened in scope, if point features are added to gain a
+fast hybrid approach.
+REFERENCES
+[1] J. Witt and U. Weltin, “Robust Stereo Visual Odometry Using Iterative
+Closest Multiple Lines,” in Proc. of IROS. IEEE, 2013, pp. XX–XX.
+[2] Y . Furukawa and J. Ponce, “Accurate, dense, and robust multiview
+stereopsis.” PAMI, vol. 32, no. 8, pp. 1362–1376, Aug. 2010.
+[3] A. Manessis, A. Hilton, P. Palmer, P. McLauchlan, and X. Shen,
+“Reconstruction of Scene Models from Sparse 3D Structure,” in Proc.
+of CVPR, vol. 2. IEEE, 2000, pp. 2666–2673.
+[4] Y . Furukawa, B. Curless, S. Seitz, and R. Szeliski, “Manhattan-world
+stereo,” in Proc. of CVPR. IEEE, Jun. 2009, pp. 1422–1429.
+[5] D. Gallup, J.-M. Frahm, P. Mordohai, Q. Yang, and M. Pollefeys,
+“Real-time plane-sweeping stereo with multiple sweeping directions,”
+in Proc. of CVPR, 2007, pp. 1–8.
+[6] S. N. Sinha, D. Steedly, and R. Szeliski, “Piecewise planar stereo for
+image-based rendering,” in Proc. of ICCV. IEEE, 2009, pp. 1881–
+1888.
+[7] A. Flint, C. Mei, I. Reid, and D. Murray, “Growing semantically
+meaningful models for visual SLAM,” in Proc. of CVPR. IEEE,
+2010, pp. 467–474.
+[8] P. McLauchlan, X. Shen, A. Manessis, P. Palmer, and A. Hilton,
+“Surface-Based Structure-from-Motion using Feature Groupings,” in
+Proc. of ACCV. IEEE, 2000, pp. 699–705.
+[9] D. Gallup, J. Frahm, and M. Pollefeys, “Piecewise Planar and Non-
+Planar Stereo for Urban Scene Reconstruction,” in Proc. of CVPR,
+2010, pp. 1418–1425.
+[10] M. Tomono, “Image-based planar reconstruction for dense robotic
+mapping,” in Proc. of ICRA. IEEE, 2012, pp. 3005–3012.
+[11] R. A. Newcombe, S. J. Lovegrove, and A. J. Davison, “DTAM: Dense
+Tracking and Mapping in Real-Time,” in Proc. of ICCV. IEEE, 2011.
+2036

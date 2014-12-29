@@ -1,0 +1,1688 @@
+Control Strategy for Whole-Arm Manipulation of a Polygonal Object
+by Considering the Estimated Bounds of Frictional Coefﬁcient
+Masahito Yashima and Tasuku Yamawaki
+Abstract— The present paper discusses a planning and con-
+trol strategy for robotic whole-arm manipulation of a slippery
+polygonal object by taking into account the estimated bounds
+of the frictional coefﬁcient. In this study, randomized planning
+methods are ﬁrst proposed in order to generate contact state
+transitions. Second, a novel control strategy that can switch
+manipulation between quasi-static, dynamic, and caging ma-
+nipulation modes is proposed. Solving the forward dynamics
+problem, which is formulated as a complementarity problem,
+generates the desired trajectory and thus ensures that undesir-
+able contact modes do not occur within the estimated bounds of
+the frictional coefﬁcient. The validity of the proposed methods
+is then demonstrated through simulations and experiments.
+I. INTRODUCTION
+Robotic hands are currently in widespread use for auto-
+mated assembly and manufacturing tasks. However, many
+challenges must be resolved before they can be used in
+other industrial applications. For example, a number of
+important tasks in assembly and manufacturing require ob-
+jects to be rotated into different orientations. In such cases,
+ﬁngertip manipulation, which requires repeated grasping and
+releasing of objects when large reorientations are necessary,
+is traditionally used. However, this method is somewhat
+unreliable because it is easily affected by uncertainties. In
+contrast, whole-arm manipulation, which encloses objects
+with multiple ﬁngers and palms, has the potential ability
+to carry out large reorientations continuously and robustly
+by allowing the objects to slip on the surface of the ﬁngers
+and ﬁxed palms. However, most studies to date have focused
+primarily on power grasps that attain the immobilization of
+objects by preventing sliding within the robotic hand grasp
+when external forces are applied [8], [20].
+The present paper addresses the problem of manipulating
+a polygonal object from an initial conﬁguration to a target
+conﬁguration by using ﬁngers and a ﬁxed palm (environ-
+ment) with frictional contacts, as shown in Fig. 1. Since large
+reorientations of the polygonal object are performed relative
+to the ﬁngers and palm, changes in the contact states (such as
+the vertex-edge and edge-edge contacts) occur among all of
+the bodies in the system, which causes several problems with
+planning and control. Examples of such problems include
+(i) the need to change the kinematics and mechanics of the
+manipulation system frequently in accordance with contact
+state transitions; (ii) the potential for incurring undesirable
+rolling, sliding, and breaking contact modes in the presence
+of friction, unless proper joint torques are planned by taking
+M. Yashima and T. Yamawaki are with the Dept. of Mechanical Systems
+Engineering, National Defense Academy of Japan, 1-10-20 Hashirimizu,
+Yokosuka, Japan. fyashima, yamawakig @ nda.ac.jp
+into account the uncertainties of frictional coefﬁcients and
+the dynamic validity of the manipulation for the applied joint
+torque.
+A. Related research
+Related studies on whole-arm manipulation or in-hand
+manipulation are as follows: Song, Yashima, and Kumar [10]
+proposed dynamic whole-arm manipulation simulators that
+can deal with inconsistencies in the forward dynamics prob-
+lem. Yashima et al. [17] proposed a planning algorithm for
+the in-hand manipulation of three-dimensional (3D) smooth
+objects based on randomized techniques. Harada and Kaneko
+[3] discussed acceptable conditions for the manipulation of
+an envelope family. Watanabe [15] discussed a manipulation
+method that allows rolling and sliding contacts based on
+an analysis of closure properties. However, these research
+efforts dealt with local manipulation of smooth objects with-
+out addressing contact state transitions. In order to achieve
+large reorientation of non-smooth objects, it is necessary
+to carry out global manipulation planning by considering
+the transition of contact states between the objects, ﬁngers,
+and the environment. In contrast, Trinkle et al. [13], [14]
+discussed the quasi-static manipulation of polygonal objects
+with contact state transitions. Their research implied that it
+is possible to plan a global manipulation with or without
+friction by building a contact formation tree joining ﬁrst-
+order stability cells. However, they did not present a detailed
+planning tree creation algorithm that would ensure undesir-
+able contact modes did not occur in the presence of friction,
+which is what motivates our investigation of these issues.
+There are a variety of other manipulation studies that
+relate to this paper. Manipulation planning of polygonal
+objects based on a quasi-static model was discussed in [6],
+[18]. However, the quasi-static manipulations they examined
+are inapplicable to a variety of tasks. In an attempt to
+remove such limitations, dynamic manipulations that use
+gravitational, inertial, and centrifugal forces as driving forces
+to control object motions were discussed in [5], [7], [11].
+However, since manipulation performance is signiﬁcantly
+affected by modeling errors, dynamic manipulations may not
+be used as a primary manipulation method. Caging manipu-
+lations, in which ﬁngers restrict an object to a bounded space,
+were proposed in [9], [19]. However, in that study, motions
+were limited to a horizontal plane and object manipulation
+using external forces, while maintaining caging, was not
+discussed.
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 6792
+(a) Initial (b) Goal 
+1 
+2 
+3 4 
+5 
+6 
+Right finger Left finger 
+g
+O
+x
+L
+?
+L
+?
+R
+?
+1 
+2 3 
+4 
+5 
+6 
+R
+?
+Environment (palm)
+Fig. 1. Initial and goal conﬁgurations of whole-arm manipulation
+B. Contribution
+The main contributions of the present paper are as follows:
+First, randomized planning for generating contact state tran-
+sitions for whole-arm manipulations of a slippery polygonal
+object in frictional contact with the ﬁngers and the environ-
+ment is proposed. This was accomplished by extending our
+planning algorithm [16] from frictionless to frictional contact
+cases. Second, a novel control strategy in the presence of
+friction that can switch manipulation modes between quasi-
+static, dynamic, and caging manipulation modes is proposed.
+As the primary manipulation mode, the desired trajectory
+that satisﬁes the quasi-static equilibrium within the estimated
+bounds of frictional coefﬁcient is generated. If quasi-static
+manipulation cannot be continued, dynamic manipulation is
+then performed. Caging manipulation is performed if the
+gravity force applied to the object can be used to generate
+a desired rotational manipulation motion. The feasibility of
+each manipulation mode is veriﬁed by solving the forward
+dynamics problem. This is formulated as a complementarity
+problem in order to ensure that undesirable contact modes
+(rolling contacts in this case) do not occur for the applied
+joint torque.
+In the next section, we present the formulation for the
+quasi-static manipulation with frictional contacts. Section III
+shows manipulation planning, which is composed of two
+phases. The ﬁrst phase obtains a contact state transition
+graph, while the second phase generates the desired trajec-
+tory that can perform the desired contact state transition ob-
+tained in the ﬁrst phase by switching between manipulation
+modes. In Section IV, the validity of the proposed methods is
+demonstrated through simulations and experiments. Finally,
+we present our conclusions and future work.
+II. QUASI-STATIC MODEL
+A. Assumption
+Consider a robotic hand system shown in Fig. 1, which
+is composed of two one-degree-of-freedom (1-DOF) ﬁngers
+and an environment. We assume that 1) the object, ﬁngers,
+and environment are rigid slippery polygons; 2) the coefﬁ-
+cient of friction lies between estimated bounds; 3) vertex-
+to-vertex contact is negligible; 4) the object makes contact
+with at least one point of each ﬁnger and the environment;
+and 5) each joint is velocity controlled or torque controlled.
+B. Basic equations
+The kinematics and statics of the robotic hand system
+are formulated to obtain a quasi-static manipulation model.
+Assuming that the object makes contact with the hand system
+at n points of contact, the kinematic constraints can be
+expressed as follows:
+[
+G
+T
+n
+?J
+n
+]
+[
+˙ x
+O
+˙
+
+]
+=0 (1)
+wherex
+O
+??
+3
+is the position and orientation of the object,
+??
+2
+is the vector of the joint angles, G
+n
+??
+3n
+is the
+normal contact wrench matrix, andJ
+n
+??
+n2
+is the normal
+Jacobian matrix.
+The sliding velocity at contact points can be written as
+follows:
+v
+t
+=
+[
+G
+T
+t
+?J
+t
+]
+[
+˙ x
+O
+˙
+
+]
+(2)
+where v
+t
+? ?
+n
+is the vector of the sliding velocities,
+G
+t
+? ?
+3n
+is the tangential contact wrench matrix, and
+J
+t
+??
+n2
+is the tangential Jacobian matrix.
+If the object is manipulated quasi-statically by the robotic
+hand, both the object and the hand system must satisfy
+the following equilibrium equation, which is based on the
+assumption of Coulomb friction:
+[
+G
+n
++G
+t
+?(J
+T
+n
++J
+T
+t
+)
+]
+f
+n
+=
+[
+?g
+O
+g
+h
+?
+]
+(3)
+where f
+n
+??
+n
+is the normal contact force vector, g
+O
+?
+?
+3
+is the gravity force applied to the object,  ? ?
+2
+is
+the joint driving torque vector, g
+h
+??
+2
+is the joint torque
+vector induced by gravity,G
+t
+=?G
+t
+e ,J
+T
+t
+=?J
+T
+t
+e , e =
+diag[
+1
+
+1
+;··· ;
+n
+
+n
+], 
+i
+is the coefﬁcient of friction, 
+i
+=
+sgn(v
+ti
+) is the direction of sliding velocity, and sgn() is the
+signum function.
+C. Formulation for quasi-static manipulation
+In order to perform a quasi-static manipulation, the veloc-
+ity of the object must be uniquely determined for a given
+velocity of a joint subset. In addition, the remaining ﬁnger
+must apply the joint driving torque needed to satisfy static
+equilibrium between the object and the hand system [16].
+First, consider the velocity kinematics relationships ex-
+pressed by (1). A square block matrix is extracted from
+[
+G
+T
+n
+?J
+n
+]
+by dividing the two ﬁngers into a velocity-
+controlled ﬁnger and a torque-controlled ﬁnger. Equation (1)
+can be rewritten as
+[
+G
+T
+n
+?J
+nT
+]
+[
+˙ x
+O
+˙
+
+T
+]
+=J
+nV
+˙
+
+V
+(4)
+where
+˙
+
+V
+and
+˙
+
+T
+are the joint velocities of the velocity-
+controlled ﬁnger and torque-controlled ﬁnger, and J
+nV
+and
+J
+nT
+are the Jacobian matrices corresponding to
+˙
+
+V
+and
+˙
+
+T
+,
+respectively.
+If the matrix
+[
+G
+T
+n
+?J
+nT
+]
+??
+n4
+in (4) is nonsingular
+and the Jacobian matrix, J
+nV
+, is full row rank, then the
+velocity of the object, ˙ x
+O
+, can be determined uniquely for an
+arbitrary joint velocity,
+˙
+
+V
+, of the velocity-controlled ﬁnger.
+The second condition is that the hand system must main-
+tain quasi-static equilibrium by using the torque-controlled
+ﬁnger to press the object against the environment and the
+6793
+velocity-controlled ﬁnger. This equilibrium can be expressed
+by extracting the equations of the object and the torque-
+controlled ﬁnger from (3) as follows:
+[
+G
+n
++G
+t
+?(J
+T
+nT
++J
+T
+tT
+)
+]
+f
+n
+=
+[
+?g
+O
+g
+T
+?
+T
+]
+(5)
+f
+n
+>0 (6)
+where 
+T
+and g
+T
+are the joint driving torque and gravity
+force, and J
+tT
+is a submatrix of J
+t
+, all of which corre-
+spond to the torque-controlled ﬁnger. The contact force must
+be compressive, as shown in (6).
+If joint driving torque, 
+T
+, of the torque-controlled ﬁnger
+that satisﬁes (5) and (6) is found, then the hand system can
+be maintained in quasi-static equilibrium.
+The above formulations for the kinematics and the static
+equilibrium imply that the joint velocity,
+˙
+
+V
+, of the velocity-
+controlled ﬁnger and the joint torque, 
+T
+, of the torque-
+controlled ﬁnger can be regarded as manipulation system
+inputs. Since the torque-controlled ﬁnger and the velocity-
+controlled ﬁnger can perform compliant and non-compliant
+motions, respectively, a compliant manipulation can be per-
+formed by pressing the object against the hand system with
+the torque-controlled ﬁnger in accordance with the non-
+compliant motion of the velocity-controlled ﬁnger.
+III. MANIPULATION PLANNING
+A large orientation change of a polygonal object relative to
+ﬁngers and a ﬁxed environment with frictional contacts will
+not only generate the contact state changes (such as vertex-
+edge and edge-edge contacts) among all bodies, it may also
+cause undesirable contact modes.
+The proposed manipulation planning for whole-arm ma-
+nipulation consists of two phases. The ﬁrst phase generates a
+contact state transition graph connecting the initial and goal
+conﬁguration. This search is performed for a given nominal
+coefﬁcient of friction within its estimated bounds based on
+the assumption that all contacts slide. The second phase
+generates the desired trajectory for the ﬁngers, which can
+perform the desired contact state transition obtained in the
+ﬁrst phase without occurring rolling contacts for any of the
+frictional coefﬁcients within its bounds. Three manipulations,
+quasi-static, dynamic, and caging, are applied.
+When the object is constrained by the robotic hand system
+with four sliding points of contact (n = 4), the matrix
+[
+G
+T
+n
+?J
+nT
+]
+in (4) is square. If the conditions for kine-
+matic constraints of quasi-static manipulation mentioned in
+Section II-C are satisﬁed, for a given joint velocity,
+˙
+
+V
+, of the
+velocity-controlled ﬁnger, the velocity of the object may be
+determined uniquely. We hereafter suppose the manipulation
+of an object that contacts the hand system at four points.
+A. Phase 1: Search for contact state transition
+1) Subgoal network: This phase obtains the contact state
+transition graph connecting the initial and goal conﬁgurations
+using a randomized algorithm, which is very effective for
+motion planning with a large dimensional search space [17].
+This approach constructs a subgoal network based on the
+init
+X
+goal
+X
+start
+X
+(Five-contact 
+subgoal )
+(Four-contact 
+subgoal )
+new
+Y
+Y
+X
+through
+X
+Fig. 2. Generation of subgoals in search space
+ 
+start
+X
+through
+X
+new
+Y
+1
+2
+3 4
+7
+1
+2
+4 5
+1
+2
+4
+7
+7
+5
+6
+5
+6
+3
+3
+6
+Fig. 3. Overview of subgoal generation. By rotating the right ﬁnger
+clockwise from a four-contact subgoalXstart , a new ﬁve-contact subgoal
+Ynew is generated throughX
+through
+.
+generation of subgoals and the connections between those
+subgoals according to the contact state transitions. The fun-
+damental algorithm is similar to the one for the frictionless
+case proposed by the authors [16], except that a nominal
+frictional coefﬁcient within the estimated bounds is given.
+All of the subgoals are classiﬁed as either four-contact,X,
+or ﬁve-contact subgoals, Y , as shown in Fig. 2. A pair of
+subgoals connected by a directed tree is reachable from the
+parent to child subgoals with either quasi-static manipulation
+or caging manipulation described in detail in Section III-B.3.
+The four-contact subgoals attached to identical ﬁve-contact
+subgoals have the same hand and object conﬁguration, but
+different contact states.
+Fig. 3 illustrates the generation of subgoals. First, a ﬁve-
+contact subgoal is randomly selected within the existing
+subgoals. Then, a start subgoal, X
+start
+, is generated from
+the ﬁve-contact subgoal by randomly selecting four contact
+points among the subgoal contact points, as well as the
+rotational direction of the velocity-controlled ﬁnger. Suppose
+that four contact points, vertex #3 excepted, are selected and
+that clockwise rotation is assigned to the velocity-controlled
+right ﬁnger. The object rotates clockwise around vertex
+#4, contacting the environment by moving the right ﬁnger
+while maintaining the current contact state. When the contact
+state is changed on the way (the right ﬁnger is changed
+from the type-A to the type-B contact [4]), a new subgoal
+with four contact points, X
+through
+, is generated. When the
+object gains ﬁve contact points, a new ﬁve-contact subgoal,
+Y
+new
+, is generated. This process is repeated from the initial
+conﬁguration,X
+init
+, to the ﬁnal conﬁguration,X
+goal
+.
+2) Randomized planning algorithm : The
+randomized algorithm is described in detail by the
+MAIN RANDOM SEARCH function shown below. Either
+a velocity-control or a torque-control mode is temporarily
+6794
+assigned to each ﬁnger in this phase.
+(Steps 1 and 6) Iterate this process until completing a sub-
+goal network connecting the initial and goal conﬁguration,
+or until reaching the maximum number of iterations.
+(Step 2) A subgoal, Y
+rand
+, is selected at random from
+among the existent ﬁve-contact subgoals, including the initial
+subgoal.
+(Step 3) If a ﬁve-contact subgoal is selected in Step 2,
+a four-contact subgoal, X
+start
+, is generated by selecting
+four contact points at random from the contact points of
+Y
+rand
+without overlapping the existing four-contact subgoals
+attached toY
+rand
+. In addition, the rotational direction of the
+velocity-controlled ﬁnger, dirjoint, is determined randomly.
+(Steps 4 and 5) The velocity-controlled ﬁnger is moved
+in the direction of dirjoint with a joint velocity input,
+˙
+
+V
+,
+from the conﬁguration of X
+start
+in order to generate new
+subgoals, X
+through
+and Y
+new
+. First, at each time step, the
+forward kinematics problem is solved to obtain the velocity
+of the object, ˙ x
+O
+, and the remaining joint velocity,
+˙
+
+T
+,
+from (4), and the sliding velocity, v
+T
+, from (2), where
+˙
+
+V
+with a constant value may be given in this phase. Next, a
+check is performed to determine whether either quasi-static
+manipulation or caging manipulation is feasible for a given
+nominal coefﬁcient of friction, 
+
+. Then, a new conﬁguration
+of the object and ﬁngers at the next time step is calculated.
+If the object is moved to the ﬁnal conﬁguration, X
+goal
+, the
+search is terminated.
+MAIN RANDOM SEARCH
+1 for i = 1 to i
+max
+do
+2 Y
+rand
+? RANDOM SUBGOAL Y();
+3 (X
+start
+;dirjoint)
+? RANDOM SUBGOAL X(Y
+rand
+);
+4 NEW SUBGOAL(X
+start
+;
+˙
+
+V
+;dirjoint;
+
+);
+5 if(Object reached X
+goal
+) break;
+6 end for
+B. Phase 2: Trajectory generation
+This phase generates trajectories that can perform the
+desired contact state transition obtained in Phase 1 by taking
+into consideration the estimated bounds of the frictional
+coefﬁcient, e  = [
+min
+; 
+max
+]. Three manipulations are
+applied: quasi-static, dynamic, and caging.
+1) Quasi-static manipulation: The primary manipulation
+is quasi-static. For a given coefﬁcient of friction within
+the estimated bounds e , the joint torque of the torque-
+controlled ﬁnger for a quasi-static manipulation is derived.
+The maximum and minimum joint torques, 
+max
+and 
+min
+,
+which can satisfy the equilibrium conditions (5) and (6), are
+obtained by solving the following quadratic programming
+problem:
+maximize 
+2
+T
+(
+or minimize 
+2
+T
+)
+subj. to Eqs. (5) and (6)
+?
+limit
+≤ 
+T
+≤ 
+limit
+(7)
+where 
+limit
+is the limit torque of the actuators.
+The applicable torque range,T () ={
+T
+| 
+min
+≤ 
+T
+≤
+
+max
+; ? e } is bounded by 
+max
+and 
+min
+for a given
+frictional coefﬁcient . Fig. 4 shows the applicable torque
+ranges,T (
+max
+) andT (
+min
+), for 
+max
+and 
+min
+, which
+are drawn as solid and broken curves, respectively. Therefore,
+the applicable torque rangeT (e ) that satisﬁes the quasi-
+static manipulation condition within the bounds of frictional
+coefﬁcient e  = [
+min
+; 
+max
+] can be described as the
+intersection ofT (
+max
+) andT (
+min
+), as shown in a hatched
+region:
+T (e ) =T (
+max
+)?T (
+min
+) (8)
+Any joint torque in the rangeT (e ) is applicable to the
+quasi-static manipulation within the estimated bounds of the
+frictional coefﬁcient, e . Here, in order to take modeling
+errors into consideration, the desired joint torque is generated
+by adding margin torque, 
+margin
+, to the minimum joint
+torque, which is shown by a thick line in Fig. 4.
+The randomized planning in Phase 1 presumes that sliding
+occurs at all contacts for the applied joint torque. In order
+to verify this presumption, the forward dynamics problem is
+solved at each time step, which can be formulated as a linear
+complementarity problem (LCP). This approach is widely
+used to simulate contact phenomena [1], [12]. The forward
+dynamics problem is detailed in Section III-B.4.
+The conditions for the feasibility of the contact state
+transition with a quasi-static manipulation are as follows:
+1) A velocity-controlled ﬁnger joint velocity exists that
+makes it possible to uniquely determine the velocities
+of an object just before and after contact state transi-
+tion.
+2) A torque-controlled ﬁnger joint torque exists that
+makes it possible to simultaneously satisfy the equilib-
+rium states just before and after contact state transition.
+Condition 1 should be satisﬁed if the contact state transi-
+tion is obtained in Phase 1 because the forward kinematics
+problem (4) is solved. However, we should note that Condi-
+tion 2 is not always satisﬁed.
+2) Dynamic manipulation: When the contact state transi-
+tion with a quasi-static manipulation is not feasible, dynamic
+manipulation should be applied. As seen from the intersec-
+tion,T (e ), shown as a hatched region in Fig. 4, this situation
+occurs when
+1) The applicable torque range,T (e ), is separated at time
+t=t
+B
+.
+2) No applicable torque range exists during t
+C
+≤ t≤ t
+D
+.
+The desired joint torque of the torque-controlled ﬁnger for
+dynamic manipulation, 
+dyn
+, is determined as follows:
+For the ﬁrst case, a joint torque that exceeds the maximum
+joint torque, 
+max
+, is applied before t = t
+B
+in order to
+perform dynamic manipulation by breaking the equilibrium
+state. For the second case, a constant joint torque is applied
+during the period of t
+C
+≤ t ≤ t
+D
+in order to perform
+dynamic manipulation, as shown in Fig. 4.
+In order to verify whether the joint torque, 
+dyn
+, causes the
+contact state transition dynamically with all contacts sliding,
+6795
+time 
+Quasi-static Dynamic 
+Quasi-static 
+Dynamic 
+Quasi-static 
+Caging 
+Desired 
+?
+T
+?
+dyn
+?
+caging
+t
+A
+t
+B
+t
+C
+t
+D
+t
+E
+?
+margin
+Fig. 4. The torque ranges,T (max) andT (
+min
+), are drawn as solid and
+broken curves, respectively. The intersection T (e ) is shown as a hatched
+region. The desired torque trajectory is generated based on manipulation
+modes.
+the forward dynamics problem is solved for both cases in a
+similar manner to the quasi-static manipulation.
+3) Caging manipulation: Caging manipulation, in which
+the robotic ﬁngers cage the target object, is used to rotate the
+object around the vertex while maintaining contact with the
+environment via gravity until another object edge comes into
+contact with the environment. When the center of gravity
+of the object crosses the vertex contact normal during the
+rotation, the manipulation mode can be switched to caging.
+As shown in Fig. 4, the constant torque 
+caging
+, which is
+less than the minimum joint torque, is applied in order to
+ensure that the torque-controlled ﬁnger does not prevent the
+object from moving due to the inﬂuence of gravity (t≥ t
+E
+).
+4) Formulation of forward dynamics problem: In this
+section, we will brieﬂy discuss the formulation of the forward
+dynamics problem of whole-arm manipulation, which is
+based on the linear complementarity problem using a time-
+stepping algorithm [12]. Let the superscript l be quantities at
+time t
+l
+, and h be the time step size. The discrete-time form
+of the dynamic equations of motion of the object and the
+torque-controlled ﬁnger is given by
+Mv
+l+1
+=Mv
+l
++W
+l
+n
+p
+l+1
+n
++W
+l
+f
+p
+l+1
+f
++hu
+l
+(9)
+where M is the inertia matrix, v = [˙ x
+T
+O
+;
+˙
+
+T
+]
+T
+, W
+n
+=
+[G
+T
+n
+;?J
+nT
+]
+T
+, W
+f
+= [W
+t
+;?W
+t
+], W
+t
+= [G
+T
+t
+;?J
+tT
+]
+T
+,
+p
+n
+??
+n
+and p
+f
+??
+2n
+are normal and friction impulse
+vectors in the plane, respectively, andu=[g
+T
+0
+;?(g
+T
++
+T
+)]
+T
+.
+Non-penetration at contact points is enforced by the fol-
+lowing complementarity condition:
+0≤p
+l+1
+n
+?W
+T
+n
+v
+l+1
+?J
+nV
+˙
+
+l+1
+V
+≥0 (10)
+where? denotes orthogonality.
+Coulomb’s Law can be written as the following two
+complementarity conditions in the plane:
+0≤p
+l+1
+f
+?W
+T
+f
+v
+l+1
+?J
+fV
+˙
+
+l+1
+V
++E
+l+1
+≥0 (11)
+0≤
+l+1
+?Up
+l+1
+n
+?E
+T
+p
+l+1
+f
+≥0 (12)
+where  is the vector of sliding speeds at the contacts.
+J
+fV
+= [J
+T
+tV
+;?J
+T
+tV
+]
+T
+, E = [E
+n
+;E
+n
+]
+T
+, E
+n
+is the n? n
+identity matrix, andU = diag(
+1
+;··· ;
+n
+).
+Putting (9)-(12) together yields the following mixed LCP
+formulation:
+?
+?
+?
+?
+0
+v
+l+1
+n
+
+l+1
+f
+s
+l+1
+?
+?
+?
+?
+=
+?
+?
+?
+?
+?M W
+n
+W
+f
+0
+W
+T
+n
+0 0 0
+W
+T
+f
+0 0 E
+0 U ?E
+T
+0
+?
+?
+?
+?
+?
+?
+?
+?
+v
+l+1
+p
+l+1
+n
+p
+l+1
+f
+
+l+1
+?
+?
+?
+?
++b (13)
+0≤
+?
+?
+v
+l+1
+n
+
+l+1
+f
+s
+l+1
+?
+?
+?
+?
+?
+p
+l+1
+n
+p
+l+1
+f
+
+l+1
+?
+?
+≥0 (14)
+whereb = col(Mv
+l
++hu
+l
+;?J
+nV
+˙
+
+l+1
+V
+;?J
+fV
+˙
+
+l+1
+V
+;0), which
+contains the control inputs, 
+T
+and
+˙
+
+V
+. Equations (13) and
+(14) are solved by using the well-known PATH solver, which
+is the most robust LCP solver available from [2].
+The newly formulated LCP is applicable to the manip-
+ulation system that consists of both torque-controlled and
+velocity-controlled bodies. Its solution yields the estimates
+of the sliding speed , the normal contact impulse p
+n
+, and
+the velocity of the system at time t
+l+1
+. We can determine
+whether contact i is sliding (
+i
+> 0), rolling (
+i
+= 0), or
+breaking (p
+ni
+> 0) when the joint control inputs are applied
+to the ﬁngers.
+5) Control mode: Either a velocity-control or a torque-
+control mode is assigned to each ﬁnger. In contrast with the
+torque-controlled ﬁnger, the velocity-controlled ﬁnger (which
+performs non-compliant motion) may generate jamming and
+excessive internal forces due to control errors, modeling er-
+rors, etc. Therefore, the control modes are assigned based on
+the object degree of constraint [18] imposed by the velocity-
+controlled ﬁnger and the environment. When comparing two
+cases in which the velocity control mode is assigned to
+either the right or left ﬁnger, choose the one that has smaller
+degrees of constraint. This method is not described in detail
+here due to its length.
+6) Trajectory generation algorithm: The trajectory gen-
+eration algorithm is described by the MAIN TRAJECTORY
+function shown below:
+(Step 1) Read a series of subgoals connecting the initial
+and goal conﬁgurations obtained in Phase 1.
+(Step 2) Set subgoalsX
+A
+andX
+B
+, which correspond to
+both ends of the velocity-controlled ﬁnger trajectory, where
+X
+B
+is assigned a subgoal just before the rotational direction
+of the velocity-controlled ﬁnger is reversed. Initially, X
+init
+is assigned toX
+A
+.
+(Step 3) Determine whether the quasi-static transition
+condition of the contact state mentioned in Section III-B.1
+can be satisﬁed betweenX
+A
+andX
+B
+.
+(Step 4) The joint torque, 
+T
+(t), of the torque-controlled
+ﬁnger and the joint angle, 
+V
+(t), of the velocity-controlled
+ﬁnger between X
+A
+and X
+B
+are calculated at each time
+step during the time interval ∆T . If the joint torque is not
+obtained, the planning is then terminated. The details are
+shown in the next section.
+(Steps 5 and 6) If the connected subgoalX
+B
+is equivalent
+to X
+goal
+, planning is then successfully terminated. In other
+6796
+cases, the initial subgoal of the next segment is given, and
+the process returns to Step 2.
+MAIN TRAJECTORY
+1 (X
+init
+;··· ;X
+goal
+)? Read Subgoal();
+2 X
+B
+? Set BoundarySubgoal(X
+A
+);
+3 TransitFlag? Check Transition(X
+A
+;X
+B
+);
+4 for t = 0 to ∆T
+(
+T
+(t); 
+V
+(t); Flag)
+? GET TRAJ(X
+A
+;X
+B
+;∆T;t; TransitFlag);
+if(Flag = FALSE) then Stop;
+end for
+5 if(X
+B
+=X
+goal
+) then Stop;
+6 elseX
+A
+?next subgoal of X
+B
+; go to Step 2;
+7) Joint trajectory derivation: The GET TRAJ function,
+which generates the desired joint torque for the torque-
+controlled ﬁnger and the desired joint angle for the velocity-
+controlled ﬁnger during the segment connecting X
+A
+and
+X
+B
+, is described in detail below:
+(Step 1) The trajectory, 
+V
+(t), of the velocity-controlled
+ﬁnger between X
+A
+and X
+B
+is calculated. The velocity
+and acceleration constraints at both ends are zero, and the
+duration is ∆T .
+(Step 2) The forward kinematics problem (4) is solved
+to obtain the velocity of the object and the remaining joint
+velocity by giving
+˙
+
+V
+(t) obtained in Step 1.
+(Steps 3-4) The joint torque, 
+static
+(t), for a quasi-static
+manipulation is derived. A determination is made as to
+whether all contacts slide for the applied torque, 
+static
+(t),
+by solving the forward dynamic problem.
+(Step 5) If caging manipulation can be applied, the
+manipulation mode is switched from quasi-static to caging
+manipulation. The constant joint torque, 
+caging
+, is applied.
+(Step 6) When the transition between contact states is
+not feasible via a quasi-static manipulation, the manipulation
+modes are switched to dynamic manipulation. A determina-
+tion is made as to whether speciﬁed dynamic manipulation
+occurs for the applied joint torque, 
+dyn
+, by solving the
+forward dynamic problem.
+(Step 7) A new conﬁguration is calculated by integrating
+˙ x
+O
+with respect to time step h.
+(Step 8) Return the calculated joint torque 
+T
+(t) and joint
+angle 
+V
+(t).
+GET TRAJ (X
+A
+;X
+B
+;∆T;t; TransitFlag)
+1 (
+V
+(t);
+˙
+
+V
+(t))
+? Get JointTraj(X
+A
+;X
+B
+;∆T;t);
+2 (˙ x
+O
+(t);
+˙
+
+T
+(t))? FwdKinematics(
+˙
+
+V
+(t));
+3 
+static
+(t)? Get TorqueQuasiStatic (
+margin
+);
+4 if(Check Static(
+static
+(t))=TRUE) then
+
+T
+(t)? 
+static
+(t);
+else Flag? FALSE;
+5 if (Check Caging(x
+O
+(t))=TRUE) then
+
+T
+(t)? 
+caging
+;
+6 if (TransitFlag=FALSE) then
+if(Check Dyn(
+dyn
+)=TRUE) then
+
+T
+(t)? 
+dyn
+;
+Torque- controlled finger 
+(Right finger) 
+Velocity-  controlled finger 
+(Left finger) 
+Object 
+Environment 
+Fig. 5. Two-ﬁngered robotic hand system developed for whole-arm
+manipulation
+else Flag? FALSE;
+7 (x
+O
+(t+h);(t+h))? NewConﬁg(˙ x
+O
+(t));
+8 return(
+T
+(t); 
+V
+(t); Flag);
+IV. SIMULATIONS AND EXPERIMENTS
+A. Two-ﬁngered robotic hand system
+Fig. 5 shows a two-ﬁngered robotic hand system, which
+was developed for the whole-arm manipulation shown in Fig.
+1. The two ﬁngers, each 15 cm in length, are actuated by
+direct-drive motors. The length between the joint axes of
+the ﬁngers is 20 cm. A support plane, which is tilted by
+15 degrees from the vertical plane, is used to restrict the
+motion of the object to a planar motion. The friction between
+bodies is reduced by coating the surface of the ﬁngers and
+the support plane with Teﬂon R ?. The estimated bound of
+frictional coefﬁcient between bodies is set to e  = [0; 0:1].
+The asymmetric hexagonal object was made of plastic resin
+and has a mass of 353 g.
+B. Results of the contact state transition search (Phase 1)
+By applying the proposed randomized algorithm, we ob-
+tained the desired transition of the contact state for a nominal
+frictional coefﬁcient, 
+
+= 0, as shown in Fig. 6. In this
+phase, a velocity-control mode is temporarily assigned to the
+right ﬁnger. Each ﬁgure shows the conﬁguration of either
+X
+start
+or X
+through
+. A total of 60 subgoals are generated
+randomly, from which eleven subgoals were found to connect
+X
+init
+and X
+goal
+, which correspond to #1 and #11 in Fig.
+6. The algorithm was implemented in MATLAB on a 2.6
+GHz Xenon 4-core PC, and the computation time averaged
+20 min.
+C. Results of trajectory generation (Phase 2)
+By taking into consideration the estimated bound of the
+frictional coefﬁcient, we obtained the desired trajectories,
+as shown in Fig. 7. The torque-control and velocity-control
+modes are assigned to the right and left ﬁngers, respectively,
+on the basis of the method mentioned in Section III-B.5.
+6797
+CW CW
+CW
+CW CCW CCW
+CCW
+CCW CCW
+CCW
+1 2 3 
+11 10 
+9 8 7 
+6 5 4 
+Fig. 6. Contact state transition graph obtained in Phase 1. The rotational
+directions of the right ﬁnger are shown at the top right. The bold lines at
+the contact points indicate the contact normals.
+Fig. 7(a) shows the torque trajectory of the torque-
+controlled ﬁnger and the manipulation mode. Let the pa-
+rameters be 
+margin
+= 2:0 Nm, 
+caging
+= 0:5 Nm, and
+
+dyn
+= 3:5 Nm (0:51≤ t≤ 0:92 s), 4:5 Nm (1:05≤ t≤
+1:17 s), and 2:2 Nm (1:37≤t≤1:42 s) Nm, respectively.
+The applicable torque range T (e ), which represents the
+intersection of the applicable joint torque range of a quasi-
+static manipulation for 
+min
+=0 and 
+max
+=0:1, is described
+by the hatched region. The grasp has force closure when
+the maximum torque reaches the limit of the actuator torque
+
+limit
+= 7:0 Nm. The solid red line is the desired torque
+trajectory 
+R
+obtained in this phase. Fig. 7(b) shows the joint
+angle trajectory of the velocity-controlled ﬁnger, which is
+obtained using a ﬁfth-order polynomial with respect to time.
+As shown in Fig. 7(a), the contact state transition with
+the quasi-static manipulation is impossible at t = 0:92 s,
+which corresponds to the Case 1 in Section III-B.2, when
+the lower right edge of the object makes contact with the
+link of the right ﬁnger (see #5 in Fig. 6). In order to
+avoid this conﬁguration, dynamic manipulation is performed
+between t = 0:51 and 0:92 s by applying a joint torque
+
+dyn
+, which exceeds the upper bound of the applicable
+joint torque rangeT (e ). Dynamic manipulations are also
+performed over the two time spans when 1:05≤t≤ 1:17 s
+and 1:37≤t≤ 1:42 s, which corresponds to the Case 2 in
+Section III-B.2. This is because the applicable torque for the
+quasi-static manipulation cannot be found due to the actuator
+torque limit and a change in direction of the friction force,
+respectively. Caging manipulation is performed after t=1:46
+s by applying the constant joint torque 
+caging
+because the
+center of gravity comes across the contact normal of the
+vertex contacting the environment (see #8–11 in Fig. 6).
+D. Experimental results and discussions
+In order to verify the validity of the proposed methods,
+we conducted manipulation experiments. Fig. 8 shows pho-
+tographs of the object and ﬁnger movements. The velocity-
+0 0.5 1 1.5 2
+60
+120
+0 1 2
+0
+2
+4
+6
+8
+Q D Q D Q
+D Q
+C
+0.51 0.92
+1.05
+1.17
+1.37 1.42
+1.46 2.46
+Q: Quasi-static
+D: Dynamic
+C: Caging
+(a) 
+?
+R
+ [Nm]
+?
+L
+ [deg]
+30
+90
+(b) 
+time [s]
+2.46
+Fig. 7. Desired trajectories obtained in Phase 2. (a) Joint torque trajectory
+of the torque-controlled ﬁnger (right ﬁnger) and the manipulation mode. (b)
+Joint angle trajectory of the velocity-controlled ﬁnger (left ﬁnger).
+controlled ﬁnger is controlled by a simple PD feedback
+controller while the torque-controlled ﬁnger is controlled by
+an open-loop controller. We can see the object is moved from
+the initial to goal conﬁgurations as planned in Phase 2 with
+simple controllers.
+The object starts to slide along the environment toward the
+right by rotating the velocity-controlled left ﬁnger clockwise
+while maintaining equilibrium in the quasi-static manipula-
+tion mode. The right-most contact on the environment breaks
+at t=0:51 s by starting dynamic manipulation. By pushing
+the object ﬁrmly with the torque-controlled right ﬁnger, the
+object rotates counterclockwise around the left-most vertex
+contacting the environment. When the lower right edge of
+the object makes contact with the link of the right ﬁnger at
+t=0:92 s, the manipulation mode is switched to the quasi-
+static mode. Dynamic manipulation is performed two times
+before caging manipulation starts at t=1:46 s. Finally, the
+object reaches the goal conﬁguration at t=2:46 s.
+The success of the proposed control strategy depends on
+the feasibility of dynamic manipulation. In this paper, the
+input joint torque, 
+dyn
+, during dynamic manipulation is
+determined heuristically by solving the forward dynamic
+problem. In our future work, we intend to develop an
+algorithmic approach to ﬁnding the optimal joint torque for
+dynamic manipulation.
+The attached video shows the results of the two experi-
+ments. The ﬁrst video shows the results of the experiment
+shown in Fig. 8, and the second video shows the results of the
+experiment using a regular hexagonal object having a mass
+of 335 g. It can be seen that the left ﬁnger breaks contact
+with the object several times during the caging manipulation
+period, which is, however, allowable in caging manipulation
+as long as the object is restricted by ﬁngers within a bounded
+space. Accordingly, these results demonstrate the validity
+of the proposed control strategy that takes into account the
+estimated bounds of frictional coefﬁcient.
+6798
+t=0 s t=0.43 s 
+t=0.51 s t=0.92 s 
+t=1.21 s t=1.46 s 
+t=1.80 s t=2.46 s 
+Fig. 8. Photographs of the manipulation experiment involving an asym-
+metric hexagonal object
+V. CONCLUSIONS AND FUTURE WORK
+The present paper discussed a planning and control strat-
+egy for robotic whole-arm manipulations. The proposed
+control strategy can be applied to difﬁcult conditions where
+not only between-body frictions exist, but also situations
+where quasi-static equilibrium is not always satisﬁed. Since
+it is difﬁcult to know the coefﬁcients of friction precisely,
+the present control strategy considers the estimated bounds
+of frictional coefﬁcients and generates a desired trajectory
+that satisﬁes the quasi-static equilibrium over all of the
+estimated bounds. This is accomplished by solving the
+forward dynamics problem formulated as a mixed LCP in
+order to avoid occurring rolling contacts. When quasi-static
+equilibrium cannot be satisﬁed, manipulation is continued by
+switching to the dynamic manipulation mode, the validity
+of which is also veriﬁed by solving the forward dynamics
+problem.
+In the future, we intend to (i) develop optimization algo-
+rithms for the contact state transition because randomized
+planning cannot assure the optimality of the planned transi-
+tion, (ii) design control strategy in the dynamic manipulation
+mode in order to ﬁnd optimal joint torque control inputs, and
+(iii) validate the proposed method for a more complicated
+manipulation system composed of multi-DOF ﬁngers in a
+3D space.
+REFERENCES
+[1] M. Anitescu and F. A. Potra, “Formulating Dynamic Multi-rigid-body
+Contact Problems with Friction as Solvable Linear Complementarity
+Problems,” Nonlinear Dynamics, vol. 14, pp. 231-247, 1997.
+[2] M. C. Ferris, http://pages.cs.wisc.edu/˜Ferris/path.html.
+[3] K. Harada and M. Kaneko, “A Sufﬁcient Condition for Manipulation
+of Envelope Family,” IEEE Trans. on Robotic and Automation, vol.
+18, no. 4, pp. 597-607, 2002.
+[4] J. C. Latombe, “Robot Motion Planning,” pp. 103-122, Kluwer Aca-
+demic Publishers, 1996.
+[5] K. M. Lynch and M. T. Mason, “Dynamic Nonprehensile Manipu-
+lation: Controllability, Planning, and Experiments, The International
+Journal of Robotics and Research, vol. 18, no. 1, pp. 64-92, 1999.
+[6] Y . Maeda, T. Nakamura and T. Arai, “Motion Planning of Robot
+Fingertips for Graspless Manipulation,” Proc. of the 2004 IEEE Int.
+Conference on Robotics and Automation, pp. 2951-2956, 2004.
+[7] H. Miyashita, T. Yamawaki and M. Yashima, “Parts Assembly by
+Throwing Manipulation with a One-Joint Arm,” Proc. of the 2010
+IEEE/RSJ International Conference on Intelligent Robots and Systems,
+pp. 43-48, 2010.
+[8] T. Omata and K. Nagata, “Rigid Body Analysis of the Indeterminate
+Grasp Force in power Grasps,” Proc. of the 1996 IEEE International
+Conference on Robotics and Automation, pp.1787-1794, 1996.
+[9] G. A. Pereira, M. F. Campos and V . Kumar, “Decentralized Algorithms
+for Multi-Robot Manipulation via Caging,” The International Journal
+of Robotics and Research, vol. 23, no. 7/8, pp. 783-795, 2004.
+[10] P. Song, M. Yashima and V . Kumar, “Dynamic Simulation for
+Grasping and Whole Arm Manipulation,” Proc. of the 2000 IEEE
+International Conference on Robotics and Automation, pp. 1082-1087,
+2000.
+[11] S. S. Srinivasa, M. A. Erdmann and M. T. Mason, “Control Synthesis
+for Dynamic Contact Manipulation,” Proc. of the 2005 IEEE Interna-
+tional Conference on Robotics and Automation, pp. 2523-2528, 2005.
+[12] D. Stewart and J. Trinkle, “An implicit time-stepping scheme for rigid-
+body dynamics with inelastic collisions and Coulomb friction,” Int. J.
+of Numerical Methods Engineering, vol. 39, pp. 2673-2691, 1996.
+[13] J. C. Trinkle and J. J. Hunter, “A Framework for Planning Dexterous
+Manipulation,” Proc. of the 1991 IEEE International Conference on
+Robotics and Automation, pp.1245-1251, 1991.
+[14] J. C. Trinkle, R. C. Ram, and A. O. Farahat, “Dexterous Manipulation
+Planning and Execution of an Enveloped Slippery Workpiece,” Proc. of
+the 1993 IEEE International Conference on Robotics and Automation,
+pp.442-448, 1993.
+[15] T. Watanabe, K. Harada, T. Yoshikawa, and Z. Jiang, “Towards Whole
+Arm Manipulation by Contact State Transition,” Proc. of the 2006
+IEEE/RSJ International Conference on Intelligent Robots and Systems,
+pp. 5682-5687, 2006.
+[16] T. Yamawaki and M. Yashima, “Randomized Planning and Con-
+trol Strategy for Whole-Arm Manipulation of a Slippery Polygonal
+Object,” Proc. of the 2013 IEEE/RSJ International Conference on
+Intelligent Robots and Systems, pp. 2485-2492, 2013.
+[17] M. Yashima, Y . Shiina and H. Yamaguchi, “Randomized Manipulation
+Planning for A Multi-Fingered Hand by Switching Contact Modes,”
+Proc. of the 2003 IEEE International Conference on Robotics and
+Automation, pp. 2689-2694, 2003.
+[18] Y . Yu and T. Yoshikawa, “Evaluation of Contact Stability between
+Objects,” Proc. of the 1997 IEEE International Conference on Robotics
+and Automation, pp. 695-702, 1997.
+[19] Z. D. Wang and V . Kumar, “Object Closure and Manipulation by
+Multiple Cooperating Mobile Robots,” Proc. of the 2002 IEEE Int.
+Conference on Robotics and Automation, pp. 394-399, 2002.
+[20] X. Y . Zhang, Y . Nakamura and K. Yoshimoto, “Robustness of Power
+Grasp,” Proc. of the 1994 IEEE International Conference on Robotics
+and Automation, pp.2828-2835, 1994.
+6799

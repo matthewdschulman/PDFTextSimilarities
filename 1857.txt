@@ -1,0 +1,1224 @@
+Fast Graspability Evaluation on Single Depth Maps
+for Bin Picking with General Grippers
+Yukiyasu Domae
+1
+, Haruhisa Okuda
+2
+, Yuichi Taguchi
+3
+, Kazuhiko Sumi
+4
+, and Takashi Hirai
+1
+Abstract—We present a method that estimates graspability
+measures on a single depth map for grasping objects randomly
+placed in a bin. Our method represents a gripper model
+by using two mask images, one describing a contact region
+that should be ﬁlled by a target object for stable grasping,
+and the other describing a collision region that should not
+be ﬁlled by other objects to avoid collisions during grasping.
+The graspability measure is computed by convolving the mask
+images with binarized depth maps, which are thresholded
+differently in each region according to the minimum height
+of the 3D points in the region and the length of the gripper.
+Our method does not assume any 3-D model of objects, thus
+applicable to general objects. Our representation of the gripper
+model using the two mask images is also applicable to general
+grippers, such as multi-ﬁnger and vacuum grippers. We apply
+our method to bin picking of piled objects using a robot arm
+and demonstrate fast pick-and-place operations for various
+industrial objects.
+I. INTRODUCTION
+The task of grasping objects randomly placed in a bin,
+referred to as bin picking, has been studied in robotics over
+several decades. Bin picking is useful in industrial settings,
+where grasping objects from a bin reduces the required space
+and avoids the use of parts feeders, as well as in household
+robots, where grasping daily objects from cluttered scenes
+is an important task. However, to build practical bin-picking
+systems, there are still several challenges such as robust pose
+estimation of objects and efﬁcient grasp planning to avoid
+collisions during grasping.
+In this paper, we focus on the industrial settings. In partic-
+ular, we take an approach of grasping an object irrespective
+ofitsposeandisolatingitfromotherobjectsinthebin.Ifthe
+subsequent process requires a particular pose of the object,
+pose estimation can be performed on the single isolated
+object. This system design is due to the fact that even if
+the pose of an object is successfully estimated in a bin,
+grasping can fail because of the constraints on robot motion
+and collision of the gripper with other objects and the bin. To
+minimize the cycle time, our system captures a single depth
+mapofabinusinga3-Ddepthsensor,asshowninFig.1.We
+1
+Y. Domae and T. Hirai are with Advanced Technol-
+ogy R&D Center, Mitsubishi Electric Corporation, 8-1-1
+Tsukaguchi-honmachi, Amagasaki, Hyogo 661-8661, JAPAN
+Domae.Yukiyasu@cb.MitsubishiElectric.co.jp
+2
+H. Okuda is with Nagoya Works, Mitsubishi Electric Corporation, 5-1-
+14 Yada-minami, Higashi-ku, Nagoya, Aichi 461-8760, JAPAN
+3
+Y. Taguchi is with Mitsubishi Electric Research Laboratories, 201
+Broadway, Cambridge, MA 02139, USA
+4
+K. Sumi is with College of Science and Engineering, Aoyama Gakuin
+University, 5-10-1 Fuchinobe, Chuo-ku, Sagamihara, Kanagawa 252-5258,
+JAPAN
+3-D depth
+sensor
+Piled 
+objects
+Gripper
+Grasp a single 
+object & place
+Fig. 1. How can robots quickly pick objects from cluttered scenes and
+place them by using a 3-D depth sensor and a general gripper? This paper
+presents a fast graspability evaluation method on single depth maps for the
+quick pick-and-place tasks.
+also limit the robot motion to 4 degrees-of-freedom (DoF)
+to efﬁciently perform the object isolation task.
+We present a method that efﬁciently computes graspability
+measuresonthesingledepthmaps.Tohandlegeneralobjects
+and grippers, we do not assume any 3-D model of objects,
+and we represent a gripper by using only two mask images
+describing a contact region and a collision region. The
+contact region describes a region that should be ﬁlled by
+a target object for stable grasping, while the collision region
+denotes a region that should not be ﬁlled by other objects to
+avoid collision. The two mask images can be convolved with
+the depth map to compute pixel-wise graspability measures.
+To reduce the computational cost, we use a segmentation-
+based approach, where several segments are extracted from
+thedepthmapandthegraspabilitymeasuresarecomputedon
+each segment. In experiments, we demonstrate the generality
+of our method using several industrial objects and two
+different types of grippers (two-ﬁnger and vacuum grippers).
+A. Contributions
+Our contributions are summarized as follows.
+• We present a method that evaluates graspability mea-
+sures on a depth map by representing a gripper model
+with two mask images describing contact and collision
+regions.
+• We present a system that enables fast pick-and-place
+tasks using the graspability evaluation method.
+• We demonstrate the generality of our bin-picking sys-
+tem by using several industrial objects in experiments.
+B. Related Work
+There are two major approaches for grasping piled ob-
+jects, depending on whether the grasping pose is determined
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 1997
+Multi-finger gripper Vacuum gripper
+Fig. 2. Types of gripper for grasping objects by robots. Although robotic
+grippers have various shapes, they can be classiﬁed into two types: multi-
+ﬁnger and vacuum (suction). We design a fast grasping pose computation
+method for both gripper types.
+uniquely or arbitrarily. If the grasping pose is unique, it
+is necessary to know the shape information of the objects
+in advance to compute the grasping pose of the gripper
+in the reference coordinate system of the object model. If
+the grasping pose is arbitrary, it is sufﬁcient to know the
+relationship between the depth map and the gripper, so the
+shape information of the objects is not necessary.
+The former approach performs pose estimation of ob-
+jects using known object models. Typical pose estimation
+algorithms ﬁrst compute coarse poses of objects. Several
+algorithms that use a set of geometric primitives such as
+planes, circles, and cylinders have been proposed [1], [2],
+[3]. Recently, pairs of oriented points used in a voting
+framework [4], [5], [6] have been shown to be effective
+for the coarse pose estimation. The coarse poses are then
+reﬁnedbyusinganiterativeclosestpoint(ICP)algorithm[7],
+[8], [9]. Such pose-estimation-based approaches are able to
+balance factors such as the computational cost, accuracy,
+and success rate to a certain degree, and have begun to
+ﬁnd applications for particular cases. Nevertheless, there
+are cases in which constraints on robot motion and gripper
+shape prevent grasping even though the pose estimation is
+successful.
+Instead of estimating the object pose, the latter approach
+directly searches for the grasping pose of the gripper on a
+depth map or on a 3-D point cloud. As shown in Fig.2, for
+example, if one can ﬁnd a region consisting of a set of 3D
+points that can be grasped by a multi-ﬁnger gripper or ﬁtted
+by a vacuum gripper, then it would be possible to pick an
+objectusingtheregiononthebasisofthedepthmap,without
+using a 3-D model of the object. Such an object grasping
+approachhasoftenbeenadoptedforhouseholdrobots,which
+are required to grasp unknown objects [10], [11], [12], [13],
+[14], [15], [16]. In [10], an object region is ﬁrst segmented
+on a depth map and then a search is made over the 3-D data
+for the grasping pose of a multi-ﬁnger gripper with 6 DoF.
+For that purpose, the position and relationship conditions of
+the model and data for closing the gap between the gripper
+ﬁngers without gripper collision have been deﬁned. In [14],
+a gripper model is deﬁned over a depth map and brightness
+image and then manual training on large-volume image data
+is done in advance to determine what pose of the gripper
+model on the image leads to successful grasping. Then, the
+grasping pose for new data is selected by using a support
+vector machine (SVM) ranking algorithm [17] to classify
+grasping as successful or unsuccessful in a feature space
+that represents multiple image features. This approach is
+3-D depth
+sensor
+Flange 
+Robot
+arm 
+Base
+Hand
+(Gripper)
+HCS
+SCS
+[R   , t   ]
+[R , t ]
+WCS
+s s
+sh sh
+[R , t ] h h
+X s
+Fig.3. Systemconﬁgurationandcoordinatesystems.TheWorldCoordinate
+System (WCS) originates at the center of the robot base. The Sensor
+Coordinate System (SCS) is attached to the 3-D depth sensor. The Hand
+(gripper) Coordinate System (HCS) originates at the center of the grasping
+position of the grippers. The 3-D depth sensor and the hand are ﬁxed to the
+ﬂange of therobotand their coordinatesystems SCS and HCS arecalibrated
+with respect to WCS.
+Parts 
+   box
+object
+Sensing, grasping position, 
+and orientation adjustment 
+Approach and grasp Pick an object 
+from the box
+X Y
+Z
+Optical axis
+Fig. 4. Constraints of motion and layout for grasping an object from a
+cluttered scene. The optical axis of the 3-D depth sensor is aligned with the
+robot Z axis. We perform the bin-picking task using 4 DoF of the gripper
+pose, including X-Y-Z axis translation and rotation about the Z axis.
+specialized for accuracy in grasping isolated objects and
+does not consider computational cost; thus it is not suited
+to the task of quickly separating piled objects with small
+adjustments. Furthermore, the works described above handle
+either multi-ﬁnger or vacuum grippers, but no method that
+can be used with both of those types has been proposed.
+We present a method that computes grasping poses fast and
+independently of the types of the grippers for the use in
+efﬁcient bin picking.
+To the best of our knowledge, Buchholz et al.’s ap-
+proach [6] is the closest to ours. Their approach ﬁrst es-
+timates the poses of objects as in the former approach
+described above, and then computes an optimal grasping
+posearoundthepre-deﬁnedgraspingposesontheobject.For
+the optimal grasping pose selection, they compute collisions
+by comparing the depth map transformed to the object
+coordinate system with two images generated from a CAD
+model of the gripper, corresponding to the upper and lower
+parts of the gripper. Compared to their system, we do not
+require any CAD model of the object since we do not
+compute the poses of objects. Instead, we use the mask
+imagestocomputeboththegraspingposesandthecollisions,
+enabling faster operations.
+II. PROBLEM FORMULATION
+Inthissection,weformulatetheproblemofcomputingthe
+grasping pose of a gripper using a 3-D depth sensor, both
+of which are attached to a robot arm. Figure 3 shows our
+1998
+conﬁguration. The coordinate systems shown in Fig. 3 are
+deﬁnedrelativetotheworldcoordinatesystemthatoriginates
+at the center of the robot base. The sensor and the gripper are
+ﬁxed to the ﬂange of the robot, and their coordinate systems
+are calibrated with each other via hand-eye calibration.
+We wish to compute a position and orientation with which
+the gripper can easily grasp an object using a depth map
+obtained with a 3-D depth sensor. This problem can be
+expressed as
+
+R
+?
+h
+,t
+?
+h
+
+= argmax
+R
+h
+,t
+h
+f(R
+h
+,t
+h
+), (1)
+where t
+h
+and R
+h
+denote the position and orientation of
+the gripper in the world coordinate system, and f(R
+h
+,t
+h
+)
+is a target function to be maximized for determining an
+optimal position and orientation. If all of the 6 DoF of
+the robot are considered, this problem needs to be solved
+in the 6 DoF space, which requires a high computational
+cost.Moreover,using6DoFrobotmotionwouldincreasethe
+time for grasping and the risk for collision with the bin. We
+thereforeconsiderimplementationoftheminimumnecessary
+DoF that enable bin picking by using the following robot
+operations:
+1) In the empty space above the object, match the 3 DoF
+of the grasping position and orientation, which include
+X-Y axis translation and rotation about the Z axis, as
+shown in Fig. 4.
+2) Move the gripper in the direction of the Z axis to the
+height for grasping the object.
+3) Grasp the object with the gripper and move the gripper
+in the Z axis direction.
+In this way, 2 rotational DoF are omitted and the bin-picking
+task can be done with 4 DoF. Furthermore, by aligning the
+optical axis of the 3-D depth sensor (i.e., the Z axis of the
+sensor coordinate system) with the robot Z axis as in Fig. 4,
+the orientation search can be done with the cross-section
+model of the gripper projected onto the depth map.
+When a grasping position is computed in the depth map,
+the position is represented in the sensor coordinate system
+asX
+s
+=
+
+X
+s
+,Y
+s
+,Z
+s
+
+. Using the transformation between the
+sensor and hand coordinate systems
+
+R
+sh
+,t
+sh
+
+, the position
+in the world coordinate system is obtained as
+t
+h
+=R
+sh
+X
+s
++t
+sh
++d. (2)
+Dependingonthegrippershape,itmaybenecessarytolower
+thegraspingpositionrelativetothemeasuredobjectposition.
+We therefore add the termd. From the operation constraints
+of Fig. 4, d =
+
+0,0,d]
+T
+, but the value d varies with the
+design of the gripper. In the case of a vacuum gripper that
+applies suction to the surface of the object, for example, the
+object surface is at the computed position, so d = 0. The
+only unknown term in Eq. (2) isX
+s
+.
+Next, we represent the desired grasping orientationR
+h
+as
+R
+h
+=R
+z
+(C), (3)
+where R
+z
+(C) denotes the rotation around the Z axis of the
+world coordinate system with an angle C. Representing the
+gripper orientation at the time the object is imaged by the 3-
+D depth sensor as (A
+v
+,B
+v
+,C
+v
+), the constraints on operation
+and orientation mean that A
+v
+= 0 and B
+v
+= 0, so the only
+unknown is the angle of rotation about the Z axis, which can
+be represented as follows:
+C =?+?
+o?set
+. (4)
+Here, ? represents the angle of in-plane rotation that is
+computed for an optimal grasping in the depth map. The
+?
+o?set
+term is the offset for adjusting the angle to the
+actual gripper angle; it is uniquely determined when the
+gripper and camera are calibrated. In Eq. (4), ? is the
+only unknown variable. Thus, the problem of computing the
+grasping position and orientation for bin picking is expressed
+as follows:
+
+X
+?
+s
+,Y
+?
+s
+,?
+?
+
+= argmax
+Xs,Ys,?
+f(X
+s
+,Y
+s
+,?), (5)
+t
+?
+h
+=R
+sh
+X
+?
+s
++t
+sh
++d, (6)
+R
+?
+h
+=R
+z
+(?
+?
++?
+offset
+). (7)
+Because the Z
+s
+at the measurement position can be cal-
+culated from (X
+s
+,Y
+s
+) given a 3-D depth sensor, it is not
+included as an independent variable in Eq. (5). According to
+Eq. (5), if the position (X
+?
+s
+,Y
+?
+s
+) on the depth map obtained
+from the 3-D depth sensor and the in-plane rotation angle?
+?
+can be computed, then the grasping position and orientation
+
+R
+?
+h
+,t
+?
+h
+
+can be obtained from Eq. (6) and Eq. (7). The
+problem is therefore solved by designing the target function
+f(X
+s
+,Y
+s
+,?).
+III. FAST GRASPABILITY EVALUATION
+Inthissection,weproposeamethodforefﬁcientlysolving
+the3DoFproblemthatisdeﬁnedintheprevioussection.We
+ﬁrst deﬁne a state of graspability that can be represented on
+a depth map and describe a gripper model for representing
+that graspable state for a general gripper. We then present
+a method for evaluating graspability from the gripper model
+and the depth map. Our method considers a depth map a
+2D gray-scale image and uses 2-D image processing for
+efﬁciently computing the graspability.
+A. Graspable State
+To design the target function of Eq. (5), we ﬁrst deﬁne
+the ideal grasping pose. The evaluation indicators for the
+gripperincludeformclosureandforceclosure[18],butthose
+are understood as an equilibrium force in an existing stable
+gripping state or a geometrically conﬁned state. The problem
+of concern here requires consideration of a “graspable state,”
+which is a state that exists prior to the transition to a stable
+state in which an object is being grasped. In this paper,
+we take the graspable state to be “a gripper position and
+orientation for which an operation such as opening and
+closing or application of suction enables the grasping of an
+object.”
+Thegraspablestateisdeﬁneddifferentlyfordifferenttypes
+of grippers. Here, the gripper types include the multi-ﬁnger
+1999
+type and the vacuum type as shown in Fig. 2. For example,
+ﬁve-ﬁnger grippers and jamming grippers [19] are all in the
+class of multi-ﬁnger grippers, in the sense that they grasp the
+target object
+1
+. Grippers that use suction or electromagnetic
+force to directly attach to an object are classiﬁed as vacuum
+grippers. According to this classiﬁcation, the graspable state
+can be considered in the following way. For a multi-ﬁnger
+gripper, a graspable state is “a state in which there is nothing
+to collide with the ﬁngers of the gripper and there is contact
+with the target object in the gap between the ﬁngers.” For
+a vacuum gripper, a graspable state is “a state in which the
+vacuum pad is in full contact with the surface of the target
+object.” The cross section illustrations in Fig. 5 show the
+graspable states for various grippers.
+B. Gripper Models
+The graspable states described above can be evaluated
+by the relationship between the measured depth map of
+the object and the position and orientation of the gripper
+model. We design a gripper model that has a high degree
+of generality for various types and shapes of grippers to
+implement this evaluation. As shown in Fig. 5, we use two
+mask images modeling a contact regionH
+t
+and a collision
+regionH
+c
+foreachgripper.Theillustrationsfromlefttoright
+in Fig. 5 are for a two-ﬁnger gripper, a single-pad vacuum
+gripper, a three-ﬁnger gripper that closes the ﬁngers to grasp,
+a three-ﬁnger gripper that opens the ﬁngers to grasp, and a
+jamming gripper (classiﬁed as a multi-ﬁnger gripper). The
+masksH
+t
+andH
+c
+are represented by binary values, with the
+white regions denoting one and the black regions denoting
+zero.Forthevacuumgripper,thereisnocollisionregion.For
+thejamminggripper,thecontactregiondependsontheshape
+ofthetargetobjectsurfacebecauseaﬂexiblematerialisused.
+Note that the collision regions can also include other parts
+of the system, such as the 3-D depth sensor and other parts
+of the hand, if there is a possibility for those parts to collide
+with the object and its surroundings. Our gripper model can
+be designed using only physical dimension parameters.
+In addition, for determining the grasping orientation, we
+use N gripper models corresponding to different in-plane
+orientations of the gripper. We denote asH
+i
+t
+andH
+i
+c
+(i =
+1,...,N) the contact and collision regions corresponding to
+the ith orientation, generated by rotating H
+t
+and H
+c
+with
+the angle
+πi
+N
+.
+C. Evaluating Graspability
+Here we design the target function for evaluating gras-
+pability from the relationship between the gripper model
+and the depth map. We deﬁne a contact region W
+t
+and a
+collision regionW
+c
+for the scene in the depth map, similar
+to the contact region H
+i
+t
+and the collision region H
+i
+c
+for
+the gripper. As shown in Fig. 6, the height of the target
+object in the depth map, h, and the depth to which the
+gripper advances when grasping, d, are used to deﬁne the
+1
+Although jamming grippers are pushed down onto an object from above,
+they grasp by shaping a ﬂexible gripper to bind the object rather than by
+applying suction to the object.
+(a)
+Ht
+Hc
+ Cross 
+Section
+(b) (c) (d) (e)
+Fig. 5. Models for various grippers. (a) Two-ﬁnger gripper. (b) Single-
+pad vacuum gripper. (c) Three-ﬁnger gripper that closes the ﬁngers to
+grasp. (d) Three-ﬁnger gripper that opens the ﬁngers to grasp. (e) Jamming
+gripper [19] (classiﬁed as a multi-ﬁnger gripper). The masks corresponding
+tothecontactregionHt andthecollisionregionHc aremodeledseparately
+for each gripper. The masksHt andHc are represented by binary values,
+with the white regions denoting one and the black regions denoting zero.
+contact regionW
+t
+and collision regionW
+c
+for some object
+in the scene. Denoting the value ofW
+t
+at position (x,y) as
+W
+t
+(x,y), the contact region of the object is expressed as
+W
+t
+(x,y) =
+
+1 if W(x,y)≥h
+0 otherwise
+, (8)
+where W(x,y) represents the value of the depth map at
+position (x,y). The object collision region is expressed as
+W
+c
+(x,y) =
+
+1 if W(x,y)≥h?d
+0 otherwise
+. (9)
+If the height of the target object surface is not uniform, the
+minimum value of the height distribution of the target object
+surface is used for the thresholdh to eliminate the possibility
+of collision of the multi-ﬁnger gripper with the surrounding
+collision regions.
+A position that has a large intersection of object and
+gripper contact regions and no intersection of their collision
+regionscanbeconsideredasapositionwherethegraspability
+is high. The intersection of the object and gripper contact
+regions can be computed as
+T
+i
+=H
+i
+t
+?W
+t
+, (10)
+where T
+i
+is a binary value that represents whether or not
+there is contact between the gripper contact model with the
+ith in-plane rotation angle,H
+i
+t
+, and the object contact model
+W
+t
+. The value is one if there is contact and zero otherwise.
+The operator ? represents convolution. The intersection of
+the collision regions can be similarly computed as
+C
+i
+=H
+i
+c
+?W
+c
+, (11)
+where C
+i
+is a binary value that represents whether or not
+there is collision of the gripper collision model with the ith
+in-plane rotation angle,H
+i
+c
+, with the object collision model
+2000
+3-D depth sensor
+Gripper
+d
+h
+Depth map
+Wt
+Wc
+Cross 
+section A
+Cross 
+section B
+A
+B
+W
+(a) (b)
+Fig. 6. Scene modeled by contacts and collisions between a gripper and
+objects. (a) Scene and system setup. (b) A depth map, contact regionWt,
+and collision regionWc for the scene. The height of the target object in the
+depth map, h, and the depth to which the gripper advances when grasping,
+d, are used to deﬁne the regions.
+W
+c
+in the scene. The region of contact without collision of
+the gripper and object can thus be expressed as (T
+i
+?
+¯
+C
+i
+).
+We deﬁneG
+i
+so as to obtain the peak of that region as
+G
+i
+= (T
+i
+?
+¯
+C
+i
+)?g, (12)
+whereg denotes a Gaussian.G
+i
+is the graspability map for
+the gripper model that has the ith in-plane rotation angle
+and the target object. The search for the maximum value
+in that map is equivalent to the search for the grasping
+position for that gripper model. The process for computing
+the graspability map using Eqs. (10)–(12) is illustrated in
+Fig. 7. Denoting the value of G
+i
+at position (x,y) as
+G
+i
+(x,y), we can design the target function as follows for
+each gripper model.
+Target function for multi-ﬁnger grippers:
+f(X
+s
+,Y
+s
+,?) =
+
+G
+i
+(x,y) if C
+i
+(x,y) = 0
+0 otherwise
+. (13)
+Here, C
+i
+(x,y) is the value ofC
+i
+at position (x,y). If there
+is no collision between the gripper and the object or its
+surroundings, there is graspability.
+Target function for vacuum grippers:
+f(X
+s
+,Y
+s
+,?) =
+
+G
+i
+(x,y) if T
+i
+(x,y)≥S
+i
+t
+0 otherwise
+. (14)
+Here, S
+i
+t
+denotes the surface area of the gripper contact
+region (the sum of the white regions inH
+i
+t
+) and T
+i
+(x,y) is
+the value ofT
+i
+at position (x,y). The valueS
+i
+t
+is determined
+by the gripper shape and is used to decide whether or not
+the gripper’s pad can be sufﬁciently attached to the object
+surface. Note that we do not have to computeC
+i
+in Eq. (11)
+for the vacuum grippers since their collision region H
+i
+c
+is
+zero.
+From the peak position (x
+i?
+,y
+i?
+) and the orientation
+index i
+?
+computed in the graspability map with Eq. (13)
+or Eq. (14), we obtain the values (X
+?
+s
+,Y
+?
+s
+,?
+?
+) as
+X
+?
+s
+=
+Z
+s
+f
+x
+i?
+, Y
+?
+s
+=
+Z
+s
+f
+y
+i?
+, ?
+?
+=
+πi
+?
+N
+, (15)
+where f is the focal length of the 3-D depth sensor and Z
+s
+is the depth value at the pixel location (x
+i?
+,y
+i?
+). Then we
+obtainR
+?
+h
+andt
+?
+h
+using Eqs. (6) and (7).
+=
+=
+Wt
+Wc
+Ht
+Hc
+g
+=
+Gripper
+Cross 
+section A
+Cross 
+section B
+A
+B
+=
+T
+i
+i
+i
+i
+G
+=
+=
+Scene
+=
+G
+i
+Graspability map
+C
+i
+U
+Fig. 7. Graspability evaluated by gripper and object models. T
+i
+is a
+binary value that represents whether or not there is contact between the
+contact model of the gripper that has the ith in-plane rotation angle,H
+i
+t
+,
+and the object contact modelWt. The value is one if there is contact and
+zero otherwise.C
+i
+is a binary value that represents whether or not there
+is collision of the gripper collision model that has the ith in-plane rotation
+angle,H
+i
+c
+, with the object collision modelWc in the scene. The region
+of contact without collision of the gripper and object can thus be expressed
+as (T
+i
+?
+¯
+C
+i
+). The graspability map,G
+i
+, is computed to obtain the peak
+of that region.
+IV. IMPLEMENTATION
+In the previous sections, we reduced the problem of
+estimating the grasping pose to the problem of ﬁnding the
+peaks in a graspability map computed using 2-D image
+processing on a depth map. Obtaining such a pixel-wise
+graspability map would involve the computation on the order
+of w? h? x
+t
+? y
+t
+? N, where w and h are the width
+and height of the depth map, and x
+t
+and y
+t
+are the width
+and height of the gripper contact and collision models. To
+further reduce the processing time, rather than computing the
+pixel-wise graspability map, we use a segmentation-based
+approach where we ﬁrst extract object candidate regions
+using segmentation and then limit the search scope to the
+rectangle regions, each of which bounds a candidate region.
+Also, because Eq. (10) and Eq. (11) are binary images, the
+convolution operation is accelerated by representing each
+pixel with one bit and taking the logical AND for each bit.
+ExtractingObjectCandidateRegions:Toimplementthe
+segmentation-based approach, we segment a depth map into
+regions bounded by edges, and ﬁt a plane or a curved surface
+for each region to extract object candidates. We sort the
+candidates according to their average heights and keep theK
+highest candidates, considering that the object located at the
+highestpositioninthepileshouldbetheeasiesttograsp.The
+graspability is computed for each of theK candidate regions
+intherectangleboundingtheregion.Ifweﬁndmultiplepeak
+positions in the candidate regions, we select a peak closest to
+the center of one of the regions so that the grasping position
+can be close to the center of gravity of the object.
+2001
+3-D depth
+sensor
+Robot arm
+Gripper
+Supply tray
+Parts box containing
+various industrial 
+objects
+Fig. 8. Experimental setup. A parts box divided into compartments was
+placed in the environment and piled industrial parts were placed in the
+compartments.
+(a) (b) (c) (e) (d)
+Fig. 9. Five types of objects (industrial parts) used in experiments, having
+different shapes and materials.
+Parameters: The processing parameters deﬁned so far are
+summarized below.
+1) h: the surface height of the target segment; the mini-
+mum value of the measured height is used to prevent
+collisionswhenthereisdispersioninthesurfaceheight
+values.
+2) d:thedepthtowhichthegripperistoproceedfromthe
+measured position; this is zero for a vacuum gripper
+and depends on the gripper design for a multi-ﬁnger
+gripper.
+3) N: the number of gripper models with different orien-
+tations; a larger N means higher accuracy; this relates
+to processing and accuracy.
+4) K: the number of object candidates extracted; this
+relates to processing and grasping success rate.
+In addition to these parameters, the parameter for con-
+version of the edge strengths to binary values during the
+segmentation process must be set. That parameter can be
+automatically set from the design of the 3-D depth sensor
+being used and the desired edge height separation.
+V. EXPERIMENTS
+We performed extensive evaluation of our method using
+the setup shown in Fig. 8. A parts box divided into com-
+(a)
+Ht
+Hc
+(b)
+Fig. 10. Two types of grippers and their models used in experiments:
+(a) 2-ﬁnger gripper and (b) vacuum gripper. Both grippers were air-driven.
+partments was placed in the environment, and ﬁve types
+of objects of different shapes and materials (Fig. 9) were
+placed in the compartments. The objects were picked up
+by two types of air-driven grippers (2-ﬁnger and vacuum
+shown in Fig. 10) attached to a robot arm, and then placed
+onasupplytray.Thepicking processwasrepeated 100times
+for each object and for each gripper. The 3-D depth sensor
+consisted of a camera and laser, and used structured light
+to measure a depth map with 640? 480 pixels and 8 bit
+resolution. The time for measuring a depth map was about 1
+second. We adjusted the sensor to have sub-millimeter depth
+accuracy at a working distance of 300 to 400 mm. The robot
+arm was a Mitsubishi Electric RV-6SL. For the computation,
+a standard PC (2 GHz Core2 Duo with 2 G RAM) was
+connected directly to the robot controller and 3-D depth
+sensor via Ethernet. The processing parameters were set as
+N = 8 and K = 9. The other parameters were calculated
+from the actual dimensions of the experimental environment.
+The grasping position and orientation were recalculated for
+each grasping attempt. If the height of the grasping position
+estimationresultwasbiggerthantheheightoftheﬂoorofthe
+depth maps, the result was classiﬁed as a failure. Whether or
+not the pick-and-place operation was successful was decided
+automatically according to the total weight of objects in the
+part supply tray. Please refer to the supplementary video,
+which demonstrates our system performing the pick-and-
+place tasks for several different objects.
+A. Evaluation Results
+Table I summarizes the experimental results for the pick-
+and-place operations of the ﬁve different objects using the
+two different grippers. Here the graspable rate indicates a
+percentage where a speciﬁc object is physically possible to
+be grasped by a speciﬁc gripper. Speciﬁcally, we computed it
+as the number of stable poses of the object that is graspable
+by the gripper over the number of all stable poses of the
+object.Foramulti-ﬁngergripper,anobjectisbasically100%
+graspable if there is a height difference, but for a vacuum
+gripper, grasping is not possible unless there is a ﬂat part
+that can cover the entire surface area of the suction pad.
+Therefore, the object (b), which is a coil spring, cannot be
+grasped by a vacuum gripper. Also, the object (c) has many
+2002
+(a) (b) (c) (d) (e)
+Fig. 11. Grasping position and orientation estimation results for ﬁve types of industrial parts by using the 2-ﬁnger gripper model (top) and the vacuum
+gripper model (bottom). (a)–(e) correspond to the objects (a)–(e) shown in Fig. 9. Sky-blue colored areas denote the gripper poses that our method estimated
+as graspable, while the blue colored circle denotes the best pose with a maximum value of the graspability. The robot can grasp the objects using the
+position and orientation. Please see the supplementary video, demonstrating bin picking from these scenes.
+TABLE I
+SUCCESS RATE FOR PICK-AND-PLACE OPERATIONS OF PILED OBJECTS.
+Object Gripper Graspable Grasping Successful
+type type rate rate (multiple) rate (multiple)
+(a) 2-ﬁnger 100 95 (1) 95 (96)
+vacuum 100 89 (0) 89 (89)
+(b) 2-ﬁnger 100 87 (8) 87 (95)
+vacuum 0 0 (0) —
+(c) 2-ﬁnger 100 78 (12) 78 (90)
+vacuum 40 31 (6) 75 (92)
+(d) 2-ﬁnger 100 79 (6) 79 (85)
+vacuum 100 79 (2) 79 (81)
+(e) 2-ﬁnger 100 67 (5) 67 (72)
+vacuum 100 92 (4) 92 (96)
+poses that do not present a ﬂat surface, so the graspable
+rate is low. The grasping rate is the ratio of the number
+of successful pick-and-place operations to the total number
+of attempts in the experiment for one object. The grasping
+rate (multiple) is the ratio of cases where multiple objects
+were picked up in an entangled state in a single attempt. The
+success rate is deﬁned as 100?
+GraspingRate
+GraspableRate
+to take into
+account cases in which grasping is physically impossible.
+The success rate (multiple) includes cases where multiple
+objects were picked up at the same time.
+The success rate averaged over the ﬁve different objects
+were 81.2% (87.6%) for the 2-ﬁnger gripper and 83.75%
+(89.5%) for the vacuum gripper; the overall average success
+rate was 82.47% (88.55%) (the values in parentheses are
+the success rates that include multiple object picking). Even
+at the current success rates, adequate system operation is
+possible when the method is used together with an error
+recoverymechanisminwhichgraspingfailureisdetectedand
+another candidate is picked. Nevertheless, a higher success
+rate would allow a simpler system conﬁguration and increase
+the system throughput.
+Figure 11 shows results of the grasping position and
+orientation computations for the ﬁve objects using the two
+gripper models. Sky-blue colored areas denote the grasping
+poses that our method estimated as graspable, and the blue
+colored circle denotes the best pose with a maximum value
+of the graspability. As described above, the object (b) cannot
+be grasped by the vacuum gripper; the method computed ﬂat
+regions in the background as graspable regions, leading to a
+failure.
+The average computation time required for the proposed
+method was 0.31 seconds (0.04 seconds for extracting object
+candidate regions and 0.27 seconds for the graspability
+evaluation) for the multi-ﬁnger gripper and 0.17 seconds
+(0.04 seconds for extracting object candidate regions and
+0.13 seconds for the graspability evaluation) for the vacuum
+gripper. The processing time is shorter for the vacuum
+gripper because H
+c
+= 0 in the collision model and the
+computation for Eq. (11) is not performed. The cycle time
+of our system was 4.5 seconds (1.0 second for the depth
+measurement, 0.3 seconds for the proposed method, 2.5
+seconds for the robot motion, and the remaining time for the
+wait for anti-vibration). Note that the computation was fast
+enough and could be performed during the robot motion. To
+further improve the cycle time, we could place the 3-D depth
+sensor separately from the robot arm; then the robot would
+move continuously and the cycle time would be determined
+by only the time for the robot motion.
+B. Discussion
+Theexperimentsconﬁrmedthatourmethodenablesgrasp-
+ing for both multi-ﬁnger and vacuum grippers if the scene
+includes objects that are graspable. However, there are still
+grasping failures, which we discuss here.
+The frequency of failures varied with the object shape, but
+there were two types of causes: 1) the object was grasped,
+but the object fell down because of the weight of the object
+itself or the weight of surrounding objects; and 2) the impact
+of opening and closing during grasping created a moment
+that resulted in grasping failure. Grasping failures due to
+2003
+object weight were frequent when the object (e) was grasped
+with the multi-ﬁnger gripper, where the success rate was the
+lowestat67%.Suchfailurescouldbereducedbymaintaining
+the amount of gripping force or suction force needed to lift
+the object regardless of what part of the object is grasped,
+or by using time-consuming object pose estimation to grasp
+objects that are not occluded with other objects. The second
+type of failure occurred most often when objects that are
+thin (target objects no more than 1 mm thick), light-weight,
+and long and narrow, such as the object (d), were grasped at
+the end of the gripper. Such failures could be dealt with by
+reducing the gripping speed or putting priority on grasping
+at the object center of gravity. Those various methods could
+be selected to increase the success rate for either type of
+failures according to the system conﬁguration or the target
+cycle time.
+As described in Table I, we also observed cases where
+multiple objects were picked up in a single attempt. For the
+multi-ﬁnger hand, we had the case where multiple objects
+lie within the gap of the opened gripper, which occurred
+for the object (a). This problem could be addressed by
+using a gripper that has an adjustable span and setting the
+span so that multiple grasping does not occur. However,
+the main cause of multiple grasping was objects entangled
+with each other; in particular, objects of complex shape,
+such as the object (c), can be easily entangled (which might
+be hidden under the objects) and are difﬁcult to separate.
+Even if we used sophisticated pose estimation algorithms
+to estimate poses of all the objects in a scene and locate
+hidden entanglement, and placed grasping priority on objects
+that are not entangled, it would be ultimately necessary to
+disentangle objects. Therefore, an efﬁcient approach would
+betopicktheentangledobjectsandtheneitherseparatethem
+or discard them after picking.
+VI. CONCLUSIONS
+We presented a bin-picking system using a 3-D depth
+sensorenablingfastpick-and-placetasksofpiledobjects.We
+reduced the problem of computing the poses of objects using
+a depth map to the problem of determining graspable regions
+directly on the depth map given a gripper model. We then
+proposed a method that efﬁciently evaluates the graspability
+using two mask images corresponding to the gripper model.
+Applied to an actual robot system, the proposed method
+achieved an average success rate of 82.47% and a processing
+time of 0.31 seconds or less. The proposed method has
+already been implemented as an algorithm in a 3-D depth
+sensor product for industrial robots. In future work, we wish
+to extend our method to other types of applications, such as
+those using humanoid and service robots.
+ACKNOWLEDGMENTS
+We are grateful to Makito Seki, Akio Noda, and Kenichi
+TanakaofMitsubishiElectricandProfessorShunichiKaneko
+of Hokkaido University for advice on robot vision research.
+We are also indebted to Yasuo Kitaaki for assistance in the
+implementation of our method. This research was funded by
+Next-generation Intelligent Robot Technology Development
+Project commissioned by the New Energy and Industrial
+Technology Development Organization (NEDO).
+REFERENCES
+[1] K. Harada, K. Nagata, T. Tsuji, N. Yamanobe, A. Nakamura, and
+Y. Kawai, “Probabilistic approach for object bin picking approximated
+by cylinders,” in Proc. IEEE Int’l Conf. Robotics and Automation
+(ICRA), May 2013, pp. 3742–3747.
+[2] M. Nieuwenhuisen, D. Droeschel, D. Holz, J. St¨ uckler, A. Berner,
+J. Li, R. Klein, and S. Behnke, “Mobile bin picking with an an-
+thropomorphic service robot,” in Proc. IEEE Int’l Conf. Robotics and
+Automation (ICRA), May 2013, pp. 2327–2334.
+[3] M. Berger, G. Bachler, and S. Scherer, “Vision guided bin picking and
+mounting in a ﬂexible assembly cell,” in Proc. Int’l Conf. Industrial
+Engineering Applications of Artiﬁcial Intelligence and Expert systems
+(IEA/AIE), vol. 1821, June 2000, pp. 109–117.
+[4] B. Drost, M. Ulrich, N. Navab, and S. Ilic, “Model globally, match
+locally: Efﬁcient and robust 3D object recognition,” in Proc. IEEE
+Conf. Computer Vision and Pattern Recognition (CVPR), June 2010,
+pp. 998–1005.
+[5] C.Choi,Y.Taguchi,O.Tuzel,M.-Y.Liu,andS.Ramalingam,“Voting-
+based pose estimation for robotic assembly using a 3D sensor,” in
+Proc. IEEE Int’l Conf. Robotics and Automation (ICRA), May 2012,
+pp. 1724–1731.
+[6] D. Buchholz, M. Futterlieb, S. Winkelbach, and F. M. Wahl, “Efﬁcient
+bin-picking and grasp planning based on depth data,” in Proc. IEEE
+Int’l Conf. Robotics and Automation (ICRA), May 2013, pp. 3245–
+3250.
+[7] P.J.BeslandN.D.McKay,“Amethodforregistrationof3-Dshapes,”
+IEEE Trans. Pattern Anal. Mach. Intell., vol. 14, no. 2, pp. 239–256,
+Feb. 1992.
+[8] D. Chetverikov, D. Svirko, D. Stepanov, and P. Krsek, “The trimmed
+iterative closest point algorithm,” in Proc. Int’l Conf. Pattern Recog-
+nition (ICPR), vol. 3, Aug. 2002, pp. 545–548.
+[9] S. Rusinkiewicz and M. Levoy, “Efﬁcient variants of the ICP algo-
+rithm,”inProc.Int’lConf.3-DDigitalImagingandModeling(3DIM),
+May 2001, pp. 145–152.
+[10] D. Rao, Q. V. Le, T. Phoka, M. Quigley, A. Sudsang, and A. Y. Ng,
+“Grasping novel objects with depth segmentation,” in Proc. IEEE/RSJ
+Int’l Conf. Intelligent Robots and Systems (IROS), Oct. 2010, pp.
+2578–2585.
+[11] J. Bohg and D. Kragic, “Grasping familiar objects using shape
+context,” in Proc. Int’l Conf. Advanced Robotics (ICAR), June 2009,
+pp. 1–6.
+[12] Y. Kimitoshi, M. Tomono, and T. Tsubouchi, “Autonomous 3D shape
+modeling and grasp planning for handling unknown objects,” in Robot
+Manipulators Trends and Development, A. Jimenez and B. M. A.
+Hadithi, Eds. InTech, Mar. 2010, ch. 22.
+[13] E. Klingbeil, D. Rao, B. Carpenter, V. Ganapathi, A. Y. Ng, and
+O. Khatib, “Grasping with application to an autonomous checkout
+robot,” in Proc. IEEE Int’l Conf. Robotics and Automation (ICRA),
+May 2011, pp. 2837–2844.
+[14] Y. Jiang, S. Moseson, and A. Saxena, “Efﬁcient grasping from RGBD
+images: Learning using a new rectangle representation,” in Proc. IEEE
+Int’l Conf. Robotics and Automation (ICRA), May 2011, pp. 3304–
+3311.
+[15] A. Saxena, J. Driemeyer, and A. Ng, “Robotic grasping of novel
+objects using vision,” International Journal of Robotics Research
+(IJPR), vol. 27, no. 2, pp. 157–173, 2008.
+[16] M. Popovi´ c, G. Kootstra, J. A. Jørgensen, D. Kragic, and N. Kr¨ uger,
+“Grasping unknown objects using an early cognitive vision system for
+generalsceneunderstanding,”in Proc. IEEE/RSJ Int’l Conf. Intelligent
+Robots and Systems (IROS), Sept. 2011, pp. 987–994.
+[17] T. Joachims, “Optimizing search engines using clickthrough data,”
+in Proc. ACM SIGKDD Int’l Conf. Knowledge Discovery and Data
+Mining, 2002, pp. 133–142.
+[18] E. Rimon and J. Burdick, “On force and form closure for multiple
+ﬁnger grasps,” in Proc. IEEE Int’l Conf. Robotics and Automation
+(ICRA), vol. 2, Apr. 1996, pp. 1795–1800.
+[19] J. R. Amend, E. Brown, N. Rodenberg, H. M. Jaeger, and H. Lipson,
+“A positive pressure universal gripper based on the jamming of
+granular material,” IEEE Trans. Robotics, vol. 28, no. 2, pp. 341–350,
+Apr. 2012.
+2004

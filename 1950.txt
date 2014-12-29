@@ -1,0 +1,670 @@
+Computing Cell-Based Decompositions Dynamically for
+Planning Motions of Tethered Robots
+Reza H. Teshnizi and Dylan A. Shell
+Abstract— Recently researchers have approached the prob-
+lem of motion planning with topological constraints. In such
+problems, the inputs to the planner are source and destination
+points and the output is expected to be a valid path that
+respects the topological constraints. A concrete example of
+such problems —and the topic of this paper— is planning for
+a robot which is connected with a cable of limited length to
+a ﬁxed point in the operation space. This paper presents a
+planning method for such problems by examining how the
+conﬁguration space manifold can be represented efﬁciently. We
+introduce a convenient method for generating either parts or the
+complete atlas for the manifold based on special “cable events”.
+Generating parts of the conﬁguration space on-the-ﬂy enables
+improvements over the state of the art: (a) we decompose the
+environment into cells as needed rather than an off-line global
+discretization, obtaining competitive time and space complexity
+for our planner, (b) we are able to exploit topological structure
+to represent robot-cable conﬁgurations concisely, (c) we gen-
+eralize the representation in order to examine cable-to-cable
+contacts, which have been widely ignored in the literature until
+now. Our results show the efﬁciency of the method and indicate
+further promise for procedures that represent manifolds via
+an amalgamation of implicit discrete topological structure and
+explicit Euclidean cells.
+I. INTRODUCTION
+The classic problem of motion planning can be deﬁned
+as moving an object in a space while avoiding obstacles [1].
+Many practical scenarios require more complicated variations
+of the problem. Consider a robot which uses a cable as a
+source of power or communication. Examples include high
+power robots (e.g., street cleaning machines) that use cable
+as a source of power and underwater or underground robots
+that use a cable for transferring data. Presence of the cable
+imposes two important constraints on the robot’s motion:
+the cable length which limits the radius of the movement
+(Fig. 1a), and the topological constraints imposed by the
+cable and obstacles in the environment (Fig. 1b).
+Recent research has focused on different aspects and vari-
+ations of this problem [2]–[5]. The present work examines
+the structure of the conﬁguration space induced by a robot
+tethered by a taut (possibly retracting) cable and proposes
+to represent the manifold of conﬁgurations by a special
+atlas [6]. In so doing, the topological regularity captured as
+a graph, is naturally separated from the continuous aspects
+captured as charts. The graph provides an understanding of
+the complexity induced by the cable and nodes within the
+graph provide sufﬁcient topological context for points inR
+2
+R. H. Teshnizi and D. A. Shell are with the Distributed AI and
+Robotics Lab, Dept. of Computer Science and Engineering , Texas A&M
+University, College Station, TX 77843, USA. Emails: fr.teshnizi,
+dshellg@cse.tamu.edu
+(a) Length Constraint (b) Topological Constraint
+Fig. 1: The limits caused by ﬁxing the robot to a ﬁxed point.
+to represent conﬁgurations. The planning method we present
+is quite straight forward using this representation.
+This method creates a set of locally continuous charts
+based on the set of cable events. Initially, we examine events
+that occur when a cable touches or wraps around an obstacle,
+and we show that they are intimately connected with a
+subgraph of the visibility graph of the environment. We will
+show that for a tethered robot this subgraph is in fact a tree
+and thus the topological structure of the atlas representing
+the conﬁguration space forms a tree structure. This structure
+provides context that allows path planning to proceed by
+moving locally (either up to parent charts, or downward to
+children charts) in the conﬁguration space.
+Next, we extend the set of cable events to consider cable-
+to-cable interactions, by considering two different ways to
+cross the cable: the robot can move over or under the
+cable
+1
+. The method— we believe, uniquely— generalizes to
+this case despite the fact that the involved topology becomes
+rather more complex: events no longer occur at a countable
+set of locations, the conﬁguration space’s structure is no
+longer separated easily. Nevertheless, because only parts of
+the conﬁguration manifold need be generated and the path
+planning operations proceed exploring locally, the approach
+succeeds. We believe that this underscores the strength of
+dynamically computing relevant parts of the atlas on-the-ﬂy
+and treating the conﬁguration space as if it were a just-in-
+time computed data structure.
+II. RELATED WORK AND CONTRIBUTIONS
+Much prior work on motion planning for tethered robots
+has the common underlying idea of creating a graph approx-
+imation of the conﬁguration space and using an efﬁcient
+method to search through the space of possible paths to
+choose the optimal one among those in the homotopy class.
+The work of Hert and Lumelsky [7] ﬁrst considered
+the problem of ordering the motions of multiple tethered
+1
+We do assume in this case, that the cable has inﬁnite friction in
+contacting itself.
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+U.S. Government work not protected by
+U.S. copyright
+6130
+robots by sorting a graph representing their paths. While
+inﬂuential, the paper never addressed ﬁnding those orderings.
+The work of Grigoriev and Slissenko [8] and Narayanan,
+Vernaza, Likhachev, and LaValle [9] addressed the problem
+by representing paths in a given homotopy class by deﬁning
+an alphabet used to describe the event of crossing a ray.
+Determining whether two paths are in the same homotopy
+class then requires comparison of their related strings. The
+latter paper also addresses homologically equivalence. That
+research group also explored the topic of winding constraints
+for motion planning [4]. A radically different approach
+is taken by Bhattaharya, Kumar, and Likhachev [2], who
+provide an alternative way of deﬁning homotopy classes of
+paths in 2D based on the Cauchy Integral Theorem.
+Igarashi and Stilman [3] designed an algorithm for creating
+a graph of the conﬁguration space manifolds based on cable
+length constraint. Their idea of representing the conﬁgu-
+ration space by multiple overlapping manifolds inﬂuenced
+the present work. Recent work has also examined problems
+beyond path planning in tethered robots [5].
+Based on the body of prior work, we have identiﬁed
+several distinguishing contributions of the current paper.
+Firstly, the approach we propose avoids discretizing the
+conﬁguration space, instead using a subset of the visibility
+graph to induce a natural cell decomposition of the space.
+We need to clarify what we mean by decomposition versus
+discretization: decomposition divides a space into subspaces
+which are locally continuous whose union is equal to the
+original space, whereas a discretization’s faithfulness to the
+original space depends on its resolution. Secondly, it con-
+nects motions of the robot to discrete events that occur with
+the cable, each representing qualitative changes in the robot
+and cable conﬁguration. The idea of identifying events of
+this form allows the method to be generalized so as to model
+cable-cable interactions appropriately. Thirdly, we avoid off-
+line creation of the entire conﬁguration space, keeping data
+structures that allow for dynamic generation of necessary
+parts of the space. We represent topological context and
+local metric information, where planning in the local chart is
+trivial, and new charts are only created on-the-ﬂy as needed.
+And ﬁnally, the visibility graph has been previously used
+in motion planning for non-tethered robots [10], [11], but
+our construction of an atlas of charts leads to new insight
+with regards to the cable’s dependency on the environment
+topology and its connection with the visibility graph.
+III. THE PRELIMINARIES
+This section provides the fundamental deﬁnitions used
+throughout the paper. We consider the problem of planning
+for a non-oriented robot situated in a planar environment
+with a cable tethered to a ﬁxed point. It is assumed that the
+cable of maximum length l is always taut (e.g., through the
+use of a retracting or spooling mechanism). And also that
+the obstacles are known and polygonal.
+Figs. 2a–2c illustrate aspects of the problem. In an obstacle
+free environment, motion planning for a tethered robot is
+identical to an untethered robot with circular boundary of
+(a) No Obstacles (b) Obstacle blocking
+the direct line
+(c) Cable-obstacle con-
+tact
+Fig. 2: Different scenarios of a tethered robot with respect to the presence
+of obstacles.
+Fig. 3: The deﬁning elements of a visibility cell.
+radiusl. A path fromp
+s
+top
+d
+is a straight line segment [12].
+Let ab denote the line segment connecting point a to b.
+In moving from p
+s
+p
+d
+, an obstacle may affect the robots
+motion directly (Fig. 2b) or indirectly via a cable-obstacle
+contact which will bend the cable. Fig. 2c. In the latter
+case, the radius of movement of the robot after that bend
+is affected.
+A. Events
+Consider the ﬁxed base point of the cable. Due to the lim-
+ited length of the cable, the distance between the robot and
+this point is never greater than l. Therefore, the accessible
+area for the robot will be a circle with radius l centered at
+that point (Fig. 1a). Interestingly, this is true for any contact
+point as well. If the robot consumes l
+0
+of its cable length
+to reach the contact point, since the cable is always taut,
+its distance from the contact point can never become greater
+than l l
+0
+unless it untangles itself (Fig. 3). This is the basis
+for cell decomposition of the conﬁguration space.
+The contact points also deﬁne a homotopy class of tra-
+jectories that the robot can follow in order to untangle the
+cable and get back to the initial conﬁguration (i.e., the cable
+is completely retracted and the robot is at the origin of the
+cable). Incidents that change the homotopy class of returning
+trajectory and/or the boundaries of accessible area for the
+tethered robot are referred to as events.
+Deﬁnition 1. In the context of the cabled robot, there are
+two kinds of events:
+1) Cable to obstacle contact: wrapping event
+2) Cable to cable contact: cable crossing event
+In the following subsections, we are not concerned about
+cable-cable interactions. We return to cable to cable interac-
+tions in Section V where the method is extended.
+B. Visibility Cells
+A wrapping event will only occur when the cable touches
+an apex of one of the polygonal obstacles. These apexes
+6131
+are the same as the vertices of the visibility graph [13]. We
+can construct a connected component of the free space of
+the environment by partitioning the planar map into a semi-
+algebraic setP
+obs
+consisting of all the obstacles and the free
+space P
+free
+that is the complement of the set P
+obs
+[8].
+Since planning the motion for each cell of a decomposed
+conﬁguration space is straight forward, we are going to
+deﬁne these cells in a way that the union of them will cover
+the conﬁguration space. That is, each cell should contain all
+the points so that no movement of the tethered robot from
+any point in the cell to any other point in the same cell causes
+an event. Therefore we can reach the following deﬁnition for
+the cells of the conﬁguration space in our context.
+Deﬁnition 2. A visibility cell is a chart, (U;'), where
+UP
+free
+and homeomorphism ' is '(x;y) = (x;y), and
+the collision free path between any two points in U is a
+straight line segment inside U connecting the two points.
+We identify cells uniquely by the following ﬁelds (Fig. 3):
+ Base Point: as discussed in Section III-A, each wrapping
+point is used as a base point.
+ Cable Length: determines the maximum distance be-
+tween the robot and the base point of a chart.
+ Parent Cell: is the cell describing the robot and its
+cable conﬁguration directly before occurrence of the
+event. This information is crucial when the planner is
+searching for paths and/or untangling the cable.
+ Stitch Line: this is the line where one chart is connected
+to another and can be considered as an interface between
+them. Formally this line is the domain for transition map
+between the two charts. Once the robot have crossed the
+stitch line, a contact is made/released and thus the robot
+will be transfered from a chart (cell) to the other.
+Fig. 4 illustrates a 3D model of how the visibility cells
+are connected together.
+C. The Maximum Ray Length Visibility Atlas
+Since each cell is basically a chart, we next deﬁne an atlas
+as a model of the decomposition.
+Deﬁnition 3 (informal). A Maximum Ray Length Visibility
+Atlas (MRLVA) denoted by A
+l
+is an atlas which contains
+visibility cells whose stitch lines are edges of the visibility
+graph of the environment. Each MRLVA has a graph associ-
+ated with it characterizing its topological structure, which we
+call Maximum Ray Length Visibility Atlas Graph (MRLVAG)
+denoted by G
+A
+l
+(see Fig. 5).
+A detailed procedure for creating a MRLV A and MRLV AG
+is provided in the technical report [14].
+It is important to note that number of child charts is always
+less than or equal to the actual visibility graph’s vertices.
+Lemma 1. In an environment with polygonal obstacles a
+locally shortest path has a canonical form: in P
+free
+, it is a
+straight line segment connecting the two end points. If one
+of the end points meets an obstacle it is locally supporting
+to P
+obs
+at the contact point [12].
+Fig. 4: A 3D model of the visibility cells and the way they are connected
+together. Each cell is in a different color. The robot is white and the cable
+is colored yellow.
+Fig. 5: An example of a MRLV AG. The environment producing this
+MRLV AG is given on the left.
+Theorem 1. The MRLVA A
+l
+generated on P
+free
+describes
+exactly the space of all the possible conﬁgurations of a robot
+(non-oriented) and its taut cable with maximum length l in
+P
+free
+.
+Proof. The tautness of the cable implies each segment of it
+is a locally shortest path. So by Lemma 1 it is always in
+form of a line segment in P
+free
+and these line segments
+connect apexes of the obstacles which are a subset of edges
+of visibility graph, hence constituting all the conﬁgurations
+of the taut cable, except the ﬁnal segment connecting the
+robot to the last apex. This last piece of information is
+provided by the position of the robot represented as a point
+in a visibility cell (that is a chart). Therefore, by connecting
+this point to the last apex we will have the all the robot and
+its taut tether’s conﬁgurations.
+Corollary 1. Given a MRLVA, by having a path from the
+root to a chart (U
+i
+;'
+i
+)2A
+l
+and a pointp2U
+i
+can identify
+a unique conﬁguration of a non-oriented robot and its taut
+tether in P
+free
+.
+Proof. Follows from Theorem 1 and Lemma 1.
+Theorem 2. The MRLVAG G
+A
+l
+generated on P
+free
+, is a
+tree.
+Proof. Suppose, to the contrary, that G
+A
+l
+has a loop. This
+implies two distinct sequences of cells and their transition
+maps to reach same cell. Each sequence implies an ordering
+of apexes, that is two distinct conﬁgurations of the cable for
+reaching the same cell. This contradicts Corollary 1.
+IV. THE BASIC PLANNING ALGORITHM
+Algorithm 1 shows the pseudo code for ﬁnding a path
+from source point p
+s
+to destination point p
+d
+. This algorithm
+6132
+is greedy since it values the direct line connecting the source
+point to the destination point more than other paths.
+In order to initiate the algorithm the robot callsFindPath
+for current chart given the source and destination points.
+This function ﬁrst considers p
+s
+ p
+d
+as it is always the
+locally shortest path [8]. If it cannot move directly toward
+p
+d
+, it then checks whether a path can be obtained either
+from its children or its parent. If there is no child or the
+cable is not long enough, search in this branch of atlas tree
+will be terminated. Otherwise, the planner searches through
+all the children and stores the shortest path found in them.
+Next it ensures no shorter path from the parent chart to
+the destination point exists, otherwise the ﬁnal path will go
+through the parent chart instead.
+Algorithm 1: The shortest path greedy algorithm
+1: FindPath(ps;p
+d
+;path)
+2: mark this chart as visited
+3: if p
+d
+is directly reachable then
+4: if psp
+d
+will not cause an event then
+5: return path:Push(p
+d
+)
+6: else
+7: mc = Create a chart for the upcoming event
+8: Set pm as the point where psp
+d
+crosses the stitch line of
+the new chart
+9: path:Push(pm)
+10: minPath =mc:FindPath(pm;p
+d
+;path)
+11: end if
+12: else if p
+d
+might fall into one of this chart’s children then
+13: Create child charts for each of the visible vertices of the obstacles
+if the chart is needed
+14: for all c2 children do
+15: temp =path:Push(c:Base)
+16: temp =c:FindPath(c:Base;p
+d
+;temp)
+17: if temp is the shortest path to this point then
+18: store it as minPath
+19: end if
+20: end for
+21: end if
+22: if Parent6=? and is not visited yet then
+23: temp =Parent:FindPath(Base;p
+d
+;path)
+24: if temp is the shortest path to this point then
+25: store it as minPath
+26: end if
+27: else
+28: minPath =?
+29: end if
+30: return minPath
+V. HANDLING CABLE-CABLE INTERACTION
+This section discusses how to handle a robot crossing its
+own cable and the importance of these events.
+A. Cable-Cable Interaction Events
+Previous work generally opts to ignore instances in which
+a robot’s path crosses the cable. An exception is [3] wherein
+the authors deliberately plan movements to avoid such paths.
+The main reason of ignoring the cable-to-cable contacts is
+that it is either impossible to model the cable contact points,
+or it is computationally inefﬁcient to do so (e.g., discretizing
+the cable.) In contrast, we show that the MRLV AG can be
+extended to consider events of this type so that the cable
+conﬁguration is stored dynamically.
+(a) (b)
+Fig. 6: The complexities of the cable-to-cable contacts: (a) Uncountable
+contact points and (b) changing movement radius.
+Mainly, modeling this situation is complicated for two
+reasons: (a) the cable can make contact to another segment
+of the cable in uncountable number of points, (b) the radius
+of feasible subsequent movements depends on the location
+of the contact point (see Fig. 6).
+When encountering the cable, the robot may either go
+over the cable or under it. For these cases, the algorithm
+is modiﬁed by checking whether the last point added to the
+path will cause a cable crossing and making the binary choice
+of over or under. Each time the robot crosses the cable a new
+visibility cell is created whose set of stitch lines contains the
+cable that the robot has recently crossed in addition to the
+set of stitch lines of its parent (see Fig. 7).
+B. Violation of the tree structure of MRLVAG
+For cable interactions, in addition to wrapping events, over
+and under events are needed, yielding the setfo;u;wg.
+Theorem 3. With cable crossing events the conﬁguration
+space no longer has genus 0, i.e., the topological structure
+is changed so that the MRLVAG is no longer a tree.
+Proof. Figure 7 provides an example by construction. It is
+possible to arrive at the same chart from two different charts,
+implying that there are loops in the atlas structure (in this
+case we can arrive at chart C either from chart A or B).
+The practical ramiﬁcations of this issue are resolved easily
+by ﬁnding any spanning tree of the MRLV AG. Since the
+MRLV A is itself complete, any of its spanning trees is
+complete as well. Nevertheless, the question remains: which
+spanning tree do we prefer? To answer this, we consider
+the effect of the topology on the optimality of the robot’s
+movement. The order in which the events occur is related to
+how suboptimal the path taken by the robot can be.
+Reexamining Fig. 7, we see that if the goal is reaching
+chart C, then Fig. 7b is a shorter distance than Fig. 7a. In
+fact, if the movement to cross the cable is arbitrarily small,
+then a robot going from chart B to chart C moves the same
+distance as if cable crossing were ignored entirely.
+C. Maintaining the Preferred Tree
+With a preferable atlas tree, we must generate that tree.
+If the robot knew which events were going to occur along
+a trajectory to its destination, the shortest route would start
+by connecting the current location of the robot to the ﬁrst
+event, the ﬁrst event to the second event, and so on until
+it connects the last event location to the destination. This
+6133
+(a) from chart A to C (b) from chart B to C
+(c) From left to right: the tree made by movement in
+Fig. 7a, in Fig. 7b, and the inherent loop.
+Fig. 7: An example of an MRLV AG growing toward a destination.
+event ordering is the order in terms of their location on the
+cable (see Fig. 8). Thus, the algorithm is extended to swap
+events that are out of order. In Fig. 7a, for example, although
+the cable event happens before the wrapping event, since the
+position of the wrapping event is before the cable event on
+the cable, the algorithm will reorder them by replacing the
+wrapping event behind the cable events.
+D. Sequential Cable Events
+The precise conﬁgurations that result from cable-cable
+interactions depend on the physical properties of the cable.
+For our theoretical treatment, we simplify these complexities
+by assuming that whenever the cable wraps around itself
+there is an imaginary pin that prevents the displacement
+of the wrapping point as the robot moves. This models a
+cable with inﬁnite friction with itself. This allows one to
+deﬁne a chart wherever the robot crosses a cable followed by
+crossing the same cable except with the other type of action
+(i.e., o followed by u or vice versa, see Fig. 9). The Base
+of this chart is the imaginary pin point and the cable is the
+stitch line. Such charts need not be stored permanently in the
+atlas tree, as there can be inﬁnitely many different charts on a
+single cable (each depending on the location of the imaginary
+pin). A chart that is created because of a sequence of cable
+crossing events and all its children will be removed from the
+atlas whenever the robot’s conﬁguration leaves that chart.
+This illustrates the power of dynamically generating parts of
+the conﬁguration space online.
+VI. EXPERIMENTAL RESULTS
+To demonstrate the method and evaluate its performance,
+we developed a simulation environment and implemented the
+algorithm in C# (see Fig. 10).
+Fundamental differences between our method and existing
+work make picking appropriate criteria for comparison chal-
+lenging. In particular, running time is problematic because
+other state-of-the-art methods employ a discretization of the
+conﬁguration space. The running time is directly affected by
+the discretization resolution, and memory utilization suffers
+from the same illegitimacy. After careful consideration, it
+Fig. 8: The best ordering of events for reaching from the base point to the
+destination point. In other words, for having the shortest path, the points
+with smaller number should be reached earlier.
+Fig. 9: An example of sequential cable crossing events.
+was determined that the most equitable means for evaluation
+was to give a measure of the proportion of conﬁguration
+space expanded by the algorithm, and the number of cells
+(i.e., an indication of memory footprint) used in doing so.
+For each test scenario we calculated the total volume of
+the conﬁguration space. We then compared it to the summed
+volume of the cells that are sufﬁcient for specifying the
+robot and cable’s conﬁguration: current visibility cell and its
+parents up to the root. The results in Table 1 were generated
+by examining all points of the conﬁguration space for the
+two test scenarios, and looking at the proportion of the
+conﬁguration space volume stored in memory. The minimum
+and maximum rows report values for the cheapest and most
+costly to represent, respectively.
+Environment 1 Environment 2
+Memory % of MRLV A Cell % of MRLV A Cell
+Usage volume covered Count volume covered Count
+Min 62.52 1 of 36 7.12 1 of 115
+Max 74.8 9 of 36 21.47 13 of 115
+TABLE 1: Results of the Experiments
+The cable induces different degrees of topological com-
+plexity in environments with differing numbers and complex-
+ity of obstacles. To demonstrate this effect, we have chosen
+the two test scenarios in Fig. 11.
+A. On-line generation versus off-line generation
+Table 1 demonstrates the savings enabled by on-line
+generation of the conﬁguration space. They show that if we
+were going to use a discretization of the conﬁguration space
+represented as an MRLV A, storing the current chart and its
+ancestors would reduce the volume, the number of vertices in
+the graph, and consequently the memory use and searching
+time needed over the off-line methods used in the state-of-
+the-art.
+B. Cell Decomposition Technique
+Although using the on-line atlas-based method reduces the
+number graph nodes, it is not the only advantage of the
+method. As explained in Section III-B, when the atlas is
+comprised of charts encoding the visibility properties of the
+environment, a special data structure can be used to represent
+the chart as a continuous space. Doing so requires only a
+6134
+Fig. 10: Screen-shot of the simulation environment.
+(a) Test Environment 1 (simple) (b) Test Environment 2 (complex)
+Fig. 11: The two test environments used for presenting the results. Fig. 11a
+and Fig. 11b are representative of simple and complex environments,
+respectively. Gray is obstacle and green is robot.
+constant amount of memory no matter how big or small (in
+volume) the chart is.
+Therefore, the number of charts used is a more important
+factor than area. We computed the number of nodes in the
+MRLV AG generated by the on-line method. The total number
+of charts needed for the conﬁguration space depends on the
+complexity of the environment as it affects the manifold;
+consequently these numbers are reported too. Results for the
+test scenarios, shown in Table 1, illustrate that savings are
+substantial in both simple and complex manifolds.
+C. Cable Induced Manifold Structure
+The presented data also lead to an additional observation
+about memory saving in environments with different degrees
+of topological complexity. At one end of the scale, simple
+environments result in a conﬁguration space that is mostly
+planar and has a small MRLV AG. In these cases, large
+volumes of the conﬁguration space are captured with single
+cells. The environment in test scenario 1 is an exemplar:
+more than 60% of the conﬁguration space is represented by
+a single chart. At the other end of the scale, complicated en-
+vironments increase the topological complexity (reﬂected in
+large MRLV AGs) and have many visibility cells and charts.
+The resulting graphs are large, but have the form of wide and
+short trees. The environment in test scenario 2 illustrates this,
+with a total of 115 cells, but at most 13 ever need to be kept
+in memory. Thus, the cell decomposition approach results in
+signiﬁcant memory saving across environment types.
+VII. CONCLUSION
+This paper approaches planning for tethered robots with
+a new perspective: previous work employs a discretization
+of the conﬁguration space along with an efﬁcient search
+method. In addition to the need to perform substantial off-
+line precomputation, existing approaches are unable to repre-
+sent cable-cable interactions, and either ignore this problem
+or avert conﬁgurations which lead to them. The proposed
+method solves the basic tethered robot planning problem in
+a time and memory efﬁcient way. Moreover, it is sufﬁciently
+general to form a consolidated representation for several
+other problems of interest, for example, winding constraints,
+some knot-like tying motions, etc. The method is, thus, more
+convenient and powerful than available approaches.
+In this paper assumptions about the physical properties of
+the cable (tautness and friction) allow for well-deﬁned cable-
+cable interactions. Our immediate future work is incorporat-
+ing the MRLV A while connecting multiple robots together
+with a cable. Another powerful property of the charts is
+their independence. One may use this in selecting distinct
+coordinate system representations for each chart to further
+improve efﬁciency. We are also interested in generalizing
+this concept to frictionless modeling of a cable as well.
+ACKNOWLEDGMENT
+This work was supported in part by the National Science
+Foundation as part of Grant IIS–1302393.
+REFERENCES
+[1] S. Lavalle, Planning algorithms. Cambridge University Press, 2006.
+[2] S. Bhattacharya, V . Kumar, and M. Likhachev, “Search-based path
+planning with homotopy class constraints,” in Annual Symposium on
+Combinatorial Search, 2010.
+[3] T. Igarashi and M. Stilman, “Homotopic path planning on manifolds
+for cabled mobile robots,” in Algorithmic Foundations of Robotics IX.
+Springer, 2011, pp. 1–18.
+[4] D. S. Yershov, P. Vernaza, and S. M. LaValle, “Continuous planning
+with winding constraints using optimal heuristic-driven front propaga-
+tion,” in IEEE International Conference on Robotics and Automation
+(ICRA). IEEE, 2013, pp. 5551–5556.
+[5] I. Shnaps and E. Rimon, “Online coverage by a tethered autonomous
+mobile robot in planar unknown environments,” in Proceedings of
+Robotics: Science and Systems, Berlin, Germany, June 2013.
+[6] J. M. Lee, Introduction to smooth manifolds. Springer, 2012, vol.
+218.
+[7] S. Hert and V . Lumelsky, “The ties that bind: Motion planning for
+multiple tethered robots,” Robotics and autonomous systems, vol. 17,
+no. 3, pp. 187–215, 1996.
+[8] D. Grigoriev and A. Slissenko, “Polytime algorithm for the shortest
+path in a homotopy class amidst semi-algebraic obstacles in the plane,”
+in Proceedings of the 1998 international symposium on Symbolic and
+algebraic computation. ACM, 1998, pp. 17–24.
+[9] V . Narayanan, P. Vernaza, M. Likhachev, and S. M. LaValle, “Planning
+under topological constraints using beam-graphs,” in IEEE Interna-
+tional Conference on Robotics and Automation (ICRA). IEEE, 2013,
+pp. 431–437.
+[10] T. Lozano-P´ erez and M. A. Wesley, “An algorithm for planning
+collision-free paths among polyhedral obstacles,” Communications of
+the ACM, vol. 22, no. 10, pp. 560–570, 1979.
+[11] T. Lozano-P´ erez, “Spatial planning: A conﬁguration space approach,”
+Computers, IEEE Transactions on, vol. 100, no. 2, pp. 108–120, 1983.
+[12] T. Krick, A. Slisenko, P. Solern´ o, and J. Heintz, “Search for shortest
+path around semialgebraic obstacles in the plane,” Journal of Mathe-
+matical Sciences, vol. 70, no. 4, pp. 1944–1949, 1994.
+[13] M. de Berg, M. van Kreveld, M. Overmars, and O. Schwarzkopf,
+Computational Geometry, Algorithms and Applications. Springer,
+1991.
+[14] R. H. Teshnizi and D. A. Shell, “Computing cell-based decompo-
+sitions dynamically for planning motions of tethered robots,” http://
+engineering.tamu.edu/media/1136933/2014-2-3.pdf, CSE Dept., Texas
+A&M Univ., Tech. Rep. 2014-2-3, 2014.
+6135

@@ -1,0 +1,621 @@
+Implementation of Real-Time Motion and Force Capturing System for
+Tele-manipulation based on sEMG Signals and IMU Motion Data
+MinKyu Kim, Kwanghyun Ryu, Yonghwan Oh, Sang-Rok Oh, and Keehoon Kim
+Abstract— In this paper, we present a real-time motion and
+force capturing system for tele-operated robotic manipula-
+tion that combines surface-electromyogram (sEMG) pattern
+recognition with an inertia measurement unit(IMU) for motion
+calculation. The purpose of this system is to deliver the human
+motion and intended force to a remote robotic manipulator and
+to realize multi-ﬁngered activities-of-daily-living (ADL) tasks
+that require motion and force commands simultaneously and
+instantaneously. The proposed system combines two different
+sensors: (i) the IMU captures arm motion, (ii) and the sEMG
+detects the hand motion and force. We propose an algorithm
+to calculate the human arm motion using IMU sensors and
+a pattern recognition algorithm for a multi-grasp myoelectric
+control method that uses sEMG signals to determine the
+hand postures and grasping force information. In order to
+validate the proposed motion and force capturing system,
+we used the in-house developed robotic arm, K-Arm, which
+has seven degrees-of-freedom (three for shoulder, one for
+elbow, and three for wrist), and a sixteen degrees-of-freedom
+robotic hand. Transmission Control Protocol Internet Protocol
+(TCP/IP)-based network communication was implemented for
+total system integration. The experimental results veriﬁed
+the effectiveness of the proposed method,although some open
+problems encountered.
+I. INTRODUCTION
+For several decades, tele-operation systems have been
+applied for applications in hazardous or dangerous envi-
+ronments where humans cannot carry out tasks, such as
+near a radiation leak [1]. Recently, tele-robotic systems have
+been used in more general environments for activities-of-
+daily-living (ADL), that require human-robot and robot-
+robot interactions, e.g., imitating human motion and tracking
+kitchen work with humanoids [2]. A key technology to
+realizing tele-robotic manipulation systems for ADL is to
+decode human motion and force intention simultaneously and
+instantaneously. In addition, the decoding device should be
+user-friendly: it should be compact, easy to equip/un-equip,
+and robust for stable signal detection without complex com-
+ponents such as data gloves and motion capturing systems
+that require carefully mounted optical markers.
+Previous studies have attempted using motion data from
+Inertia Measurement Unit (IMU) sensors [3], visual data [4],
+and optical markers [5], with diverse methods and algorithms
+*This work was supported by the R&D Program of MKE/KEIT
+(10035201), ADL Support System for The Elderly and Disabled and the
+Global Frontier R&D Program on Human-centered Interaction for Coexis-
+tence funded by the National Research Foundation of Korea grant funded
+by the Korean Government(MSIP) (NRF-M1AXA003-2010-0029748).
+MinKyu Kim, Kwanghyun Ryu, Yonghwan Oh, Sang-Rok Oh, and Kee-
+hoon Kim are with Interaction and Robotics Research Center, Korea Institute
+of Science and Technology, Seoul, Korea, 136-791 (email: khk@kist.re.kr).
+Fig. 1. The implemented tele-manipulation system using the proposed
+real-time motion and force capturing system
+to realize human motion tracking systems. IMU-based mo-
+tion capture systems are considered superior to the others [6],
+in terms of the ease of tele-robotic manipulation for ADL
+by non-expert users, but disadvantages include sensor drift
+and magnetic distortions. Although kinematic motions can
+be detected successfully, dynamic behavior such as handling
+objects and manipulation with physical interactions has not
+reached a satisfactory level because there are limitations
+on the force information that can be extracted from IMU
+sensors.
+There have been numerous attempts to realize dynamic
+motion with robotic devices so that they can interact with
+real environments. An effective approach has been adopted
+the force information from the muscle signals of a user
+based on surface-electromyogram (sEMG) signals, which
+are widely utilized as a control input for human-robot and
+human-computer interfaces such as prosthetic hands [7-10],
+exoskeletons, rehabilitation applications, and tele-operation
+systems [11]. A prominent advantage of sEMG signals is
+that the motion intention can be detected prior to actual
+movements. Thus, they can be used to develop an efﬁcient
+interface for tele-operating systems that solves time-delay
+problems.
+Another distinctive characteristic of sEMG signals is that
+they allow human force information to be decoded during a
+motion. An sEMG pattern recognition system can be applied
+to determine the hand grasping posture and force for tasks
+such as grasping an object. Providing simultaneous and pro-
+portional control signals for a multifunction prosthesis is one
+of the most challenging issues for myoelectric control [12],
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 5658
+since sEMG is basically a time-varying signals that depends
+on physical condition of the users. To address this issue,
+the velocity command of sEMG signals has been utilized to
+estimate the grasping force [13-16], but this mapping is not
+natural and makes the grip force more difﬁcult to control.
+In this paper, we report on our efforts to design a real-
+time motion and force capturing system that combines the
+advantages of sEMG signals and IMU motion data. The
+human arm motion is fully tracked by a wearable IMU and
+sEMG-integrated capturing interface. The arm motion of a
+robot at a remote site with seven degrees-of-freedom (DOF) -
+at the shoulder, elbow, and wrist joints - is operated by human
+motion commands through IMU sensors. Hand commands
+are calculated from a pattern recognition system using the
+sEMG signals from the forearm of the human user. Two
+motions (power and pinch grasp) are implemented and each
+motion has a strong or weak force level. The properties of
+sEMG signals in the transient state, are used to immediately
+determine the motion, while the force level of the grasping
+motions is calculated from the steady-state signal pattern. To
+verify our system, we tried grasping numerous objects with
+a robotic manipulator.
+This paper is organized as follows. Section II describes
+the implemented tele-manipulation systems consisting of
+IMU sensors and sEMG systems for the motion and force
+capturing system. Section III presents the detailed algorithms
+of each subsystem and the overall framework are presented.
+In Section IV , the proposed methodology is validated through
+experiments. This is followed by conclusion and discussion
+of open problems encountered while performing experiments
+as future works in Section V .
+II. SYSTEM DESCRIPTION
+This section describes the implemented tele-manipulation
+systems, which consists of IMU sensors and sEMG systems
+for the motion and force capturing system, and the K-Arm
+robotic manipulator with the Allegro hand at a remote site
+(Fig. 2).
+A. IMU sensors
+With recent developments in motion tracking systems,
+tiny and wearable IMU sensors are being widely applied
+to obtain rotation information of the human body. In this
+study, four IMU sensors (EBIMU24G, E2BOX Co.) were
+attached to the human torso, upper arm, forearm, and hand to
+obtain the joint angles of the shoulder, elbow, and wrist. The
+maximum sampling rate is 100 Hz; each sensor used wireless
+radio frequency (RF) communication to provide rotation
+information in the form of Euler angles or quaternions.
+For sensor attachment, the locations are not speciﬁed but
+arbitrarily determined by the user. In the calibration process
+(see Section III-A), the relative transformation from the body
+frame link and the sensor frame is obtained and the joint
+angles of the human arm are estimated for the desired joint
+angles of the K-Arm manipulator.
+(a)
+(b)
+Fig. 2. Human arm and the K-Arm manipulator (a) the location of IMU
+sensors and sEMG systems attached to human arm. (b) grasping an apple
+with K-Arm and Allegro hand;
+B. sEMG system
+sEMG signals were recorded using surface electrodes
+(Trigno wireless, Delsys Inc.). Four electrodes were used
+for sEMG signal acquisition, as shown in Fig. 2.(a). The
+electrodes were arbitrarily attached to the forearm. In training
+session (see Section III-B), the proposed classiﬁer learned
+the features. The sEMG signals were acquired at a 1 kHz
+sampling rate using wireless communication protocols.
+The electrode signals were transferred to the mainboard
+of the sEMG system and A/D data acquisition board (S526,
+Sensoray Co.) on a PC-104 (Neptune SBC, Diamond System
+Co.) sequentially. The signal processing and pattern recog-
+nition were operated by a MATLAB simulink Xpc real-time
+operating system (Mathworks Co.).
+C. K-Arm Robotic Manipulator with Allegro Hand
+TABLE I
+DH PARAMETERS OF K-ARM
+Link a
+i
+(rad) a
+i
+(m) d
+i
+(m) q
+i
+(rad)
+1 p=2 0 0.12 q
+1
++p=2
+2 p=2 0 0 q
+2
+ p=2
+3 -p=2 0 0.3 q
+3
++p=2
+4 p=2 0 0 q
+4
+5 -p=2 0 0.3 q
+5
+6 -p=2 0 0 q
+6
+-p=2
+7 0 0.155 0 q
+7
+K-Arm is a robotic manipulator with seven degrees-of-
+freedom (three for shoulder, one for elbow, and three for
+5659
+(a) (b)
+Fig. 3. K-Arm manipulator with Allegro hand: (a) Kinematic structure of
+K-Arm manipulator; (b) Grasping motions of Allegro hand
+wrist) and Allegro Hand is a robotic hand with 16 degrees-
+of-freedom (Fig. 3.(b)). Fig. 3.(a) and TABLE I describe the
+kinematic structure and DH parameters, respectiveley, of K-
+Arm. The payload of the robot arm is approximately 50 N.
+The total length and weight are 0.72m and 15kg, respectively.
+Allegro Hand (SimLab Co.) is a four-ﬁngered torque-
+controlled robotic hand (four DOF in each ﬁnger for 16 DOF
+total). Diverse grasping postures are available according to
+the object shape with a maximum payload of 50 N maximum
+payload. It was equipped at the wrist joint of K-Arm.
+The K-Arm and Allegro Hand controller works in a real-
+time operating system with a sampling rate of 1 kHz. In order
+to maintain a 1 kHz sampling rate for the combined K-Arm
+with Allegro Hand, an EtherCAT communication protocol
+between the control PC and real robot was implemented.
+III. MOTION AND FORCE CAPTURING ALGORITHM
+This section describes the algorithms for the proposed
+motion and force capturing system. Section III-A describes
+the calibration process to calculate the human arm motion
+from IMU sensors on the upper limb. Section III-B proposes
+a fast sEMG pattern recognition technique to decode the
+human hand conﬁguration and force and can be generalized
+to decode a number of features if there are enough electrodes.
+Section III-C describes the controller for K-Arm and Section
+III-D presents the overall control framework.
+A. IMU Sensor Calibration
+As discussed above, we envisioned a motion capturing
+system that can be used by non-expert users. Thus, the
+locations of the IMU sensors are not speciﬁed but arbitrarily
+mounted by users. The calibration process should calculate
+the relative transformation from body frame link and sensor
+frame. Calibration process need three poses to know the
+predeﬁned angles.
+We need the rotation sensor information of three postures
+at the predeﬁned angles for each joint. Hence, To facilitate
+Fig. 4. Coordinate systems for IMU sensor calibration: inertia frame, IMU
+sensor frames, parent and child link frames.
+Algorithm 1 IMU Sensor Calibration for ith joint
+1: function CALIBRATION( Z
+j
+i
+, R
+j
+i
+,R
+j
+i+1
+)
+2: (where i = number of links , j = number of posture)
+3: for j= 1 : 3 do
+4: R
+j
+i
+XZ
+j
+i
+=R
+j
+i+1
+Y
+5: end for
+6: A
+k
+X=XB
+k
+, (where k= 1;2) . Eliminate Y
+7: where A and B are,
+8: A
+k
+=[R
+j+1
+i
+]
+ 1
+R
+j+1
+i+1
+[R
+j
+i+1
+]
+ 1
+R
+j
+i
+9: B
+k
+= Z
+j+1
+[Z
+j
+]
+ 1
+10: For least squares solution, [17]
+11:
+˜
+A=[logA
+1
+logA
+2
+logA
+1
+ logA
+2
+]
+12:
+˜
+B=[logB
+1
+logB
+2
+logB
+1
+ logB
+2
+]
+13: X =
+˜
+A[
+˜
+B]
+ 1
+14: Y =[R
+j
+i+1
+]
+ 1
+R
+j
+i
+XZ
+j
+return X;Y
+15: . Rotation from the sensor to the parent & child link
+16: end function
+implementation, the shoulder and elbow joints are calibrated
+together, and the wrist joint is then independently calibrated.
+In Fig. 4, Z
+i
+is the rotation matrix that originates from
+the rotation of the predeﬁned angle along the predeﬁned
+axis, and R
+i
+and R
+i+1
+are the sensor frame rotations of the
+parent and child links,respectively, at known postures. These
+parameters can be calculated from three predeﬁned postures
+for the calibration. The goal of the calibration process is to
+determine the relative rotation from the sensors to the link
+frame: X and Y . The calibration process is as follows: (i) save
+the sensor data of the predeﬁned angles in three postures for
+the ith joint. (ii) solve the equation to obtain the relative
+orientation from the IMU sensor frame to the parent and
+child links [17][18].
+The results of the calibration process, are used to obtain
+the transformation matrix from the IMU sensor frame to
+the parent and child link frames. With this information, we
+can calculate the relative rotation matrix from the parent
+5660
+link frame to child link frame. With an inverse EulerZYX
+function, we can acquire all joint angles of the model.
+B. Pattern Recognition using sEMG signals
+Fig. 5. Process for sEMG pattern recognition
+The general pattern recognition system using sEMG sig-
+nals consists of three main processes as shown in Fig. 5:
+(i) preprocessing, (ii) feature extraction, and (iii) classiﬁ-
+cation (classiﬁer, learning algorithm, class assignment). In
+the training session, the features of the data are learned by
+the classiﬁer with the learning algorithm. After the training
+process, the classiﬁer determines the class of motion for new
+data through learning algorithms based on the feature data.
+1) Preprocessing and Feature Extraction : The signal has
+to be pre-processed before meaningful feature are extracted.
+The proposed pre-processing includes a band pass ﬁlter range
+of 15 to 500 Hz and a squared function to ensure non-
+negative properties before extracting time domain feature.
+The mean absolute value (MA V) is one of the most popular
+time domain features and was adopted as a feature.
+MA V=
+1
+N
+N
+å
+i=1
+jx
+i
+j (1)
+2) Training session: Two types of grasp postures are used:
+power grasp and pinch grasp. In the training session, a
+randomly selected motion is displayed on screen with cue
+signs. The user then begins to follow that motion. Each signal
+is recorded for 3s, and the rest session is also 3s. The motion
+is repeated three times to obtain distinctive features.
+3) Classiﬁcation: For classiﬁcation, an extreme learning
+machine (ELM) with a voting classiﬁer was introduced. The
+hidden parameters can be independently determined from the
+training data, and the output parameters can be determined by
+pseudo-inverse method using the training data. ELM learns
+extremely quickly compared to other learning algorithms
+[19][20]. The force level of each motion is classiﬁed into
+two states, strong and weak. The Force level is determined
+by how long the user maintains the motions. If the maximum
+value of the classiﬁed signals exceeds predeﬁned threshold
+level, the force level for grasping was increased. Thus,
+four hand commands (power grasp - strong/weak, pinch
+grasp - strong/weak) were classiﬁed in the proposed pattern
+recognition system. It will be explained in section V-B in
+more detail.
+Fig. 6. Block diagram of control scheme for K-Arm with Allegro hand
+C. K-Arm Controller
+Fig. 6 shows the control scheme for K-Arm with Allegro
+Hand. Since command signals calculated from IMU sensors
+for the 7 DOF joint angles contain high-frequency noise, low-
+pass ﬁltered data are used as the command signals for K-Arm
+and Allegro Hand. The command signals are interpolated
+since the control frequency of K-Arm is 10 times faster
+than the 100 Hz command signal. The command signals
+for hand motion and force from the sEMG system execute
+the predeﬁned hand motions of power grasp and pinch
+grasp while adjusting the grasping force level. The controller
+is based on the Proportional-derivative (PD) control with
+gravity and friction compensation in a joint space.
+t = K
+p
+Dq+ K
+d
+D ˙ q+ g(q)+ f( ˙ q) (2)
+where t is the control torque, K
+p
+and K
+d
+are PD control
+gains, Dq is the control error, g(q) and f( ˙ q) are feedfor-
+ward control inputs to compensate for gravity and friction,
+respectively.
+D. Overall Control Framework
+Fig. 7. The whole framework of the integrated system
+Fig. 7 shows the overall control framework for the pro-
+posed system. The IMU-based arm tracking control frame-
+work for K-Arm is implemented in C++ language with
+5661
+the RTX (venturecom) real time operating system and the
+sEMG pattern recognition framework is implemented us-
+ing the MATLAB XPC real-time operating system. We
+selected TCP/IP protocol as the network protocl to integrate
+subsystems into a single uniﬁed system. All subsystems
+are connected through the TCP/IP network in the overall
+framework.
+The maximum sampling rate for the IMU sensor is 100 Hz
+and the sampling rate for the sEMG signal is 1 kHz. Thus,
+the overall system implements 100 Hz sampling rate.
+IV. EXPERIMENTAL RESULTS
+In this section, we discuss the experimental results for
+verifying the proposed system in terms of arm motion
+tracking (Section IV-A) and hand motion and force tracking
+(Section IV-B).
+A. Arm tracking
+Fig. 8. The human arm motion tracking with K-Arm
+Fig. 8 shows that K-Arm with Allegro Hand followed
+the desired human command using the proposed real-time
+motion and force capturing system.
+Fig. 9 shows the 7-DOF human arm motion data from
+the IMU sensors and the actual joint angles of K-Arm. K-
+Arm successfully tracked the human motion. Since the cutoff
+frequency of low-pass ﬁlter was 10 Hz, and the desired joint
+angles were reproduced through linear interpolation because
+the sampling frequency of IMU (100 Hz) was slower than
+the control frequency of the K-Arm (1 kHz), there was a time
+delay of approximately 100 milliseconds between human
+motion and actual joint. angles (Fig. 10).
+B. Hand Motion and Force tracking
+Fig. 11 shows the ﬁltered sEMG signals from four elec-
+trodes on a forearm for power and pinch grasping. The
+signal patterns collected in the training session and these
+MA V features were tested to check if the two motions
+were signiﬁcantly different. As shown in Fig. 12, the MA V
+patterns for the two motions showed low variations in the
+transient and steady-state periods. After the proposed ELM
+process, the two motions were classiﬁed very well for some
+of the subjects. This is not surprising since only two motions
+Fig. 9. Raw IMU sensor data and actual joint values of all joints.
+Fig. 10. Raw IMU data, ﬁltered IMU data with the desired and actual
+value of 7th joint angle
+were tested to simplify the experimental protocols and the
+signals were very distinctive and well-posed. However, in
+the experiments, the magnitude of signal tended to decrease
+gradually, thus, it was hard to maintain a constant grasp-
+ing force when performing tasks over long periods. There
+seemed to be a fatigue problem in the muscles. Muscle
+artifacts were produced depending on the arm conﬁguration,
+and there was a mental burden on the users to keep muscles
+contracted without feedback on the grasping force. These
+problems are discussed in detail in Section V .
+Thus, we introduced visual feedback with a graphical
+user interface(GUI) where users can simultaneously see the
+current equalizer of the sEMG signals and the force level
+bar during the experiment, as shown in Fig. 13. The red
+line in Fig. 13 indicates the threshold of duration to the
+next force level. If the force bar exceeds the threshold, the
+controller gain of the robotic hand increases. The measured
+force level is reset when a rest signal arrives consecutively
+or the classiﬁed motion changes. Fig. 14 shows that the joint
+torques of the robotic hand were controlled by diverse force
+commands from the user with negligible errors.
+5662
+Fig. 11. Filtered sEMG signal for two motions : Power and Pinch grasp
+(a)
+(b)
+Fig. 12. MA V of two motions : (a) power grasp (b) pinch grasp
+Fig. 13. Matlab GUI(Graphic User Interface) that provides visual feedback
+for current signals and force level
+Fig. 14. The total sum of joint torques of each ﬁnger according to the
+command
+V. CONCLUDING REMARKS
+We proposed a real-time motion and force capturing
+system for tele-operated robotic manipulation that combines
+sEMG pattern recognition with motion calculation using
+a IMU. A 7-DOF arm manipulator with a 16-DOF hand
+was successfully synchronized with the motion and force
+of human arm and hand motion and force. We conﬁrmed
+that the sEMG signal can be adopted as an input signal to
+detect the human grasping motion and force in an arm motion
+capturing system combined with an IMU.
+However, we encountered critical problems that were not
+anticipated before the system implementation. First, muscle
+artifacts occurred depending on the arm conﬁguration. The
+forearm muscles contract to generate an anti-gravity torque,
+so the sEMG signal patterns can change even when the hand
+motion and grasping force are the same. In our experiment,
+users could handle the muscle contraction to maintain the
+same sEMG patterns recorded in the training session through
+visual feedback using a GUI as shown in Figure 13. However,
+in long term tasks, unconscious muscle contraction were
+generated. For the future work, the muscle artifacts produced
+by arm conﬁguration and tasks should be considered.
+Second, there were mental and physical fatigue problems.
+As discussed in Section IV-B, the magnitude of the sEMG
+signals diminished as the grasping motion and force were
+maintained. Also, users frequently dropped the object since
+it was a mental burden to concentrate on controlling the
+grasping force through visual feedback. In order to solve this
+problem, we concluded that haptic feedback is necessary for
+users to conﬁrm if the robotic hand is holding an object
+with appropriate grasping force according to the surface
+conditions and weight of the objectss.
+Third, the control frequency of the overall system should
+be enhanced to offer more realistic tele-manipulation. The
+current system has a time delay of about 100ms, when
+performing grasping tasks. The system needs to operated
+at a much higher control frequency to perform grasping or
+manipulation tasks, while time delay of 100 - 200 ms is
+known to be acceptable for tasks using visual or kinesthetic
+feedback.
+5663
+REFERENCES
+[1] Qian, Kui, et al. ”Small Teleoperated Robot for Nuclear Radiation and
+Chemical Leak Detection.” International Journal of Advanced Robotic
+Systems 9 (2012).
+[2] Sian, Neo Ee, et al. ”Whole body teleoperation of a humanoid robot
+integrating operator’s intention and robot’s autonomy: an experimental
+veriﬁcation.”Intelligent Robots and Systems, 2003.
+[3] Prayudi, Iman, and Doik Kim. ”Design and implementation of IMU-
+based human arm motion capture system.” Mechatronics and Automa-
+tion (ICMA), 2012 International Conference on.
+[4] Zuher, Fernando, and Roseli Romero. ”Recognition of human motions
+for imitation and control of a humanoid robot.” Robotics Symposium
+and Latin American Robotics Symposium (SBR-LARS), 2012 Brazil-
+ian.
+[5] Yamane, Katsu, and Jessica Hodgins. ”Simultaneous tracking and
+balancing of humanoid robots for imitating human motion capture
+data.” Intelligent Robots and Systems, 2009. IROS 2009. IEEE/RSJ
+International Conference on.
+[6] Brigante, Carmen MN, et al. ”Towards miniaturization of a MEMS-
+based wearable motion capture system.” Industrial Electronics, IEEE
+Transactions on, 58.8 (2011): 3234-3241.
+[7] Hioki, Masaaki, et al. ”Design and control of electromyogram pros-
+thetic hand with high grasping force.” Robotics and Biomimetics
+(ROBIO), 2011 IEEE International Conference on.
+[8] Castellini, Claudio, et al. ”Fine detection of grasp force and posture by
+amputees via surface electromyography.” Journal of Physiology-Paris
+103.3 (2009): 255-262.
+[9] Nielsen, Johnny LG, et al. ”Simultaneous and proportional force
+estimation for multifunction myoelectric prostheses using mirrored
+bilateral training.”Biomedical Engineering, IEEE Transactions on 58.
+[10] Potluri, Chandrasekhar, et al. ”Implementation of sEMG-based real-
+time embedded adaptive ﬁnger force control for a prosthetic hand.”
+Decision and Control and European Control Conference (CDC-ECC),
+2011 50th IEEE Conference on.
+[11] V ogel, Jorn, Claudio Castellini, and Patrick van der Smagt. ”EMG-
+based teleoperation and manipulation with the DLR LWR-III.” In-
+telligent Robots and Systems (IROS), 2011 IEEE/RSJ International
+Conference on.
+[12] Dalley, Skyler Ashton, Huseyin Atakan Varol, and Michael Goldfarb.
+”A method for the control of multigrasp myoelectric prosthetic hands.”
+Neural Systems and Rehabilitation Engineering, IEEE Transactions on
+20.1 (2012): 58-67.
+[13] Kuiken, Todd A., et al. ”Targeted muscle reinnervation for real-
+time myoelectric control of multifunction artiﬁcial arms.” JAMA: the
+journal of the American Medical Association 301.6 (2009): 619-628.
+[14] Miller, Laura A., et al. ”Control of a six degree of freedom prosthetic
+arm after targeted muscle reinnervation surgery.” Archives of physical
+medicine and rehabilitation 89.11 (2008): 2057-2065.
+[15] Miller, Laura A., et al. ”Improved myoelectric prosthesis control using
+targeted reinnervation surgery: a case series.” Neural Systems and
+Rehabilitation Engineering, IEEE Transactions on 16.1 (2008): 46-50.
+[16] Keehoon Kim and J. Edward Colgate, Haptic Feedback Enhances
+Grip Force Control of sEMG-Controlled Prosthetic Hands in Targeted
+Reinnervation Amputees, IEEE Trans. Neural Syst. Rehabil. Eng., vol.
+20, no. 6, Nov. 2012.
+[17] Kang, Donghoon, et al. ”Human Body Motion Capture System using
+Magnetic and Inertial Sensor Modules.”.
+[18] Park, Frank C., and Bryan J. Martin. ”Robot sensor calibration: solving
+AX= XB on the Euclidean group.” Robotics and Automation, IEEE
+Transactions on 10.5 (1994): 717-721.
+[19] Lee, Hanjin, et al. ”Veriﬁcation of a fast training algorithm for multi-
+channel sEMG classiﬁcation systems to decode hand conﬁguration.”
+Robotics and Automation (ICRA), 2012 IEEE International Confer-
+ence on.
+[20] Lee, HanJin, et al. ”Online remote control of a robotic hand conﬁgu-
+rations using sEMG signals on a forearm.” Robotics and Biomimetics
+(ROBIO), 2011 IEEE International Conference on.
+5664

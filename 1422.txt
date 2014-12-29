@@ -1,0 +1,1232 @@
+Robust Pose Graph Optimization Using Stochastic Gradient Descent
+John Wang and Edwin Olson
+AbstractÑ Robust SLAM methods can allow robots to re-
+cover correct maps even in the presence of incorrect loop
+closures. While these approaches improve robustness to outliers,
+they are susceptible to getting caught in local minima, a problem
+which is exacerbated by poor initial estimates.
+In this paper, we describe a stochastic gradient descent
+optimization approach that exhibits greater robustness to poor
+initial estimates. Our approach can either be used as a stand-
+alone optimization system or in conjunction with existing
+methods such as Gauss-Newton solvers. Using a combination
+of synthetic and real-world datasets, we demonstrate that our
+proposed approach is able to recover correct pose graphs
+signiÞcantly more frequently than other methods when large
+initialization errors are present.
+I. INTRODUCTION
+Simultaneous Localization and Mapping (SLAM) systems
+must overcome two major problems with real-world data.
+First is the problem of noise, particularly noise in odometry
+sensors. While noise may be overcome by fusing redundant
+observations, extreme noise can lead to poor initial estimates
+from which it is impossible to recover the robotÕs true trajec-
+tory. Second is the problem of incorrect data associations, or
+loop closures. A robot may use visual similarities or laser-
+scan matching to determine whether it has visited a place
+before. Perceptual aliasing, which occurs when two distinct
+places appear the same, can lead to incorrect loop closures.
+To date, much work in SLAM has centered around
+solving the Þrst problem of correcting for positional error,
+sidestepping the second difÞculty by assuming perfect data
+association. Many such SLAM algorithms are incapable of
+dealing with erroneous loop closures, and even a single
+false loop closure can introduce unrecoverable errors into
+the robotÕs inferred trajectory. Conventionally, the data as-
+sociation problem has been addressed by building Òfront-
+endsÓ to Þlter out poor associations. Although this approach
+greatly improves the quality of SLAM-generated maps, these
+methods alone are inadequate. In a long-running system,
+even an extremely low error rate can result in loop closure
+errors, which will accumulate over time to cause errors in
+the inferred trajectory and the resulting map.
+Recent work in SLAM has explicitly modeled the possibil-
+ity of incorrect data associations inside the Òback-endÓ solver
+[1]Ð[3]. Some of these robust back-ends use extensions to
+the pose graph model, such as switchable constraints or
+max-mixture constraints. These robust constraints introduce
+The authors are with the Computer Science and Engineering Department,
+University of Michigan, Ann Arbor, MI 48109, USA.
+fjnwang,ebolsong@umich.edu; http://april.eecs.umich.
+edu
+Truth Initialization
+Cholesky-MM SGD-MM
+Fig. 1: An example Manhattan world pose graph with 40
+false loop closures and odometry noise = 0:24. Cholesky-
+MM, the prior state of the art, becomes stuck in a local
+minimum due to the poor initialization. Our proposed method
+SGD-MM escapes the local minimum and recovers an accu-
+rate grid-shaped trajectory.
+many local minima into the optimization problem. This can
+be illustrated intuitively: suppose a loop closure constraint
+is modeled as a Gaussian mixture with a Ònull hypothesisÓ
+component (a very high covariance Gaussian) that represents
+discarding that loop closure. A solution which discards a
+correct loop closure may actually decrease the 
+2
+error
+(eq. 3), since the Ònull hypothesisÓ may contribute very
+little 
+2
+error to the graph. A local minimum occurs if
+the graph is in a state where activating any correct loop
+closure would increase the 
+2
+error. These local minima in
+the 
+2
+error function make the max-mixtures optimization
+problem difÞcult. Optimization problems with local minima
+are more sensitive to the initial values of the variables,
+making them less robust to odometry noise. This creates
+a trade-off between robustness to loop closure errors and
+robustness to initialization error.
+Building upon this body of previous work, we present
+a robust SLAM optimization algorithm that is resilient to
+both poor initial estimates and incorrect data associations.
+Our formulation uses a combination of the Gaussian max-
+mixtures model and the stochastic gradient descent solver,
+which is capable of quickly escaping local minima and often
+Þnding the global minimum. The main contributions of this
+paper are:
+ An efÞcient stochastic gradient descent solver for Gaus-
+sian max-mixture pose graphs
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 4284
+ A stochastic gradient descent-based bootstrapping pro-
+cedure for Gauss-Newton solvers that increases robust-
+ness to local minima
+ An evaluation that demonstrates the improved robust-
+ness of our approach against initialization error
+II. PRIOR WORK
+In non-robust pose graph SLAM, Gauss-Newton methods
+that rely on factorizing the information matrix are often
+used to solve the resulting non-linear optimization problem.
+Such methods are sensitive to initial conditions, and a poor
+initialization can prevent the algorithm from converging
+upon the true solution. A stochastic gradient descent method
+has been shown to increase convergence from poor initial
+estimates in non-mixture pose graphs [4].
+Previous methods to increase robustness involved front-
+end validation of loop closures. Such methods include AtlasÕs
+nearest-neighbor feature matching [5], Joint Compatibility
+Branch and Bound (JCBB) [6], and graph consistency ap-
+proaches such as CCDA [7], SCGP [8], and spectral cluster-
+ing [9].
+Robust SLAM formulations are also not new. Latif, Ca-
+dena, and Neira developed the Realizing, Reversing, Recov-
+ering (RRR) algorithm [1] to check the consistency between
+clusters of edges in a graph. This algorithm is based on the
+observation that correct loop closures are mutually consis-
+tent, while incorrect loop closures are often outliers. It bears
+the most resemblance to conventional front-end veriÞcation
+systems, and could be considered an online extension of the
+joint compatibility test, where loop closure hypotheses can
+be reexamined for consistency in the future.
+Sunderhauf and Protzel introduce the concept of switch-
+able constraints [3]. By adding a switch variable for each
+loop closure, which takes on a real value between 0 and
+1, each edge can be turned on, off, or partially on by
+having the switch variable take on a value between 0 and
+1. These variables essentially modify the shape of the pose
+graph, allowing the optimization to turn off false loop closure
+constraints.
+Relative constraints have been used in existing SLAM
+techniques. Olson et al. showed its usefulness for pose graph
+optimization [4], which was later extended by Grisetti et al.
+to use a spanning tree parameterization [10]. Relative bundle
+adjustment techniques have been shown to efÞciently solve
+the general SLAM problem, which includes both poses and
+landmarks [11], [12].
+Olson and Agarwal described the Gaussian max-mixtures
+SLAM model [2], on which this work is based. This formula-
+tion makes the edge constraints themselves more expressive,
+allowing multimodal distributions to be used as edge con-
+straints. In particular, loop closure edges can use a robust
+cost function which incorporates a high-covariance Ònull
+hypothesisÓ component. This work introduces the Cholesky-
+MM algorithm, which uses a Gauss-Newton solver to solve
+max-mixtures SLAM problems.
+III. BACKGROUND
+This work focuses on a special case of SLAM that only
+considers pose-to-pose constraints. Such a problem arises
+naturally from pose matching methods, but can also be
+obtained by marginalizing out landmarks. Landmarks can
+alternatively be included directly in the state vector, but our
+experiments only consist of pose-to-pose links.
+Initial state estimates have a signiÞcant effect on the
+quality of the Þnal solution. Two common approaches are
+using only the odometry information and computing a min-
+imum spanning tree (MST) using all available edges. In our
+approach, we use odometry as the initial pose estimate. The
+goal is to optimize over the state vector x, representing a
+series of robot poses, given our observations z. Making the
+usual assumption that individual observations are condition-
+ally independent, we can factor this probability distribution.
+P (xjz)/
+Y
+i
+P (z
+i
+jx)
+Traditionally, each edge constraintP (z
+i
+jx) is assumed to be
+Gaussian with some covariance 
+i
+.
+P (z
+i
+jx)/e
+ 
+1
+2
+(fi(x) zi)
+T
+
+ 1
+i
+(fi(x) zi)
+The observation model f
+i
+(x) is non-linear, so we must
+linearize f
+i
+(x)f
+i
+(x
+0
+) +J
+i
+x. The maximum likelihood
+trajectory may be computed by minimizing the negative log
+probability (eq. 1). We use the notation r = z f(x
+0
+) to
+represent the residual.
+  logP (xjz)/
+X
+i
+(J
+i
+x r
+i
+)
+T
+
+ 1
+i
+(J
+i
+x r
+i
+) (1)
+A. Max-Mixtures Model
+The max-mixtures model represents each edge distribution
+P (z
+i
+jx) as a mixture of Gaussians based on a max operator.
+A mixture model allows us to represent more complex distri-
+butions. In our application, we represent the uncertainty of a
+loop closure as a Gaussian component (the Ònull hypothesisÓ)
+with a very large covariance.
+P (z
+i
+jx)/ max
+j
+w
+j
+N (
+ij
+; 
+ij
+)
+The Gaussian components each have mean 
+ij
+, covariance
+
+ij
+, and mixing weightsw
+j
+. The max allows the log operator
+to be Òpushed insideÓ the max (eq. 2). Minimizing this
+quantity results in a maximum likelihood estimator that
+selects the most probable Gaussian component for each edge
+constraint.
+  logP (xjz) =
+X
+i
+min
+j
+
+  log(w
+j
+) +
+1
+2
+log(j
+ij
+j)+
+1
+2
+(J
+ij
+x r
+ij
+)
+T
+
+ 1
+ij
+(J
+ij
+x r
+ij
+)
+
+(2)
+Because of the max selection operator, for each edge i
+the Jacobian J
+ij
+and residual r
+ij
+is computed for a single
+Gaussian component j.
+4285
+B. Stochastic Gradient Descent
+The stochastic gradient descent (SGD) solver optimizes
+over a single edge constrainti at a time. This allows it to both
+explore and escape from poor local minima, since different
+edges will pull the graph in different directions. The cost
+function 
+2
+i
+for a single constraint is:
+
+2
+i
+= min
+j
+
+(J
+ij
+x r
+ij
+)
+T
+
+ 1
+ij
+(J
+ij
+x r
+ij
+)
+
+(3)
+Assuming mixture componentj is active, we will ignore the
+other components and drop the j subscript from this point.
+We begin by Þnding the gradient of the cost function with
+respect to x. At the current state, where x = 0, the
+gradient is:
+r
+2
+i
+= 2J
+T
+i
+
+ 1
+i
+J
+i
+x  2J
+T
+i
+
+ 1
+i
+r
+i
+= 2J
+T
+i
+
+ 1
+i
+r
+i
+We correct our state estimate by x in the direction of
+the gradient, where the magnitude of x is dictated by the
+learning rate (or step size) .
+x = r
+2
+i
+= 2J
+T
+i
+
+ 1
+i
+r
+i
+C. Incremental State Space
+The stochastic gradient descent method lends itself to an
+alternative state space representation. Many SLAM imple-
+mentations use a global state space, storing an (x;y;) pose
+for each node. This representation preserves sparsity in the
+information matrix, which is important for computational
+efÞciency, since each edge directly affects only two pose
+nodes. This overlooks an important property of this problem:
+a robotÕs trajectory is cumulative. Intuitively, this means that
+if a single pose needs some amount of correction, then it is
+likely that the following poses also need similar correction.
+In this method, we use the incremental state space as
+described in [13]. Instead of using a global state vector
+x = (x
+0
+;y
+0
+;
+0
+;x
+1
+;y
+1
+;
+1
+;:::), we use the incremental
+representation _ x. The conversion from global to incremental
+is given below.
+_ x =
+2
+6
+6
+6
+6
+6
+6
+6
+6
+6
+4
+_ x
+0
+_ x
+i
+.
+.
+.
+3
+7
+7
+7
+7
+7
+7
+7
+7
+7
+5
+=
+2
+6
+6
+6
+6
+6
+6
+6
+6
+6
+4
+_ x
+0
+_ y
+0
+_
+
+0
+_ x
+i
+_ y
+i
+_
+
+i
+.
+.
+.
+3
+7
+7
+7
+7
+7
+7
+7
+7
+7
+5
+=
+2
+6
+6
+6
+6
+6
+6
+6
+6
+6
+4
+x
+0
+y
+0
+
+0
+x
+i
+ x
+i 1
+y
+i
+ y
+i 1
+
+i
+ 
+i 1
+.
+.
+.
+3
+7
+7
+7
+7
+7
+7
+7
+7
+7
+5
+We model the each observation edge as a rigid body con-
+straintT between poses x
+a
+and x
+b
+. In terms of global poses
+x
+k
+= (x
+k
+;y
+k
+;
+k
+), the equations for the observation model
+are:
+f
+T
+(x) =
+2
+4
+cos(
+a
+)(x
+b
+ x
+a
+) + sin(
+a
+)(y
+b
+ y
+a
+)
+  sin(
+a
+)(x
+b
+ x
+a
+) + cos(
+a
+)(y
+b
+ y
+a
+)
+
+b
+ 
+a
+3
+5
+We can express the same transformation in terms of incre-
+mental poses _ x
+k
+= ( _ x
+k
+; _ y
+k
+;
+_
+
+k
+). Note that the global position
+x
+a
+is the sum of the incremental states _ x
+k
+from 0 to a; for
+example, 
+a
+=
+P
+a
+k=0
+_
+
+k
+. Substituting in these summations:
+f
+T
+(_ x) =
+2
+6
+6
+6
+6
+6
+6
+6
+6
+4
+cos(
+a
+X
+k=0
+_
+
+k
+)(
+b
+X
+k=a+1
+_ x
+k
+)+sin(
+a
+X
+k=0
+_
+
+k
+)(
+b
+X
+k=a+1
+_ y
+k
+)
+ sin(
+a
+X
+k=0
+_
+
+k
+)(
+b
+X
+k=a+1
+_ x
+k
+)+cos(
+a
+X
+k=0
+_
+
+k
+)(
+b
+X
+k=a+1
+_ y
+k
+)
+b
+X
+k=a+1
+_
+
+k
+3
+7
+7
+7
+7
+7
+7
+7
+7
+5
+We can now compute the Jacobian of this rigid body con-
+straint with respect to state _ x
+k
+. (Below, x
+a
+;x
+b
+;y
+a
+;y
+b
+; and
+
+a
+are used as shorthand for their respective summations.)
+J =
+@f
+T
+@_ x
+k
+=
+8
+>
+>
+>
+>
+>
+>
+>
+>
+>
+>
+>
+>
+>
+>
+>
+<
+>
+>
+>
+>
+>
+>
+>
+>
+>
+>
+>
+>
+>
+>
+>
+:
+2
+6
+6
+6
+4
+0 0
+ (x
+b
+ xa)sin(a)
++(y
+b
+ ya)cos(a)
+0 0
+ (x
+b
+ xa)cos(a)
+ (x
+b
+ xa)sin(a)
+0 0 0
+3
+7
+7
+7
+5
+ka
+2
+4
+cos(a) sin(a) 0
+ sin(a) cos(a) 0
+0 0 1
+3
+5
+a<kb
+2
+4
+0 0 0
+0 0 0
+0 0 0
+3
+5
+otherwise
+(4)
+Note that the Jacobian for k  a has non-zero values.
+SpeciÞcally, any rotation of node a will cause an error with
+respect to the rigid-body transformation T . However, these
+terms can have very large magnitudes and can cause the
+optimization to diverge. Thus, following our earlier work,
+we set these terms to zero. This approximation has good
+empirical performance, and can be justiÞed intuitively, since
+a rigid body link between a and b should not have a major
+effect on nodes prior to a.
+IV. METHOD
+We now present the SGD-MM (Stochastic Gradient
+Descent-Max Mixtures) algorithm, along with a description
+of some practical implementation details. We also present
+the hybrid SGD-Cholesky-MM algorithm, which further ex-
+plores the search space and improves performance on graphs
+with ÒstrongÓ false local minima.
+A. SGD-MM
+For a given edge between nodes a and b, the correction
+x is distributed amongb a nodes, so the total corrections
+is scaled byb a. Correction is distributed according to the
+information matrix J
+T
+
+ 1
+J, so that less conÞdent nodes
+(smaller information matrix entries) get more correction,
+while more conÞdent nodes get less correction. Since it
+would be computationally expensive to build the information
+matrix, we instead approximate it using a diagonal matrix
+M, as shown in the Þrst part of Algorithm 1. The diagonal
+terms of each W are summed so that M
+j
+approximates the
+j
+th
+diagonal block of J
+T
+
+ 1
+J. This can be viewed as a
+preconditioning step to improve the convergence of gradient
+descent, where M is a diagonal preconditioning matrix.
+This implementation introduces a different scaling term
+ 
+ 1
+, which scales the correction by the largest value of
+4286
+Algorithm 1 SGD-MM
+1: procedure SGD-MM(
+0
+)
+2: t = 1
+3: repeat
+4: Randomly permute edges
+5:
+6: . Compute M, an approximation of J
+T
+
+ 1
+J
+7: Initialize M
+j
+= 0 for all j
+8: for each edge i between edges a;b do
+9: Compute the Jacobian J
+i
+(Eq. 4)
+10: W =J
+T
+i
+
+ 1
+i
+J
+i
+11: for j2 [a + 1;b] do
+12: M
+j
+=M
+j
++W
+13: end for
+14: end for
+15:   = arg minjM
+j
+j
+16:
+17: . Compute cumulative weights C
+18: C
+j
+=
+P
+j
+k=0
+M
+ 1
+k
+19: Generate weighted error distribution tree usingC
+20:
+21: . ModiÞed stochastic gradient descent step
+22: for each edge i between edges a;b do
+23: Compute the Jacobian J
+i
+and residual r
+i
+24:  =
+0
+=t
+25: s = (b a) 
+ 1
+J
+T
+i
+
+ 1
+i
+r
+i
+26: s
+max
+=x
+b
+  (x
+a
+T
+ab
+)
+27: s = clamp(s;s
+max
+)
+28: distribute(a + 1;b;s)
+29: end for
+30:
+31: t =t + 1
+32: until converged
+33: end procedure
+M
+ 1
+j
+. This term can be seen as an approximation for
+(J
+T
+
+ 1
+J)
+ 1
+, the Hessian term in the Gauss-Newton algo-
+rithm. This scaling ensures that high conÞdence measure-
+ments with small covariances will not cause extremely large
+corrections. Finally, the magnitude ofs is clamped according
+to the observation T
+ab
+. Since we can calculate the value
+of s that will exactly satisfy the constraint, we can prevent
+gradient descent from drastically overshooting.
+B. Learning Rate
+The learning rate  has a signiÞcant effect on the per-
+formance of stochastic gradient descent. When  is high,
+the solver takes large steps through the search space and
+is more likely to jump between different local minima. We
+ensure convergence by using a learning rate schedule that
+decays over time. SpeciÞcally we use the harmonic series
+ =
+0
+=t, where t is the iteration number, as suggested by
+Robbins and Monro [14].
+This leaves the initial learning rate
+0
+as a free parameter.
+In a sense, this parameter captures how much exploration
+will be performed on a pose graph. This is not a computable
+quantity, but we can characterize some of the variables that
+make a graph more complex: the amount of initialization
+noise, the total path length, and the covariances of the edge
+constraints. We experimentally found an initial learning rate
+that worked well for the majority of our datasets, but it is
+difÞcult to generally prescribe a way of choosing 
+0
+.
+Other learning rate schedules include ÒSearch Then Con-
+vergeÓ [15], which formalizes the intuitive notion of separate
+exploration and convergence phases. However, since the
+harmonic learning rate schedule seemed to work for a variety
+of graphs, we did not attempt to use more sophisticated rate
+schedules.
+C. Implementation and Running Time
+Although useful for the derivation above, in practice we do
+not need to store the individual values as ( _ x
+i
+; _ y
+i
+;
+_
+
+i
+). Instead,
+we store the pose normally as (x;y;) and use an error-
+distribution tree [13]. The error-distribution tree efÞciently
+distributes correction among a contiguous range of states,
+achieving the same effect as the incremental representation
+while storing poses in the more useful global representation.
+Suppose we have a pose graph withN nodes andE edges.
+The asymptotic complexity of each iteration is determined
+by the loops which iterate over each edge (lines 8-14 and
+22-29), since E N in a pose graph. Inside both of these
+loops, some amount of correction is added to a contiguous
+block of nodes from a + 1 to b (lines 11-13 and 28). The
+error distribution tree allows us to accomplish this operation
+in (logN) time. Each pose can also be computed from the
+error distribution tree in (logN) time. Therefore, the run-
+ning time of each SGD step (lines 23-28) is still (logN),
+and the running time of each iteration is (E logN).
+D. SGD-Cholesky-MM
+For many pose graphs, SGD-MM produces useful so-
+lutions on its own. It may also be used to bootstrap the
+Cholesky-MM solver, a Gauss-Newton based method. The
+SGD-MM optimization procedure is good at performing
+a rough alignment of poses, while the Cholesky solverÕs
+quadratic convergence is ideal for quickly Þnding the nearest
+local minimum. At a Þxed interval, it takes the graph
+produced by SGD and runs Cholesky until convergence (or
+divergence). Our algorithm repeatedly runs this procedure,
+keeping the reÞned graph with the lowest
+2
+error. This best-
+so-far policy allows us to compensate for SGDÕs tendency
+to jump between local minima.
+Since the Þrst solution is exactly the same solution re-
+turned by Cholesky-MM, its worst-case performance is no
+worse than Cholesky-MM. We will later show that this
+procedure produces signiÞcantly better graphs than either
+SGD-MM or Cholesky-MM, and will offer some reasons
+based on an analysis of the failure cases.
+V. RESULTS
+Our results come from synthetically-generated ÒManhat-
+tanÓ worlds as well as real-world data from the Intel dataset.
+Our primary claim is that our method increases robustness to
+4287
+Algorithm 2 SGD-Cholesky-MM
+1: procedure SGD-CHOLESKY-MM(k):
+2: best = initial graph
+3: repeat
+4: Run Cholesky-MM on a copy of the graph
+5: best = min(best; arg min
+2
+(graph))
+6: Run k iterations of SGD-MM
+7: until interrupted
+8: return best
+9: end procedure
+0.0 0.1 0.2 0.3 0.4 0.5
+Standard deviation of odometry noise (meters, radians)
+0
+20
+40
+60
+80
+100
+Percentage of graphs solved
+Graphs Solved vs Odometry Noise
+SGD-Cholesky-MM
+Sw. Constraints
+SGD-MM
+Cholesky-MM
+Fig. 2: Percentage of graphs solved for 1000 randomly
+generated Manhattan worlds with 400 poses, 800 true loop
+closures, 40 false loop closures, and varying odometry noise.
+Initial learning rate was 
+0
+= 5 and SGD-Cholesky-MM
+used k = 50. SGD-Cholesky-MM outperforms comparison
+methods, especially for very poor odometry initializations.
+poor initializations. Of course, it is possible to Þnd speciÞc
+graphs where this is not true, so the bulk of our analysis is
+based on large numbers of random graphs so that we can
+statistically characterize the beneÞts of our approach.
+A. Manhattan Worlds
+In the Manhattan world experiment, we evaluated both
+variants of SGD against Cholesky-MM and switchable con-
+straints on a 1000-graph dataset. (To evaluate switchable
+constraints, we used the authorsÕ original implementation in
+the g2o framework [16].) Each graph was corrupted with
+increasing amounts of odometry noise. Fig. 1 shows the
+result of one of these experiments.
+Fig. 2 shows the result of this test for 1000 randomly-
+generated graphs at increasing noise levels. Mean squared
+distance error (MSE) compared to ground truth was used
+to evaluate the map quality. SGD-MM was run until con-
+vergence, which we deÞned as when the map changed an
+average ofjxj < 0:001 over 500 iterations. A threshold
+of MSE < 10 was used to designate a graph as correctly
+solved. This corresponds to a map which is usable but not
+necessarily metrically perfect.
+An analysis of the performance gap between SGD-MM
+and SGD-Cholesky-MM reveals a speciÞc weakness of both
+iterative MM solutions, SGD and Cholesky. In many of the
+Truth SGD-MM SGD-Cholesky-MM
+Fig. 3: Example of an incorrect local minimum which
+causes SGD-MM to fail. On this peninsula-like graph, the
+incorrect solution is a local minimum with a larger basin
+of convergence than the correct solution. Because SGD-
+Cholesky-MM explores multiple local minima and selects the
+overall best solution, it is able to Þnd the correct solution.
+Initialization SGD-MM SGD-Cholesky-MM
+Fig. 4: Intel dataset with 100 false loop closures added
+(shown in red). Both SGD-based methods are able to produce
+accurate maps with the walls in alignment.
+graphs where SGD-MM failed, the true solution was not
+the most stable local minimum. Fig. 3 shows an example
+failure case where the incorrect solution has a larger basin of
+convergence than the correct solution Ð both SGD-MM and
+Cholesky-MM converge upon this incorrect solution most
+often from a variety of poor initializations.
+SGD-Cholesky-MM (Algorithm 2) is designed to improve
+performance on such graphs by using SGD to generate
+initializations for Cholesky-MM. Stochastic gradient descent
+has the tendency to jump in and out of local minima.
+Running Cholesky-MM to convergence fully explores these
+local minima. Selecting the graph with lowest
+2
+error gives
+preference to ÒbetterÓ local minima, even if its basin of
+convergence is not as large. This is responsible for the
+improvement over either Cholesky-MM and SGD-MM alone.
+B. Intel Dataset
+Our test run on the Intel dataset demonstrates the ap-
+plicability of our method to real-world data. SGD-MM is
+able to Þnd the true solution and achieve the precision
+necessary to generate a map (Fig. 4). Since SGD-Cholesky-
+MM solution converges faster upon the true minimum, it
+produces a somewhat more reÞned map.
+C. Ring and Ring City Datasets
+The Ring and Ring City datasets introduced in [17]
+illustrate an extreme example where the true solution has
+a minimal basin of convergence. In this case, we expect
+Cholesky-MM to fail since its initial position is already in
+a strong local minimum. SGD methods are more willing to
+4288
+(Ring)
+Truth
+Initialization Cholesky-MM SGD-MM SGD-
+Cholesky-MM
+(Ring City)
+Truth
+Initialization Cholesky-MM SGD-MM SGD-
+Cholesky-MM
+Fig. 5: Results of SGD-MM on Ring and Ring City datasets
+corrupted with 40 and 200 false loop closures, respectively.
+Cholesky-MM fails because the graphs start in a stable local
+minimum. Because SGD methods are more willing to depart
+from local minima, they are more robust to ring-type failures.
+0 10 20 30 40 50 60 70 80
+Time (seconds)
+0
+50
+100
+150
+200
+250
+Mean squared distance error (m
+2
+)
+Comparison of MSE over running time
+Cholesky-MM
+SGD-MM
+Fig. 6: Plot of error over time on one trial of the CSW 3500-
+node dataset, with 2100 true and 1000 false loop closures.
+SGD-MM has reduced the initial error by about 80% before
+Cholesky-MM has Þnished its Þrst iteration. (SGD-MM takes
+a bad step at aroundt = 3s, but recovers.) Both were run on
+a single 3.4GHz core of an Intel Core i7 using the Java-based
+april.graph library.
+depart from local minima and explore the search space, as
+shown in Fig. 5. SGD-Cholesky-MM is able to correctly
+close the loop for the Ring dataset. The Ring City dataset
+is even more challenging since the true solution requires
+closing many such ring-type loops, and SGD-Cholesky-MM
+is not able to close all the loops. However, SGD-based
+methods show increased robustness to ring-type failures,
+a speciÞc case of graphs with strong local minima that
+Cholesky-MM cannot solve.
+D. CSW Dataset
+We use the CSW dataset [4] to evaluate the running time of
+our algorithm. CSW is a Manhattan graph with 3500 nodes
+and 5600 edges. We expect Cholesky-MM to slow down
+considerably, since the false loop closures cause increased
+Þll-in of the information matrix. SGD-MM is unaffected by
+Þll-in, since its runtime grows as (E logN) without regard
+to the sparsity of the information matrix. As shown in Fig. 6,
+SGD-MM reduces error more quickly than Cholesky-MM.
+VI. CONCLUSION
+We have presented two variants of an SGD solver for
+robust max-mixture pose graphs that performs well even
+from poor initializations. SGD-MM can stand alone as a
+computationally efÞcient solver for graphs with low initial
+error. SGD-Cholesky-MM greatly extends the effectiveness
+of the max-mixtures model on graphs with difÞcult local
+minima. Our evaluation characterizes the performance of
+these two methods and provides some insight into the struc-
+ture of max-mixtures graph optimization problems.
+ACKNOWLEDGMENTS
+This work was funded by DoD Grant FA2386-11-1-4024.
+REFERENCES
+[1] Y . Latif, C. Cadena, and J. Neira, ÒRobust loop closing over time,Ó
+in Proceedings of Robotics: Science and Systems, Sydney, Australia,
+July 2012.
+[2] E. Olson and P. Agarwal, ÒInference on networks of mixtures for
+robust robot mapping,Ó International Journal of Robotics Research,
+vol. 32, no. 7, pp. 826Ð840, July 2013.
+[3] N. Sunderhauf and P. Protzel, ÒSwitchable constraints for robust pose
+graph SLAM,Ó in Intelligent Robots and Systems (IROS), IEEE/RSJ
+International Conference on. IEEE, 2012, pp. 1879Ð1884.
+[4] E. Olson, J. Leonard, and S. Teller, ÒFast iterative optimization of
+pose graphs with poor initial estimates,Ó in Robotics and Automation
+(ICRA), IEEE International Conference on, 2006, pp. 2262Ð2269.
+[5] M. Bosse, P. Newman, J. Leonard, and S. Teller, ÒSimultaneous
+localization and map building in large-scale cyclic environments using
+the Atlas framework,Ó International Journal of Robotics Research,
+vol. 23, no. 12, pp. 1113Ð1139, 2004.
+[6] J. Neira and J. D. Tard« os, ÒData association in stochastic mapping
+using the joint compatibility test,Ó Robotics and Automation, IEEE
+Transactions on, vol. 17, no. 6, pp. 890Ð897, 2001.
+[7] T. Bailey, ÒMobile robot localisation and mapping in extensive outdoor
+environments,Ó Ph.D. dissertation, Citeseer, 2002.
+[8] E. Olson, M. Walter, J. Leonard, and S. Teller, ÒSingle cluster graph
+partitioning for robotics applications,Ó in Proceedings of Robotics
+Science and Systems, 2005, pp. 265Ð272.
+[9] E. Olson, ÒRecognizing places using spectrally clustered local
+matches,Ó Robotics and Autonomous Systems, vol. 57, no. 12, pp.
+1157Ð1172, December 2009.
+[10] G. Grisetti, C. Stachniss, S. Grzonka, and W. Burgard, ÒA tree
+parameterization for efÞciently computing maximum likelihood maps
+using gradient descent,Ó in Proceedings of Robotics: Science and
+Systems, Atlanta, GA, USA, June 2007.
+[11] D. Sibley, C. Mei, I. Reid, and P. Newman, ÒAdaptive relative bundle
+adjustment.Ó in Robotics: Science and Systems, 2009.
+[12] J.-L. Blanco, J. Gonzalez-Jimenez, and J.-A. Fernandez-Madrigal,
+ÒSparser relative bundle adjustment (SRBA): Constant-time mainte-
+nance and local optimization of arbitrarily large maps,Ó in Robotics and
+Automation (ICRA), IEEE International Conference on, May 2013, pp.
+70Ð77.
+[13] E. Olson, ÒRobust and efÞcient robotic mapping,Ó Ph.D. dissertation,
+Massachusetts Institute of Technology, Cambridge, MA, USA, June
+2008.
+[14] H. Robbins and S. Monro, ÒA stochastic approximation method,Ó The
+Annals of Mathematical Statistics, pp. 400Ð407, 1951.
+[15] C. Darken, J. Chang, and J. Moody, ÒLearning rate schedules for faster
+stochastic gradient search.Ó IEEE Press, 1992.
+[16] R. Kuemmerle, G. Grisetti, H. Strasdat, K. Konolige, and W. Burgard,
+Òg2o: A general framework for graph optimization,Ó in Robotics and
+Automation (ICRA), IEEE International Conference on, 2011.
+[17] N. Sunderhauf and P. Protzel, ÒSwitchable constraints vs. max-mixture
+models vs. RRR: A comparison of three approaches to robust pose
+graph SLAM,Ó in Robotics and Automation (ICRA), IEEE Interna-
+tional Conference on, Karlsruhe, Germany, 2013.
+4289

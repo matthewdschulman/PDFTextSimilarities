@@ -1,0 +1,1403 @@
+Fuzzy Segmentation and Recognition of Continuous Human Activities
+Hao Zhang
+1
+, Wenjun Zhou
+2
+and Lynne E. Parker
+1
+Abstract— Most previous research has focused on classifying
+single human activities contained in segmented videos. However,
+in real-world scenarios, human activities are inherently contin-
+uous and gradual transitions always exist between temporally
+adjacent activities. In this paper, we propose a Fuzzy Segmen-
+tation and Recognition (FuzzySR) algorithm to explicitly model
+this gradual transition. Our goal is to simultaneously segment a
+given video into events and recognize the activity contained in
+each event. Speciﬁcally, our algorithm uniformly partitions the
+video into a sequence of non-overlapping blocks, each of which
+lasts a short period of time. Then, a multi-variable time series is
+creatively formed through concatenating the block-level human
+activity summaries that are computed using topic models over
+each block’s local spatio-temporal features. By representing an
+event as a fuzzy set that has fuzzy boundaries to model gradual
+transitions, our algorithm is able to segment the video into a
+sequence of fuzzy events. By incorporating all block summaries
+contained in an event, the proposed algorithm determines the
+most appropriate activity category for each event. We evaluate
+our algorithm’s performance using two real-world benchmark
+datasets that are widely used in the machine vision community.
+We also demonstrate our algorithm’s effectiveness in important
+robotics applications, such as intelligent service robotics. For
+all used datasets, our algorithm achieves promising continuous
+human activity segmentation and recognition results.
+I. INTRODUCTION
+In recent decades, human activity recognition has drawn
+increasing attention from researchers in different ﬁelds of
+study, such as computer vision, ubiquitous computing, ma-
+chine learning, and robotics [1]–[3]. Most works in human
+activity recognition focus on simple primitive activities con-
+tained in short, manually segmented clips, such as walking
+and hand-waving, in contrast to the fact that human activities
+involve continuous, complex temporal patterns, for example,
+grabbing a box then packing and delivering it.
+We are especially interested in peer-to-peer human-robot
+teaming [3], in which humans and autonomous robots oper-
+ate collaboratively in the same physical workspace to achieve
+the same objective. In this application, human activities are
+always performed in a continuous fashion. Thus, temporal
+segmentation and recognition of continuous human activities
+are crucial capabilities for autonomous robots to understand
+and effectively interact with humans.
+Not surprisingly, recognizing a sequence of human activ-
+ities from a continuous, unsegmented video is considerably
+more challenging than from a temporally partitioned video
+1
+Hao Zhang and Lynne E. Parker are with the Distributed Intelligence
+Laboratory, Department of Electrical Engineering and Computer Science,
+University of Tennessee, Knoxville, Tennessee 37996, USA, fhaozhang,
+leparkerg@utk.edu.
+2
+Wenjun Zhou is with Department of Statistics, Operations and Manage-
+ment Science, University of Tennessee, Knoxville, Tennessee 37996, USA,
+wzhou4@utk.edu.
+that contains a single activity. Besides the well-investigated
+difﬁculties to categorize human activities in partitioned clips,
+such as variations of human appearances and motions, illumi-
+nation changes and dynamic backgrounds, etc., recognizing
+human activities in unsegmented visual data poses additional
+challenges. First, analyzing continuous human activities has
+to deal with the transition effect, i.e., the transition between
+temporally adjacent human activities always occurs gradual-
+ly, and their temporal boundaries are usually vague. Second,
+humans usually perform multiple activities in parallel. For
+example, naturally, everyone sits while driving. Third, gen-
+erating ground truth to evaluate continuous human activity
+recognition systems is a challenging task. Errors often arise
+due to clock synchronization issues, limited human reaction
+time, and imprecise activity deﬁnitions [4]. In consequence,
+these problems result in signiﬁcant difﬁculties in construction
+of continuous activity recognition systems.
+To address this important but difﬁcult research problem,
+we introduce a novel algorithm, named Fuzzy Segmentation
+and Recognition (FuzzySR), to temporally partition a video
+into coherent constituent segments in an unsupervised fash-
+ion and to categorize the activity contained in each individual
+segment. The main idea of our FuzzySR algorithm is demon-
+strated in Figure 1, which contains three components: block-
+level activity summarization, fuzzy event segmentation, and
+event-level activity recognition.
+Our continuous human activity segmentation and recogni-
+tion algorithm adopts the bag-of-words (BoW) representation
+based on local spatio-temporal features. The BoW represen-
+tation is a most popular model for human activity recognition
+due to its robustness in real-world environments [2], [5]–[7].
+Following the BoW representation, several approaches were
+proposed to construct human activity recognition systems.
+Although demonstrated to be effective to recognize primitive
+activities in segmented clips [5]–[8], the BoW model ignores
+long-term temporal structures of the sequential data, which
+limits their capability of partitioning continuous videos that
+exhibit temporal patterns. In addition, since the BoW model
+encodes videos as a histogram of visual words that are com-
+puted from local features, it takes discrete values generally in
+high dimensional space, which makes analysis directly using
+the BoW model very expensive and generally intractable [9].
+This characteristic limits the BoW model’s ability to directly
+form a time series for temporal pattern analysis.
+An important objective of this paper is to bridge the gap
+between temporal human activity segmentation and the BoW
+representation, which is not discussed in previous studies to
+our knowledge. Our approach achieves this objective through
+applying the block-level activity summarization. A block is
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 6305
+BoW?based activity 
+representation
+Use computer
+Answer phone
+Write on board
+Push box
+Pack box
+Grab box
+Block?level activity 
+summarization
+Event 1 Event 2 Event E-1 Event E
+Fuzzy event 
+segmentation
+Event?level activity 
+recognition
+Pack box Use computer Write on board Grab box
+Block 1 Block 2 Block 3 Block B-2 Block B-1 Block B
+Fig. 1: Illustration of our FuzzySR algorithm for continuous human activity segmentation and recognition. The block-level
+activity summarization module summarizes activity distribution of each block by mapping high-dimensional discrete feature
+space to real-valued activity space. The fuzzy event segmentation module uses the summaries to form a multi-variable time
+series, and applies fuzzy temporal clustering to discover and segment events that are modeled as fuzzy sets. The event-level
+activity recognition module incorporates summaries of all blocks contained in an event to determine an activity label.
+deﬁned as a unit time interval of user-deﬁned duration that
+contains a short sequence of consecutive frames, in which the
+activity performed by a human subject is assumed consistent.
+As illustrated in Figure 1, our block-level activity summa-
+rization partitions a continuous video into a sequence of non-
+overlapping blocks, and summarizes activity information of
+each block by mapping the high-dimensional discrete BoW
+representation in feature space to the real-valued distribution
+over activities in activity space. Then, the block-level activity
+distributions are used to form a multi-variable time series. It
+is noteworthy that the use of local spatio-temporal features
+also ensures that our algorithm captures temporal variations
+within each block.
+Another objective of this paper is to discover and segment
+events from a given video that contains a sequence of human
+activities, and to infer an activity label for each individual
+event. An event is deﬁned as a maximum continuous period
+of time during which the activity label is constant. Through
+treating the block-level activity distribution as intermediate
+information to form a real-valued multi-variable time series,
+our algorithm follows a fuzzy temporal clustering approach
+[10] to segment events. We use fuzzy sets to model events
+and employ fuzzy event boundaries to handle the transition
+effect. This procedure is called fuzzy event segmentation, as
+depicted in Figure 1. To determine the activity category of
+a segmented event, we introduce a new, optimization-based
+method that incorporates summaries of all blocks contained
+in the event to make the most appropriate decision. We name
+this method event-level activity recognition.
+In order to demonstrate the effectiveness of our FuzzySR
+algorithm, we conduct extensive experiments using bench-
+mark activity datasets that are widely used in the machine
+vision community. In addition, we introduce a new dataset
+collected in real-world scenarios that focus on human-robot
+teaming. It can be difﬁcult to identify the activities contained
+in the new dataset without discovering temporal patterns and
+segmenting the events. Our FuzzySR algorithm shows very
+promising results over the used datasets.
+The rest of the paper is structured as follows. After review-
+ing related work in Section II, we discuss our fuzzy contin-
+uous human activity segmentation and recognition approach
+in Section III. Then, experimental results are presented in
+Section IV. Finally, we conclude this paper in Section V.
+II. RELATED WORK
+Segmentation and recognition of continuous human activ-
+ities is a research topic that involves several key techniques.
+Previous works relating to this topic are reviewed in detail
+in this section.
+A. Activity Classiﬁcation
+A large number of studies in human activity recognition
+focused on the problem of recognizing repetitive or punctual
+activities, such as walking and kicking, from short, manually
+partitioned visual data such as image sequences and videos,
+which can be acquired from color or RGB-D cameras.
+A most popular methodology to construct a vision-based
+activity recognition system is based on the BoW model using
+local spatio-temporal features [2]. Dollar et al. [6] extracted
+such features using separable ﬁlters in both spatial and tem-
+poral dimensions. Laptev et al. [11] detected spatio-temporal
+features based on generalized Harris corner detectors. Other
+local spatio-temporal features were also implemented based
+on the extended Hessian saliency measure [12] and salient
+6306
+region detectors [13]. Furthermore, with the emergence of
+color-depth cameras, such as Kinect, several recent works [8]
+introduced local spatio-temporal features in 4D space, which
+can incorporate color and depth information in videos.
+Temporal structures of single activities contained in mutu-
+ally segmented videos are also widely investigated in human
+activity recognition. An early work [14] used Hidden Markov
+Models (HMMs) to recognize human actions in a sequence
+of images. Since this work, HMMs have been widely applied
+to model temporal patterns of human activities [1]. Another
+popular model to analyze temporal human activity variations
+is Conditional Random Fields (CRF) [15]. Its extensions,
+such as hidden CRFs [16], were widely used in recent years.
+Several space-time activity recognition approaches were also
+recently introduced based on relationship matching [17], or
+spatio-temporal phrases [7].
+These bag-of-word and temporal models focused on single
+human activity recognition in partitioned videos. We address
+a different task: segmentation and recognition of continuous
+human activities in unsegmented videos.
+B. Temporal Activity Segmentation
+Automatic segmentation of complex continuous activities
+is important, since human activities are always continuous in
+real-world scenarios, which are characterized by a complex
+temporal composition of single activities. Previous work on
+temporal segmentation can be generally categorized into two
+groups: change point detection and temporal clustering.
+Change point detection has a long history in statistics and
+machine learning. The earliest and best-known technique is
+the CUSUM detector [18], which represents a time series as
+piecewise segments of Gaussian mean with noise. In recent
+years, change point detection has drawn increasing attention
+to process visual data. For example, Zhai et al. [19] proposed
+to employ change point detection to segment video scenes.
+Change point detection was also used by Ranganathan [20]
+to perform place categorization.
+Temporal clustering [21] is another popular methodology
+to segment continuous videos. Especially, several works used
+temporal clustering to segment visual and motion data into
+disjoint single-activity events that have hard boundaries [22],
+[23]. Different from previous methods, we explicitly model
+gradual transitions between temporally adjacent human ac-
+tivities, following the clustering method proposed by Abonyi
+et at. [10]. In addition, the time series used in our algorithm
+is formulated in a new way by computing and concatenating
+block-level human activity distributions.
+III. OUR ALGORITHM
+We describe our FuzzySR algorithm for fuzzy continuous
+human activity segmentation and recognition in this section.
+FuzzySR provides a general framework to identify complex,
+continuous human activities from unsegmented videos with
+gradual activity transitions. In addition, our FuzzySR algo-
+rithm bridges the gap between the BoW model and temporal
+activity segmentation. The idea of our algorithm is presented
+in Figure 1.
+A. Block-Level Activity Summarization
+Input to our algorithm is an unsegmented video with each
+frame encoded using the BoW representation based on local
+spatio-temporal features. This input videoW is temporally
+partitioned into a sequence of blocks of equal length:W =
+fw
+1
+;:::;w
+B
+g, whereB is the number of blocks. Each block
+w
+j
+, j = 1:::B, is a set of discrete visual words computed
+from local spatio-temporal features at time point t
+j
+.
+Our algorithm applies a statistical topic model, i.e., Latent
+Dirichlet Allocation (LDA) [9], to summarize human activity
+information that is contained in each block. Given a block
+w, LDA represents each of K activities as a multinomial
+distribution of all possible visual words in the dictionaryD.
+This distribution is parameterized by'=f'
+w1
+;:::;'
+w
+jDj
+g,
+where '
+w
+is the probability that the word w is generated
+by the activity. LDA also models each block wW as a
+collection of the visual words, and assumes that each word
+w2w is associated with a latent activity assignment z. By
+using these visual words to associate blocks with activities,
+LDA models a block w as a multinomial distribution over
+the activities, which is parameterized by =f
+1
+;:::;
+K
+g,
+where 
+k
+is the probability that w is generated by the kth
+activity. The LDA model is a Bayesian model, which places
+Dirichlet priors on the multinomial parameters:'Dir()
+and  Dir(), where  =f
+w1
+;:::;
+w
+jDj
+g and  =
+f
+1
+;:::;
+K
+g are the concentration hyperparameters.
+The objective in block-level activity summarization to is
+to estimate , i.e., the per-block activity distribution. How-
+ever, exact parameter estimation is generally intractable [9].
+Gibbs sampling is a widely used technique to approximately
+estimate LDA’s parameters, which is able to asymptotically
+approach the correct distribution [24]. When Gibbs sampling
+converges, each activity probability
+k
+2,k=1;:::;K, can
+be estimated by:
+
+k
+=
+n
+k
++
+k
+P
+i
+(n
+i
++
+i
+)
+; (1)
+wheren
+k
+is the number of times that a word is assigned to the
+activityz =k in the block. When trained using labeled data,
+semantics (i.e., known activity categories) can be associated
+with the resulting clusters using the Hungarian method [25].
+It is noteworthy that, although our discussion is based on the
+benchmark LDA model, other sophisticated topic models are
+also directly applicable to our approach.
+After the per-block activity information is summarized for
+all blocks within the video, a real-valued multi-variable time-
+series can be formed: =f
+1
+;:::;
+B
+g, which containsB
+time-ordered summaries computed at time pointst
+1
+;:::;t
+B
+,
+where
+j
+=f
+j;1
+;:::;
+j;K
+g
+>
+,j = 1;:::;B, summarizes the
+activity information contained in the jth block at time t
+j
+.
+B. Fuzzy Event Discovery and Segmentation
+Given a time series of block-level activity summaries, the
+continuous human activity segmentation task is to seek a se-
+quence of non-overlapping eventse(t
+i 1
+;t
+i
+), i = 1;:::;E,
+where t
+i
+is the temporal boundary of an event that satisﬁes
+t
+0
+<t
+1
+<:::;<t
+E
+, andE is the number of events to segment.
+6307
+20 40 60 80 100 120 140 160 180 200
+0
+0.5
+1
+?
+i
+(t
+k
+)
+Block
+20 40 60 80 100 120 140 160 180 200
+0
+0.5
+1
+A
+i
+(t
+k
+)
+Block
+Fig. 2: Illustration of modeling events using fuzzy sets that
+have fuzzy boundaries. A transition always exists between
+human activities in real-world scenarios. In the video, there
+exists an transition (block 40–60) between writing-on-board
+and answering-phone, and another transition (block 105–135)
+occurs after it. Through solving the optimization problem in
+Eq. (5), we can obtain the fuzzy segmentation results, which
+are encoded by the fuzzy membership(t) that is computed
+using the Gaussian membership function A(t).
+The segmentation task can be formulated as an optimization
+problem. Following [10], the optimal event boundaries can
+be determined through minimizing the sum of the individual
+event’s cost:
+cost() =
+E
+X
+i=1
+e(t
+i 1
+;t
+i
+) =
+E
+X
+i=1
+B
+X
+j=1
+
+i
+(t
+j
+)dis(
+j
+;v
+
+i
+); (2)
+wheredis(
+j
+;v
+
+i
+) denotes the distance between thejth block
+summary
+j
+and the meanv
+
+i
+of in theith event (i.e., center
+of theith cluster), and
+i
+(t
+j
+) denotes the membership of the
+jth block in the ith event. Typically, a hard membership is
+used, which satisﬁes
+i
+(t
+j
+) =1(t
+i
+<t
+j
+t
+i+1
+), where1()
+is the indicator function.
+However, transitions between temporally consecutive hu-
+man activities are usually vague in the real-world scenario.
+Consequently, changes of the time series that is formed by
+block summaries do not suddenly occur at any particular time
+point. Therefore, it is not practical to deﬁne hard boundaries
+of the events and not appropriate to model gradual activity
+transition using the hard membership.
+To address the gradual transition issue, instead of deﬁning
+hard event boundaries, we model each event as a fuzzy set
+with fuzzy boundaries, and assign thejth block with a fuzzy
+membership 
+i
+(t
+j
+)2 [0;1] to the ith event as follows:
+
+i
+(t
+j
+) =
+A
+i
+(t
+j
+)
+P
+B
+k=1
+A
+k
+(t
+j
+)
+; (3)
+where A
+i
+(t
+j
+) is the Gaussian membership function that is
+deﬁned as:
+A
+i
+(t
+j
+) = exp
+
+ 
+(t
+j
+ v
+t
+i
+)
+2(
+t
+i
+)
+2
+
+; (4)
+wherev
+t
+i
+and(
+t
+i
+)
+2
+are the mean and variance of theith block
+in time dimension, respectively. Figure 2 illustrates our idea
+of modeling events using fuzzy sets with fuzzy boundaries,
+which also visualizes the fuzzy segmentation results.
+To estimate v
+t
+and (
+t
+)
+2
+in order to divide a time series
+into a sequence of events with fuzzy boundaries, a modiﬁed
+Gath-Geva (GG) clustering approach [10], [26] is employed.
+Through adding time as a variable to each block summary,
+i.e., x=[t;], the GG approach favors continuous clusters
+in time. Assumingx conforms to the Gaussian distribution,
+the optimization problem is deﬁned as:
+minimize
+
+i
+:i=1;:::;E
+P
+E
+i=1
+P
+B
+j=1
+
+m
+i;j
+dis(x
+j
+;
+i
+)
+subject to
+P
+E
+i=1
+
+i;j
+= 1 8j
+0
+i;j
+ 1 8i;j
+(5)
+where 
+i;j
+2 [0;1] denotes the membership degree ofx
+j
+to
+the ith cluster parameterized by
+i
+, which is computed by:
+
+i;j
+=
+1
+P
+E
+k=1
+(dis(x
+j
+;
+i
+)=dis(x
+j
+;
+k
+))
+ (m 1)
+; (6)
+andm2(1;1) denotes the weighting exponent that encodes
+the fuzziness of the resulting clusters. A common choice of
+the weighting exponent [10], [26] is m = 2. This value will
+be used throughout this paper.
+The distance function dis(x
+j
+;
+i
+) in Eq. (5) is deﬁned
+inversely proportional to the probability that x
+j
+belongs to
+the ith cluster parameterized by
+i
+. Since the time variable
+t is independent of the block summary, dis(x
+j
+;
+i
+) can be
+factorized as:
+dis(x
+j
+;
+i
+)=
+1
+p(x
+j
+;
+i
+)
+=
+1
+
+i
+p(t
+j
+jv
+t
+i
+;(
+t
+i
+)
+2
+)p(
+j
+jv
+
+i
+;
+
+i
+)
+(7)
+where 
+i
+=p(
+i
+) is the prior probability of the ith cluster,
+which satisﬁes
+P
+E
+i=1
+
+i
+= 1, andt
+j
+and
+j
+in thejth block
+conform to the Gaussian distribution:
+p(t
+j
+jv
+t
+i
+;(
+t
+i
+)
+2
+) =N(t
+j
+jv
+t
+i
+;(
+t
+i
+)
+2
+)
+p(
+j
+jv
+
+i
+;
+
+i
+) =N(
+j
+;v
+
+i
+;
+
+i
+):
+In order to estimate the parameter of each cluster, that is
+
+i
+=f
+i
+;v
+t
+i
+;(
+t
+i
+)
+2
+;v
+
+i
+;
+
+i
+g, i = 1;:::;E, the Expectation-
+Maximization approach is applied to solve the optimization
+problem in Eq. (5), leading to the following model parameter
+along time dimension:
+v
+t
+i
+=
+P
+B
+j=1
+
+m
+i;j
+t
+j
+P
+B
+j=1
+
+m
+i;j
+; (
+t
+i
+)
+2
+=
+P
+B
+j=1
+
+m
+i;j
+(t
+j
+ v
+t
+i
+)
+2
+P
+B
+j=1
+
+m
+i;j
+; (8)
+which can be used to compute the fuzzy membership
+i
+(t
+j
+)
+of the jth block in the ith event, as deﬁned in Eq. (3).
+C. Event-Level Activity Recognition
+In this paper, a continuous video is uniformly divided into,
+as well as represented by, a sequence of blocks. Accordingly,
+an event can be deﬁned as a maximum sequence of temporal-
+ly distinct, contiguous blocks having speciﬁc start time, end
+time, and a consistent activity label. The objective of event-
+level activity recognition is to determine these parameters for
+each event that contains a consistent activity.
+To determine the start time and end time of an event that
+are also boundaries of an activity, the general computational
+principle “winner-take-all” is adopted to represent segmenta-
+tion results corresponding to the fuzzy memberships. Given
+6308
+the fuzzy membership of the jth block, i.e., 
+j
+= [
+i
+(t
+j
+)],
+i = 1;:::;E, its segmentation result y
+j
+is computed by:
+y
+j
+= argmax
+i=1;:::;E
+
+i
+(t
+j
+) (9)
+After the segmentation result is obtained for each block,
+the activity label of an event is determined using summaries
+of all blocks that are contained in the event. Mathematically,
+given the sequence of block summaries =f
+1
+;:::;
+B
+g
+and segmentation results y =fy
+1
+;:::;y
+B
+g, for each event
+e
+i
+, i = 1;:::;E, the activity category z
+i
+is determined by
+solving the following optimization problem:
+z
+i
+= argmax
+k=1;:::;K
+B
+X
+j=1
+ 
+1(y
+j
+=i)log
+
+j;k
+P
+K
+s=1
+
+j;s
+!
+: (10)
+By computing the probability that the jth block belongs to
+thekth activity, i.e.,
+j;k
+=
+P
+K
+s=1
+
+j;s
+, our algorithm considers
+the importance of each block in a probabilistic fashion to
+decide the ﬁnal activity label of an event. In our case, since
+topic modeling is applied to summarize each block’s activity
+information,
+P
+K
+s=1
+
+j;s
+= 1,8j is satisﬁed.
+IV. EMPIRICAL STUDY
+This section describes evaluation results of our FuzzySR
+algorithm to fuzzily segment and classify continuous human
+activities over three real-world datasets: KTH and Weizmann
+datasets, and a newly collected dataset containing continuous
+human activities, which is recorded using a color-depth
+camera that is installed on a mobile robot. We run FuzzySR
+on long video sequences to partition events and label each
+event with an activity class. Then, we compare our FuzzySR
+algorithm’s segmentation and recognition results with ground
+truth and results provided by human estimators.
+A. KTH Dataset
+The KTH dataset contains 2391 video sequences that were
+captured at 25 frames per second (FPS) with a resolution of
+160120. All video sequences were recorded using a static
+camera in the environment with homogeneous backgrounds.
+This dataset contains six human activities: walking, jogging,
+running, boxing, hand waving, and hand clapping. Each
+activity is performed by 25 human subjects in four different
+scenarios: outdoors, outdoors with scale variation, outdoors
+with different clothes, and indoors. Representative frames of
+each activity are depicted in Figure 3.
+Running Jogging Boxing Walking Waving Clapping
+Fig. 3: Representative frames of activities in KTH dataset.
+Since the KTH dataset only contains manually segmented,
+single-activity videos, to evaluate our method’s performance
+of continuous human activity segmentation and recognition,
+we generate blocks from existing videos in the dataset, and
+then concatenate these blocks into long videos that contain
+0 50 100 150 200 250 300 350 400
+0
+1
+2
+3
+4
+5
+6
+Block
+Time series
+50 100 150 200 250 300 350 400
+0
+0.2
+0.4
+0.6
+0.8
+1
+?
+i
+(t
+k
+)
+Block
+Hand waving Boxing Hand clapping
+Walking Running Jogging
+(a) Time series of block-level activity summarizations.
+Hand waving Boxing Hand clapping Walking Running Jogging
+0 50 100 150 200 250 300 350 400
+Block
+Ground
+truth
+Our
+method
+50 100 150 200 250 300 350 400
+0
+0.2
+0.4
+0.6
+0.8
+1
+?
+i
+(t
+k
+)
+Block
+(b) Fuzzy segmentation (encoded by the fuzzy membership score (t)).
+50 100 150 200 250 300 350 400
+0
+0.2
+0.4
+0.6
+0.8
+1
+?
+i
+(t
+k
+)
+Block
+Hand waving Boxing Hand clapping Walking Running Jogging
+0 50 100 150 200 250 300 350 400
+Block
+Ground
+truth
+Our
+method
+Human
+estimator
+(c) Event-level activity recognition results and comparisons with ground
+truth and results provided by human estimators.
+Fig. 4: Experimental results of segmentation and recognition
+of continuous activities from the KTH dataset. The test video
+contains six events with instant transitions between activities.
+continuous human activities. Speciﬁcally, we generate 500
+blocks, each of which has a duration of ﬁve seconds and
+contains 75 frames. We use 100 blocks (around 12–18 blocks
+for each activity) to construct an LDA model for block-level
+summarization, and the remaining 400 blocks for testing.
+Following [11], we extract local spatio-temporal features
+through detecting space-time interest points and describing
+them using histogram of oriented gradients (HOG). Features
+belonging to the same block are combined together. Then, a
+dictionary of local spatio-temporal words with 400 clusters
+are constructed using the k-means quantization. Using this
+dictionary, features in each block can be converted to visual
+words. Accordingly, each block is represented by the BoW
+model, which serves as the input to our algorithm.
+Experimental results over the KTH dataset are presented
+in Figure 4. The time series of block-level human activity
+summarization is illustrated in Figure 4a, which is obtained
+by using the learned LDA model on the blocks in the video.
+This observation demonstrates that the LDA model is capable
+of summarizing block-level activity information. In addition,
+it can be observed that activities with upper body motions
+6309
+(e.g., boxing, waving, and hand clapping) are easily confused
+with each other. Similarly, activities with lower body motions
+(e.g., walking, jogging, and running) are confused with each
+other. Especially, jogging and running are not well separated,
+because these two activities are extremely similar.
+Based on the time series of block-level activity summariza-
+tions, the fuzzy segmentation result obtained by our method
+over the KTH dataset is graphically presented in Figure 4b.
+It can be observed that each event is encoded by a fuzzy set
+that has fuzzy boundaries. When a current activity is going to
+transfer to a new activity, the fuzzy membership score (t)
+of the current event decreases and simultaneously the new
+event’s score increases. Furthermore, we observe that each
+event obtains its maximum fuzzy membership score at the
+center of a segment in the time dimension, and an activity
+with a longer duration generally obtains a more conﬁdent
+segmentation result with a greater fuzzy membership score.
+These observations indicate our algorithm’s effectiveness to
+model activity transitions and segment continuous activities.
+The event-level continuous activity recognition result that
+is obtained by our algorithm over the KTH dataset is shown
+in Figure 4c. Our algorithm’s performance is also compared
+with ground truth and results that are manually estimated by
+human estimators, which are depicted in Figure 4c. It can be
+observed that our algorithm well estimates the start and end
+time points of the events in the test video, and the activity
+contained in each event is correctly recognized. When the
+concatenated video is presented to human estimators, due to
+the clear, instant transition between temporally adjacent ac-
+tivities, human estimators can perfectly recognize the events
+and correctly classify the activities contained in each event,
+as presented in Figure 4c.
+B. Weizmann Dataset
+The Weizmann dataset contains 93 segmented video clips
+with a resolution of 180144 and was captured at 25 FPS.
+This dataset was recorded by a static camera in an outdoor
+environment with a simple background. The dataset contains
+ten activities that are performed by nine human subjects.
+The full activity list is: walking, running, jumping, siding,
+bending, one-hand waving, two-hands waving, jumping in
+place, jacking, and skipping. Representative frames showing
+these activities are depicted in Figure 5.
+Bending
+P-jumping Waving2
+Running Jumping
+Jacking
+Walking
+Waving1
+Siding
+Skipping
+Fig. 5: Exemplary frames of activities in Weizmann dataset.
+Similar to our previous experimental settings, we generate
+227 blocks using the existing video clips contained in the
+Weizmann dataset. Each block has a duration of one second
+10 20 30 40 50 60 70 80 90 100
+0
+0.2
+0.4
+0.6
+0.8
+1
+?
+i
+(t
+k
+)
+Block
+Waving2 Waving1 Walking Skipping Siding Running P-jumping Jumping Jacking Bending
+0 10 203040 5060 7080 90 100
+Block
+Ground
+truth
+Our
+method
+Human
+estimator
+(a) Fuzzy segmentation (encoded by the fuzzy membership score (t)).
+10 20 30 40 50 60 70 80 90 100
+0
+0.2
+0.4
+0.6
+0.8
+1
+?
+i
+(t
+k
+)
+Block
+Waving2 Waving1 Walking Skipping Siding Running P-jumping Jumping Jacking Bending
+0 10 203040 5060 7080 90 100
+Block
+Ground
+truth
+Our
+method
+Human
+estimator
+(b) Event-level activity recognition results and comparisons with ground
+truth and results provided by human estimators.
+Fig. 6: Experimental results of segmentation and recognition
+of continuous activities from the Weizmann dataset. The test
+video contains twelve events with instant transitions between
+temporally adjacent activities.
+and contains 25 frames. Among the 227 blocks, we generate
+a test video by concatenating 100 blocks, which contains
+all ten activities. The test video contains twelve events and
+each event contains at least ﬁve blocks. The remaining blocks
+are employed to train the LDA model to summarize activity
+information in each block. We represent each block as a bag
+of visual words, which are computed by quantizing the local
+spatio-temporal features [11] extracted from the block using
+a dictionary of size 400.
+Experimental results over the Weizmann dataset are graph-
+ically presented in Figure 6. It can be observed from Figure
+6a that our method is very effective to segment a long video
+that contains continuous human activities into fuzzy events;
+the fuzzy boundaries can well estimate the instant transition
+between temporally adjacent activities. Figure 6b shows our
+approach’s event-level human activity recognition results and
+comparisons with ground truth and human estimations. Due
+to the instant transition between human activities in the test
+video, human estimators are able to accurately segment the
+test video and correctly label the activity contained in each
+event. In addition, it can be observed that, based on the fuzzy
+event membership score, our FuzzySR achieves comparable
+segmentation results, and the activity contained in each event
+is correctly recognized.
+C. Continuous Activity Dataset
+In real-world scenarios, transitions always exist between
+temporally adjacent activities. Although the benchmark KTH
+and Weizmann datasets can be used to generate long videos,
+activity transitions in the concatenated video are assumed to
+occur instantly, which is contradictory to the actual situation.
+Therefore, a continuous activity dataset is needed to demon-
+strate our algorithm’s effectiveness to model gradual activity
+transitions in real-world scenarios.
+To the best of our knowledge, there are no publicly avail-
+able labeled video datasets adequate to evaluate continuous
+human activity recognition systems. Due to the lack of such
+6310
+(a) Camera installation (b) 3D view of an activity (c) Depth Frame (d) 4D-LST features
+Fig. 7: Setup of our experiments using the newly collected continuous human activity dataset. The Microsoft Kinect color-
+depth camera is installed on a Pioneer 3DX mobile robot (Figure 7a). Our dataset represents continuous human activities
+in 3D space (Figure 7b), which contains both depth (Figure 7c) and color (Figure 7d) information. The extracted 4D local
+spatio-temporal features [8] are also illustrated on the color image (Figure 7d).
+a dataset, we collect a new one using the Microsoft Kinect
+color-depth camera that is installed on a Pioneer 3DX mobile
+robot, as shown in Figure 7a. The dataset contains ﬁve color-
+depth videos. Each video has a duration of around 15 minutes
+and is recorded at 15 FPS with a resolution of 640480.
+Each color-depth video contains a sequence of continuous
+human activities that are performed in a natural way in 3D
+space. For example, Figure 7 illustrates the 3D view along
+with its color and depth images of an activity in our newly
+collected 3D human activity dataset.
+Our dataset is collected in the scenario of a small gift store,
+in which the human actor plays a role of the store owner and
+performs a sequence of activities related to customer service.
+A robot is used to operate in the same environment to help
+the human improve productivity. During the experiment, the
+robot is assumed to stay in an observing state without any
+movements. The tasks that the store owner needs to accom-
+plish include posting information and receiving messages
+on the internet, answering phone calls from customers and
+suppliers, writing inventory information on a white board,
+and preparing packages for customers. In this scenario, six
+activities are designed, as illustrated in Figure 8:
+ Grab box: grab an empty box from the storage area on
+the right side and bring it to the packing area;
+ Pack box: put required items into the box in the packing
+area in the center;
+ Push box: push the packed box from the packing area
+to the delivery area in the far left corner;
+ Use computer: operate a computer in the center area;
+ Write on board: write notes on a board on the right side;
+ Answer phone: answer phone calls on the left side.
+We extract 600 blocks, i.e., 100 blocks for each activity,
+from ﬁve long videos to learn the LDA model for block-level
+activity summarization. We represent each block as a bag of
+visual words, which are computed by quantizing the 4D local
+spatio-temporal features [8] extracted from the block using a
+dictionary of size 400. The 4D features encode variations in
+spatial and temporal dimensions, and incorporate both color
+and depth information. For example, the extracted features
+for the grabbing box activity are shown in Figure 7d.
+Experimental results over a color-depth video that contains
+t = 0.00 s t = 2.67 s t = 6.67 s t = 0.00 s t = 15.00 s t = 25.00 s t = 0.00 s t = 3.33 s t = 6.67 s
+Grab box Pack box Push box
+t = 0.00 s t = 11.00 s t = 18.33 s
+Write on board Answer phone Use computer
+t = 0.00 s t = 22.00 s t = 36.67 s t = 0.00 s t = 25.67 s t = 60.33 s
+Fig. 8: Typical sequences of the continuous human activities
+in our dataset. Execution time is labeled under each frame
+to emphasize the difference in activity durations. In contrast
+to previous datasets, gradual transitions exist between tem-
+porally adjacent activities in our dataset.
+six events are depicted in Figure 9. It can be observed from
+Figure 9a that the test color-depth video is well segmented
+by our algorithm, which is able to model gradual transitions
+between temporally adjacent activities. By encoding events
+as fuzzy sets, our algorithm well estimates the membership of
+each block. When a block appears in the center of an event,
+it has a high membership score. If a block approaches to
+the end of the current event, its membership score decreases.
+Blocks located in transitions generally have low membership
+scores for the ongoing event and the new event.
+The continuous human activity recognition result over our
+dataset is presented in Figure 9b. It can be observed that,
+with the presence of gradual transitions between activities,
+our FuzzySR algorithm is still able to correctly recognize
+continuous activities and well estimate event boundaries.
+In this experiment, ground truth is provided by the human
+actor who performs these activities. Transitions between
+temporally adjacent activities are explicitly labeled in the
+ground truth, as shown in Figure 9b. For comparison, we
+invited ﬁve human estimators to segment and recognize the
+continuous activities contained in the test video. Without
+knowing the number of activities, human estimators clustered
+the activities into 4, 4, 5, 6 and 44 categories, which indicates
+a strong ambiguity on the deﬁnitions of the activities in our
+dataset. Given the number of activities, human estimators
+correctly recognized the activities. On the other hand, with
+6311
+20 40 60 80 100 120 140 160 180 200 220
+0
+0.2
+0.4
+0.6
+0.8
+1
+?
+i
+(t
+k
+)
+Block
+Use computer Answer phone Write on board Push box Pack box Grab box
+0 50 100 150 200
+Block
+Human
+estimator
+Ground
+truth
+Our
+approach
+(a) Fuzzy segmentation (encoded by the fuzzy membership score (t)).
+20 40 60 80 100 120 140 160 180 200 220
+0
+0.2
+0.4
+0.6
+0.8
+1
+?
+i
+(t
+k
+)
+Block
+Use computer Answer phone Write on board Push box Pack box Grab box
+0 50 100 150 200
+Block
+Human
+estimator
+Ground
+truth
+Our
+approach
+(b) Event-level activity recognition results and comparisons with ground truth
+and results provided by human estimators. The white spaces in the ground truth
+denote transitions between activities.
+Fig. 9: Experimental results of segmentation and recognition
+of continuous activities using our continuous activity dataset.
+The test color-depth video contains six events with gradual
+transitions between temporally adjacent activities.
+the presence of gradual transitions, human evaluators may
+have difﬁculty precisely labeling each event’s boundaries.
+These phenomena can be seen in Figure 9b. Comparing
+with human estimations, our FuzzySR algorithm achieves
+comparable segmentation and recognition results over this
+activity dataset, as demonstrated in Figure 9b.
+V. SUMMARY
+We propose the FuzzySR algorithm to perform continuous
+human activity segmentation and recognition. Given a video
+containing continuous activities, after uniformly partitioning
+the video into blocks, our algorithm computes the activity
+distribution of each block through mapping high-dimensional
+discrete feature space to real-valued activity space. Then, the
+summaries are used to form a multi-variable time series, and
+fuzzy temporal clustering is used to segment events. Lastly,
+our algorithm incorporates all block summaries contained in
+an event and solves an optimization problem to determine
+the most appropriate activity label for each event. Our main
+contributions are twofold:
+ We bridge the gap between bag-of-word models based
+on local spatio-temporal features and continuous human
+activity segmentation problems;
+ We explicitly model gradual transitions between tempo-
+rally adjacent human activities.
+Extensive experiments using real-world datasets demonstrate
+our FuzzySR algorithm’s satisfactory performance on contin-
+uous activity segmentation and recognition, which can allow
+an autonomous robot to interpret human activities in real-
+world scenarios.
+REFERENCES
+[1] P. Turaga, R. Chellappa, V . S. Subrahmanian, and O. Udrea, “Machine
+recognition of human activities: A survey,” IEEE Transactions on
+Circuits and Systems for Video Technology, vol. 18, no. 11, pp. 1473–
+1488, 2008.
+[2] H. Wang, M. M. Ullah, A. Kl¨ aser, I. Laptev, and C. Schmid, “Evalua-
+tion of local spatio-temporal features for action recognition,” in British
+Machine Vision Conference, 2009.
+[3] J. R. Hoare and L. E. Parker, “Using on-line conditional random ﬁelds
+to determine human intent for peer-to-peer human robot teaming,”
+in IEEE International Conference on Intelligent Robots and Systems,
+2010.
+[4] D. Minnen, T. Westeyn, and T. Starner, “Performance metrics and
+evaluation issues for continuous activity recognition,” in Performance
+Metrics for Intelligent Systems, 2006.
+[5] I. Laptev, M. Marsza?ek, C. Schmid, and B. Rozenfeld, “Learning re-
+alistic human actions from movies,” in IEEE Conference on Computer
+Vision and Pattern Recognition, 2008.
+[6] P. Doll´ ar, V . Rabaud, G. Cottrell, and S. Belongie, “Behavior recog-
+nition via sparse spatio-temporal features,” in IEEE International
+Workshop on Visual Surveillance and Performance Evaluation of
+Tracking and Surveillance, 2005.
+[7] Y . Zhang, X. Liu, M.-C. Chang, W. Ge, and T. Chen, “Spatio-temporal
+phrases for activity recognition,” in European Conference on Computer
+Vision, 2012.
+[8] H. Zhang and L. E. Parker, “4-dimensional local spatio-temporal fea-
+tures for human activity recognition,” IEEE International Conference
+on Intelligent Robots and Systems, 2011.
+[9] D. M. Blei, A. Y . Ng, and M. I. Jordan, “Latent dirichlet allocation,”
+Journal of Machine Learning Research, vol. 3, pp. 993–1022, Mar.
+2003.
+[10] J. Abonyi, B. Feil, S. Nemeth, and P. Arva, “Modiﬁed Gath–Geva
+clustering for fuzzy segmentation of multivariate time-series,” Fuzzy
+Sets Systems, vol. 149, pp. 39–56, Jan. 2005.
+[11] I. Laptev, “On space-time interest points,” International Journal of
+Computer Vision, vol. 64, pp. 107–123, Sept. 2005.
+[12] G. Willems, T. Tuytelaars, and L. Gool, “An efﬁcient dense and
+scale-invariant spatio-temporal interest point detector,” in European
+Conference on Computer Vision, 2008.
+[13] A. Oikonomopoulos, I. Patras, and M. Pantic, “Spatiotemporal salient
+points for visual recognition of human actions,” IEEE Transactions on
+Systems, Man, and Cybernetics, Part B: Cybernetics, vol. 36, pp. 710–
+719, Jun. 2005.
+[14] J. Yamato, J. Ohya, and K. Ishii, “Recognizing human action in time-
+sequential images using hidden markov model,” in IEEE Conference
+on Computer Vision and Pattern Recognition, 1992.
+[15] J. D. Lafferty, A. McCallum, and F. C. N. Pereira, “Conditional ran-
+dom ﬁelds: Probabilistic models for segmenting and labeling sequence
+data,” in International Conference on Machine Learning, 2001.
+[16] S. B. Wang, A. Quattoni, L.-P. Morency, and D. Demirdjian, “Hidden
+conditional random ﬁelds for gesture recognition,” in IEEE Conference
+on Computer Vision and Pattern Recognition, 2006.
+[17] M. S. Ryoo and J. K. Aggarwal, “Spatio-temporal relationship match:
+Video structure comparison for recognition of complex human activi-
+ties,” in IEEE International Conference on Computer Vision, 2009.
+[18] E. S. Page, “Continuous Inspection Schemes,” Biometrika, vol. 41,
+pp. 100–115, 1954.
+[19] Y . Zhai and M. Shah, “A general framework for temporal video scene
+segmentation,” in IEEE International Conference on Computer Vision,
+2005.
+[20] A. Ranganathan, “PLISS: labeling places using online changepoint
+detection,” Autonomous Robots, vol. 32, pp. 351–368, May 2012.
+[21] T. Warren Liao, “Clustering of time series data – a survey,” Pattern
+Recognition, vol. 38, pp. 1857–1874, Nov. 2005.
+[22] M. Hoai, Z.-Z. Lan, and F. De la Torre, “Joint segmentation and
+classiﬁcation of human actions in video,” in IEEE Conference on
+Computer Vision and Pattern Recognition, 2011.
+[23] F. Zhou, F. De la Torre, and J. K. Hodgins, “Hierarchical aligned
+cluster analysis for temporal clustering of human motion,” IEEE
+Transactions on Pattern Analysis and Machine Intelligence, vol. 35,
+pp. 582–596, Mar. 2013.
+[24] I. Porteous, D. Newman, A. Ihler, A. Asuncion, P. Smyth, and
+M. Welling, “Fast collapsed gibbs sampling for latent dirichlet al-
+location,” in ACM SIGKDD International Conference on Knowledge
+Discovery and Data Mining, 2008.
+[25] H. W. Kuhn, “The Hungarian method for the assignment problem,”
+Naval Research Logistic Quarterly, vol. 2, pp. 83–97, 1955.
+[26] I. Gath and A. B. Gev, “Unsupervised optimal fuzzy clustering,” IEEE
+Transactions on Pattern Analysis and Machine Intelligence, vol. 11,
+pp. 773–780, Jul. 1989.
+6312
