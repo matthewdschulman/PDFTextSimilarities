@@ -1,13 +1,13 @@
 import java.io.BufferedReader;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.io.FileReader;
-import java.util.Dictionary;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.regex.Pattern;
 
 import com.itextpdf.text.pdf.PdfReader;
@@ -20,7 +20,12 @@ import com.itextpdf.text.pdf.parser.TextExtractionStrategy;
 public class PDFTextSimilarity {
  
     /** The max number of input pdf files to be converted. */
-    public static final int maxNumOfInputFiles = 2500;
+    public static final int maxNumOfInputFiles = 100;
+    public static int numOfFiles = 0;
+    public static ArrayList<String> orderOfFiles = new ArrayList<String>();
+    public static HashMap<String, HashMap<String, Integer>> wordFreqDatabase 
+    	= new HashMap<String, HashMap<String, Integer>>();
+    
  
     /**
      * Parses a PDF to a plain text file.
@@ -33,6 +38,8 @@ public class PDFTextSimilarity {
     	try {
     		PdfReader reader = new PdfReader(pdf);
     		System.out.println("converting " + pdf);
+    		numOfFiles++;
+    		orderOfFiles.add(txt);
     		PdfReaderContentParser parser = new PdfReaderContentParser(reader);
             PrintWriter out = new PrintWriter(new FileOutputStream(txt));
             TextExtractionStrategy strategy;
@@ -64,10 +71,9 @@ public class PDFTextSimilarity {
     	    
     	BufferedReader reader = new BufferedReader(new FileReader(input));
     			
-		//create a HashMap that maps from the ticker name to the position of that stock
 		HashMap<String, Integer> wordFreq = new HashMap<String, Integer>();
 		
-		//run through each line in the sample file
+		//run through each line in the input file
 		while (reader.ready()) {
 			String curLine = reader.readLine();
 			
@@ -88,10 +94,12 @@ public class PDFTextSimilarity {
 				}
 			}			
 		}
-		
+				
 		//print out the hashmap to the output
 		//new output filename
     	String outputName = input.split(Pattern.quote("."))[0].toString() + ".words.txt";
+    	//save hashmap for this file to the database
+    	wordFreqDatabase.put(outputName, wordFreq);	
     	@SuppressWarnings("resource")
     	PrintStream out = new PrintStream(new FileOutputStream(outputName));
     	for (String word : wordFreq.keySet()) {
@@ -146,6 +154,44 @@ public class PDFTextSimilarity {
     		String curInput = "inputPdfs/" + inputNum + ".pdf";
     		String curOutput = inputNum + ".txt";
     		new PDFTextSimilarity().parsePdf(curInput, curOutput, englishDict);
-    	}       
+    	}
+    	
+    	//create similarity array
+    	int[][] similarityArr = getSimilarityArr();
+    	
+    	//write similarityArr to an Std out
+    	for (int i = 0; i < numOfFiles; i++) {
+    		for (int j = 0; j < numOfFiles; j++) {
+    			System.out.print("|" + similarityArr[i][j]);
+    		}
+    		System.out.println("|");
+    	}
+    	
     }
+
+	private static int[][] getSimilarityArr() {
+		int[][] similarityArr = new int[numOfFiles][numOfFiles];
+    	for (int i = 0; i < numOfFiles; i++) {
+    		String curBaseFile = orderOfFiles.get(i);
+    		for (int j = i + 1; j < numOfFiles; j++) {
+    			String curCompFile = orderOfFiles.get(j);
+    			int similarity = getSimilarity(curBaseFile, curCompFile);
+    			similarityArr[i][j] = similarity;
+    			similarityArr[j][i] = similarity;
+    		}
+    	}
+		return similarityArr;
+	}
+
+	private static int getSimilarity(String curBaseFile, String curCompFile) {
+		int countOfDuplicateWords = 0;
+		for (String baseWord : wordFreqDatabase.get(curBaseFile.split(Pattern.quote("."))[0].toString() + ".words.txt").keySet()) {
+			if (wordFreqDatabase.get(curCompFile.split(Pattern.quote("."))[0].toString() + ".words.txt").keySet().contains(baseWord)) {
+				countOfDuplicateWords++;
+			}
+		}
+		
+		return countOfDuplicateWords;
+	}
+	
 }
