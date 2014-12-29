@@ -1,0 +1,1877 @@
+Learning Quadrotor Maneuvers From Optimal Control and
+Generalizing in Real-Time
+Teodor Tomi« c
+?
+, Moritz Maier
+?
+and Sami Haddadin
+AbstractÑ In this paper, we present a method for learning
+and online generalization of maneuvers for quadrotor-type
+vehicles. The maneuvers are formulated as optimal control
+problems, which are solved using a general purpose optimal
+control solver. The solutions are then encoded and generalized
+with Dynamic Movement Primitives (DMPs). This allows for
+real-time generalization to new goals and in-ßight modiÞcations.
+An effective method for joining the generalized trajectories is
+implemented. We present the necessary theoretical background
+and error analysis of the generalization. The effectiveness of
+the proposed method is showcased using planar point-to-point
+and perching maneuvers in simulation and experiment.
+I. INTRODUCTION
+Quadrotors belong to the group of unmanned aerial ve-
+hicles (UA Vs) and vertical take-off and landing aircrafts
+(VTOLs). Due to their simple mechanical design, their broad
+availability, and mainly, their ability to hover, quadrotors are
+well suited for inspection, surveillance and aerial photogra-
+phy applications. Current research is focused on autonomous
+exploration of unknown environments in search and rescue
+scenarios, particularly without external position information,
+e.g. in GPS-denied areas [1], [2]. The generation of aerobatic,
+aggressive, or time-optimal maneuvers for quadrotors has
+so far been addressed by many researchers. The available
+approaches differ mainly in the description of the maneuver,
+online-ofßine capabilities, and optimality criteria.
+A. Related work
+Multiple approaches exist in literature to obtain trajectories
+for a quadrotor-like vehicle. In this work, we want the
+trajectory to drive the vehicle through predeÞned states,
+while maintaining input and state constraints.
+The method described in [3] uses the ßatness property
+of the quadrotor system to obtain a piecewise polynomial
+trajectory in the ßat output (Cartesian position and yaw
+angle). Trajectories are constrained through a sequence of
+keyframes, and are used to obtain feed-forward control
+inputs. The trajectory snap, which corresponds to angular
+velocity, is minimized using ofßine linear programming.
+Input constraints are handled by temporal scaling of the
+trajectory. The control input is assumed to be polynomial,
+and its degree depends on the number of constraints in the
+?
+The authors contributed equally to this paper
+{teodor.tomic,moritz.maier}@dlr.de
+German Aerospace Center (DLR) Robotics and Mechatronics Center
+(RMC), M¬ unchener Stra§e 20, 82234 We§ling, Germany
+sami.haddadin@irt.uni-hannover.de
+Institute of Automatic Control, Leibniz University Hanover (LUH),
+Appelstr. 11, 30167 Hanover, Germany
+keyframes. Spatial scaling of the whole trajectory is possible
+in-ßight.
+In [4], the authors deÞne a maneuver as a sequence of
+discrete motions. An outdoor backßip maneuver is divided
+into three stages (impulse, drift, recovery). The safety and
+attainability of the desired sets in state space are ensured by
+using the backwards reachability concept. The trajectories are
+highly parameter dependent. Therefore, the whole set must
+be recalculated if a parameter change occurs. The generated
+maneuvers are not optimal in any sense.
+Real-time generation of time-optimal point-to-point
+quadrotor trajectories has been investigated in the literature
+[5], [6], [7]. Therein, a closed-form solution minimizing the
+maximum acceleration has been found. The effectiveness
+of this approach was shown shown in terms of real-time
+interception maneuvers [6] and coordinated ball throwing and
+catching [7]. An indirect optimal control method is applied
+to the minimum time problem in [8].
+It can be concluded that several effective methods exist
+for trajectory generation of isolated maneuvers (backßip,
+ßip, point-to-point) and performance measures (minimum
+time). This has been achieved primarily by using simpliÞed
+planar models. However, handling arbitrary state and input
+constraints is still limited. Hence, the real-time generation
+of optimal trajectories for arbitrary maneuvers under general
+state and input constraints is still an unsolved problem.
+B. Scope and contribution of this work
+We aim to solve the problem of arbitrary performance
+measures and constraints by solving an optimal control prob-
+lem ofßine for a grid of goals. The results are then learned
+using a machine learning technique. The learned trajectories
+implicitly include the constraints used in the optimal control
+problem. This allows for online generalization of the optimal
+results to obtain near-optimal trajectories. We base our work
+on a similar approach used for robotic arms [9].
+The paper is structured as follows. We formulate a maneu-
+ver as a general optimal control problem in Section II. It can
+therefore consist of multiple phases in order to include, e.g.
+via-points, as well as arbitrary state and input constraints.
+The solution is obtained ofßine for a set of trajectories,
+using a general-purpose optimal control solver. Second, the
+obtained trajectories are learned using Dynamic Movement
+Primitives (DMPs) [10] (Section III). In this representation,
+the trajectories can be generalized online to new goals. We
+developed in-ßight DMP modiÞcations to include joining of
+trajectories. The effectiveness of the approach is shown for
+different simulations and experiments in Section IV.
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 1747
+b
+x
+b
+z
+x
+z
+T
+?
+?
+B
+Fig. 1. SimpliÞed model of the quadrotor motion in the (x,z)-plane. The
+body frame is deÞned by the axes
+b
+x-
+b
+y-
+b
+z.
+II. MODELING AND OPTIMAL CONTROL
+A. Planar quadrotor model
+In this paper, we use a planar quadrotor model, see Fig.
+1. This is a well-established approach which can be found in
+[4], [11], [12], [13]. The attitude of the quadrotor is described
+by the angle? about the body axis
+b
+y,x andz are the position
+of the center of gravity in the inertial (x,z)-plane,
+ú
+? is the
+angular velocity about the
+b
+y-axis. The Þrst control input is
+the collective thrust divided by the quadrotorÕs massu
+1
+=
+T
+m
+.
+The second control input is u
+2
+=
+?
+J
+, where ? and J are the
+torque and inertia about the body y-axis, respectively. Using
+the state x = [x ú xz ú z?
+ú
+?]
+T
+and control u = [u
+1
+u
+2
+]
+T
+, the
+equations of motion for the planar model are
+¬ x =u
+1
+sin(?)
+¬ z =u
+1
+cos(?)?g
+¬
+? =u
+2
+.
+(1)
+It has previously been shown that the quadrotor system is
+differentially ßat [14]. This means that the control inputs u
+can be algebraically computed from desired accelerations.
+Furthermore, u, ?,
+ú
+? and
+¬
+? can be calculated from given
+desired accelerations ¬ x
+d
+,¬ z
+d
+. By algebraic manipulation we
+obtain
+u
+1
+=
+q
+(¬ z
+d
++g)
+2
++ ¬ x
+2
+d
+, (2)
+? = atan2(?¬ x
+d
+,g + ¬ z
+d
+), (3)
+where atan2 is the four-quadrant nonsingular variant of the
+arctangens function. The angular velocity ? =
+ú
+? can be
+derived by differentiating (3), for which the jerk is needed.
+Computing u
+2
+=
+¬
+? requires the second derivative of the
+acceleration (snap) of the trajectory. This shows that only
+the ßat output and its derivatives are needed for successful
+reproduction of a maneuver. Next we formulate optimal con-
+trol problems to compute the maneuvers using the presented
+model.
+B. Optimal control problem
+In the Þrst step of our approach, we solve a set of optimal
+control problems for a maneuver using model (1).
+DeÞnition 1 (Optimal control problem): Find a control
+u
+?
+which causes the system
+ú x =a(x(t),u(t)),
+with x?R
+n
+, u?R
+m
+, t? [t
+0
+,t
+f
+] subject to the inequality
+path constraints
+x
+min
+²x(t)²x
+max
+, u
+min
+²u(t)²u
+max
+,
+and the boundary conditions x(t
+0
+) = x
+0
+, x(t
+f
+) = x
+f
+, to
+follow a trajectoryx
+?
+that minimizes the optimality criterion
+J(x(t),u(t),t) =J
+M
+(x(t
+f
+),t
+f
+)+
+Z
+t
+f
+t0
+J
+L
+(x(t),u(t),t) dt.
+Model (1) can be rewritten as
+ú x =a(x,u) =
+?
+?
+?
+?
+?
+?
+?
+?
+ú x
+u
+1
+sin(?)
+ú z
+u
+1
+cos(?)?g
+ú
+?
+u
+2
+?
+?
+?
+?
+?
+?
+?
+?
+, (4)
+with constraints on the controls u = [u
+1
+u
+2
+]
+T
+deÞned as
+T
+m
+²u
+1
+²
+T
+m
+, |u
+2
+|²
+?
+J
+, (5)
+where T and T are the maximum and minimum thrust,
+respectively. ? is the maximum absolute torque. Table I
+shows the system parameters and constraints used throughout
+the paper.
+For the purposes of learning meaneuvers, we treat the
+solution of the optimal control problem as a black box.
+How the solution is obtained is not critical for the methods
+presented below. In this paper, we solve the optimal control
+problem numerically. We use the Matlab package GPOPS,
+which implements the Gauss pseudospectral method [15],
+[16], [17]. We are principally interested in the minimum
+time problem, hence J
+M
+= t
+f
+and J
+L
+= 0. However, the
+pseudospectral optimal solution may oscillate and overshoot
+for bang-bang type controls due to the Gibbs phenomenon.
+We therefore include a regularization term in the goal func-
+tion to obtain smoother controls. This is a consequence of
+using a pseudospectral solver. If a different solver is used,
+the regularization term may not be needed. Our Þnal goal
+function is therefore chosen as
+J(x(t),u(t),t) =t
+f
++
+Z
+t
+f
+0
+ 
+r
+1
+u
+2
+1
+(t)+r
+2
+u
+2
+2
+(t)
+
+dt, (6)
+where r
+1
+and r
+2
+are small regularization parameters. These
+are chosen experimentally to minimize the effect of GibbsÕ
+phenomenon, i.e. obtain smooth inputs. Using a general-
+purpose optimal control solver allows the deÞnition of ar-
+bitrary maneuvers with state and input constraints. GPOPS
+can e.g. also solve multi-phase problems. This allows each
+maneuver to contain any feasible states during the maneuver,
+e.g. both a velocity and pitch angle can be deÞned at a phase
+boundary.
+C. Maneuvers
+Although the approach presented in this paper is valid for
+general maneuvers, we investigated three kinds of maneuvers
+so far: point-to-point, perching, and ßip. A maneuver may
+contain multiple phases. In that case, a via condition is
+imposed, specifying the state at the respective phase bound-
+1748
+TABLE I
+SYSTEM PARAMETERS, STATE AND INPUT CONSTRAINTS USED FOR THE
+OPTIMAL CONTROL PROBLEM AND THE PLANAR QUADROTOR MODEL.
+System parameters State constraints Input constraints
+m = 0.5 kg
+ú
+x =
+ú
+z = 10 m/s T = 12 N
+J = 3?10
+?3
+kgm
+2
+ú x = ú z =?10 m/s T = 1 N
+g = 9.81 m/s
+2 ú
+? = 300
+?
+/s ? = 0.2 Nm
+ú
+? =?300
+?
+/s ? =?0.2 Nm
+TABLE II
+OVERVIEW OF MANEUVERS CONSIDERED IN THIS PAPER
+Maneuver Via condition End condition
+Point-to-point Ð
+p
+f
+= [xg zg 0]
+T
+ú p
+f
+= [000]
+T
+Perching Ð
+p
+f
+= [xg zg
+¹
+2
+]
+T
+ú p
+f
+= [000]
+T
+Flip p
+via
+= [x
+via
+z
+via
+¹]
+T
+p
+f
+= [xg 02¹]
+T
+ú p
+f
+= [000]
+T
+ary. The conditions are chosen intuitively by the maneuver
+designer.
+For notational simplicity we will deÞne the maneuver
+constraints through the position p = [xz?]
+T
+and velocity
+ú p = [ú x ú z
+ú
+?]
+T
+. All maneuvers start at initial conditions p
+0
+=
+[000]
+T
+, ú p
+0
+= [000]
+T
+, with the via and end conditions
+speciÞed in Table II. Fig. 2 shows the trajectories of three
+maneuvers considered in this paper.
+a) Point-to-point maneuver: The goal is to reach a
+desired location p
+f
+= [x
+g
+z
+g
+0]
+T
+in minimum time. Zero
+velocity is imposed at start and end of the maneuver.
+b) Perching maneuver: A perching maneuver is a spe-
+cial case of a point-to-point ßight with a nonzero Þnal
+attitude angle, for instance ?
+g
+= ±
+¹
+2
+. It illustrates that it
+is possible to deÞne Þxed states of the quadrotor at speciÞed
+instants of time. If a perching mechanism is available, the
+quadrotor would hold to a surface at the end of the maneuver.
+Otherwise, stabilization to hover must be done.
+c) Flip: During the maneuver, the quadrotor passes a
+speciÞc via point with the attitude of?
+via
+=¹ (upside down).
+In order to make a full rotation, we set the end pitch angle
+to be ?
+f
+= 2¹, with zero velocities to come to hover.
+For each maneuver, we solve the optimal control problem
+for a series of goal points p
+f
+. We obtain a set of optimal
+trajectories, which are learned using a representation that
+allows generalization to new goals.
+III. MANEUVER LEARNING AND GENERALIZATION
+A. Dynamic Movement Primitives
+Dynamic Movement Primitives (DMPs) were Þrst in-
+troduced in [10]. A DMP consists of a stable possibly
+nonlinear dynamic attractor system, which is perturbed by
+a learned external force such that the system performs a
+desired movement. Due to constant inertia of the quadrotor,
+the DMP system is linear in our case. The external force
+is represented as a Gaussian basis, enabling to learn and
+ 
+ 
+x [m]
+z [m]
+-0.5 0 0.5 1 1.5 2 2.5 3 3.5
+0
+0.5
+1
+1.5
+2
+2.5
+3
+(a) Point-to-point
+x [m]
+z [m]
+-0.5 0 0.5 1 1.5 2 2.5
+-2.5
+-2
+-1.5
+-1
+-0.5
+0
+0.5
+(b) Perching
+ 
+ 
+x [m]
+z [m]
+-1.5 -1 -0.5 0 0.5 1 1.5
+0
+0.5
+1
+1.5
+2
+2.5
+3
+(c) Flips
+x [m]
+z [m]
+0 0.5 1 1.5 2
+0
+tf
+0
+0.5
+1
+1.5
+2
+(d) Flip with different end state
+Fig. 2. Position trajectories of the maneuvers considered in this paper,
+obtained by a general-purpose optimal control solver. The color of the
+quadrotor contour corresponds to the deÞned instants of time at which
+a quadrotor is plotted. Fig. 2(a) shows point-to-point trajectories from
+p
+0
+= [000]
+T
+to different goal points. Fig. 2(b) depicts perching trajectories
+for different maximum angular velocities
+ú
+?. The values differ from the one
+speciÞed in Table I. Fig. 2(c) shows ßip trajectories for different ßip heights.
+Fig. 2(d) depicts a ßip trajectory with a via point and different goal point.
+approximate it from training data. Training trajectories can,
+for example, be obtained from a recorded movement, which
+is a common approach in the Þeld of imitation learning [10],
+[18], [19], from optimal control solutions [20] or any other
+type of trajectory generator. DMPs are applied to a variety
+of robotics problems [21], [22], [23], since they can produce
+both discrete or rythmic movements that can quickly be
+adapted to changes in a dynamic environment [24]. Different
+motion primitives have been applied to quadrotor helicopters
+in [11], [25], [26].
+We utilize the critically damped second-order mass-spring-
+damper formulation
+m¬ r +dú r +?(r?r
+g
+)+f
+t
+=0, (7)
+where r = [xyz]
+T
+is the trajectory in the ßat outputs,
+m is the quadrotor mass, ? > 0 is a stiffness parameter,
+d = 2
+Ã
+m? is the critical damping parameter, and f
+t
+=
+[f
+t,x
+f
+t,y
+f
+t,z
+]
+T
+is the trajectory force. We use all three spatial
+coordinates, since the planar maneuvers can be executed
+in an arbitrary vertical plane using a proper transformation
+of the force f
+t
+. For six degrees of freedom maneuvers,
+(7) can be extended by the yaw angle. By formulating the
+trajectory in this way, we can encode position r, velocity
+ú r, and acceleration ¬ r using only the learned force f
+t
+. The
+goal position r
+g
+allows the generalization of the movement
+primitive to new goals. For f = 0, it can be shown that r
+g
+is the asymptotically BIBO stable equilibrium.
+To learn and approximate the perturbation forcef
+t
+which
+1749
+is needed to produce a desired trajectoryr(t) using the mass-
+spring-damper system (7), f
+t
+is encoded into a normalized
+Radial Basis Function (RBF) with N basis functions [10]
+that is deÞned as
+f
+Å
+(s) =
+N
+P
+i=1
+w
+i
+?
+i
+(s)
+N
+P
+i=1
+?
+i
+(s)
+s, (8)
+where the Gaussian basis is deÞned as
+?
+i
+(s) = exp
+ 
+?h
+i
+(s?c
+i
+)
+2
+
+. (9)
+Its center points are located at
+c
+i
+= exp
+
+??
+s
+i?1
+N ?1
+
+. (10)
+The widths are deÞned as
+h
+i
+=
+
+?s
+(ci+1?ci)
+2
++?
+s
+, i = 1,...,N ?1,
+h
+N?1
+, i =N.
+(11)
+The parameters ?
+s
+> 0 and ?
+s
+are used to adjust the shape
+of the basis functions, and ?
+s
+> 0 determines the locations
+of their centers. The path parameter s is a normalized time
+coordinate. It is deÞned by the differential equation [18]
+ú s =?
+?
+s
+?
+t
+s, s(0) = 1, s(t
+f
+) = 0. (12)
+DeÞnition of the DMP through s enables temporal scaling
+of the trajectories. Furthermore, as s decreases towards zero,
+the perturbation forcef
+Å
+also decreases towards zero. Then,
+(7) is still a stable attractor. Here, ?
+t
+> 0 is an additional
+temporal scaling factor, which should not be mistaken with
+the duration t
+f
+of a movement. Within the learning process
+we set ?
+t
+= 1. For reproduction of learned trajectories it
+is used to apply temporal scaling. Note that (10) and (11)
+represent one possible choice for the centers and widths,
+which results for ?
+s
+6= 0 and the path parameter (12) in
+identical and equally distributed Gaussian basis functions
+with respect to time t [20].
+B. Learning and optimization
+The basis function approximation of the target force is
+linearly dependent on the weights. Therefore, it can be
+written as
+Aw =f
+Å
+Åf
+t
+, (13)
+where
+A =
+?
+?
+?
+?
+?
+?
+?
+?1(s1)
+N
+P
+i=1
+?i(s1)
+s
+1
+...
+?N(s1)
+N
+P
+i=1
+?i(s1)
+s
+1
+... ... ...
+?1(sM)
+N
+P
+i=1
+?i(sM)
+s
+M
+...
+?N(sM)
+N
+P
+i=1
+?i(sM)
+s
+M
+?
+?
+?
+?
+?
+?
+?
+. (14)
+Here, s
+j
+denotes the value of the path parameter at t =
+j?t, with ?t being the trajectory sampling step, and M the
+number of samples. The least-squares goal function
+? =
+M
+X
+i=1
+(f
+t,i
+?f
+Å,i
+)
+2
+N
+M
+[?]
+eRMS [?]
+eRMS
+e
+?
+RMS
+0.05 0.1 0.2 0.35 0.5 0.64 0.79 0.99 1
+10
+?10
+10
+?5
+10
+0
+10
+5
+Fig. 3. Root mean square Þtting error of the DMP forcef
+t
+using different
+number of basis functions with (e
+?
+RMS
+) and without (e
+RMS
+) optimized
+parameters ?s , ?s , ?s . The parameters are optimized on a family of R
+trajectories. Parameter optimization can improve the Þtting by several orders
+of magnitude.
+can thus be optimized by the left Moore-Penrose pseudo-
+inverse, i.e. linear regression
+w
+?
+=A
++
+f
+t
+. (15)
+The quality of the approximation depends signiÞcantly
+on ?
+s
+, ?
+s
+, ?
+s
+, ö ?, and N. In practice, ö ? and N have to
+be adjusted manually such that the target force f
+t
+is not
+oscillating. Additionally, to reproduce the original input data
+with higher accuracy, an optimization [27] of the three tuning
+parameters ?
+s
+, ?
+s
+, ?
+s
+, that minimizes the goal function ?,
+was done using the Matlab function fmincon. Since this
+provides only local convergence, a good initial parameter
+estimate is needed. The effect of using optimized parameters
+on the Þtting accuracy is shown in Fig. 3. Fig. 4 illustrates
+the learning scheme for Þtting one training trajectory.
+C. Reproduction of trajectories
+Having obtained the optimal weights w
+?
+i
+of the Gaussian
+basis, the learned trajectory can be reproduced by numeri-
+cally integrating
+m¬ r =?
+ö
+d(t)ú r? ö ?(t)(r?r
+g
+)?f
+Å
+, (16)
+with initial conditions ú r(0) = ú r
+0
+,r(0) =r
+0
+. Here,
+ö
+d(t) and
+ö ?(t) are time-varying damping and stiffness deÞned below.
+We use the approximated perturbation forcef
+Å
+as an input.
+For reproduction, we note that the trajectory will reach the
+goal also for nonzero initial conditions r
+0
+and ú r
+0
+. This
+feature is heavily used in imitation learning [10], [18], [19].
+However, we avoid this approach since the learned optimal
+solutions are only valid for the respective initial conditions.
+We extend the DMP approach presented above with a time-
+varying stiffness ö ?(t), which is continuously increasing and
+bounded, instead of being constant [20]. This attenuates
+the problem of the spring term ?(x(t = 0)?x
+g
+) in (7),
+which produces a jump in the acceleration at the start of the
+trajectory. We use the stiffness
+ö ?(t) =?
+
+1?exp
+
+?
+t
+kt
+f
+
+, (17)
+wherein k is a positive constant tuning parameter, ? is the
+upper bound of the resulting stiffness and t
+f
+is the duration
+of the trajectory. The damping
+ö
+d(t) = 2
+Ã
+mö ? then also
+becomes time-varying to maintain critical damping along the
+trajectory. For a maneuver that exceeds t
+f
+, ö ?(t) converges
+1750
+Input: training trajectory x(t)
+(with duration tf and time step ?t)
+Set
+¥ mass m,
+¥ number of Gaussians N,
+¥ parameters for time-varying stiffness ö ?(t),
+¥ initial parameters ?
+(0)
+s
+, ?
+(0)
+s
+, ?
+(0)
+s
+.
+Compute
+¥ time-varying stiffnessb ?(t) and damping
+b
+d(t),
+¥ target force f
+t
+.
+Compute
+¥ path parameter s,
+¥ Gaussians ?i(s) with centers ci and widths hi ,
+¥ regression matrix A,
+¥ Gaussian weights wi (using linear regression),
+¥ approximated force fÅ ,
+¥ least-squares objective function ?.
+Converged or
+? below error
+tolerance?
+Adjust parameters
+?s , ?s , ?s using
+update rule of
+optimization algorithm
+Output: optimal weights w
+?
+i
+and parameters ?
+?
+s
+, ?
+?
+s
+, ?
+?
+s
+yes
+no
+Optimization loop
+Fig. 4. Flowchart of the complete learning scheme including an optimiza-
+tion loop for the Gaussian basis functions.
+to the upper bound ?. The parameter k can be obtained
+by evaluating (17) for ?(t) = ?
+d
+(t
+d
+), i.e. setting a desired
+stiffness ?
+d
+at a speciÞed time t
+d
+.
+Furthermore, DMPs allow spatial scaling by a factor ?
+s
+and temporal scaling by a factor ?
+t
+. The scaled trajectory ÷ r
+will then be
+m?
+2
+t
+?
+s
+¬
+÷ r(?
+t
+t) =?
+ö
+d?
+t
+?
+s
+ú
+÷ r? ö ?(?
+s
+÷ r?r
+g
+)?f
+Å
+. (18)
+The trajectory is reproduced by numerically integrating (18)
+up to time ?
+t
+t
+f
+. For consistency, the temporal scaling factor
+?
+t
+has to be equal for the dynamic system (18) and for the
+path parameter s in (12).
+D. Generalization to new goals
+Using the DMP approach, it is possible to generalize the
+learned trajectories to new goals. By storing optimal control
+solutions for a spatial grid of goal points, we can generalize
+the DMP force for a new goal: for each point on the grid,
+we store the corresponding weightsw and trajectory duration
+t
+f
+(see Fig. 5(a)). Before Þtting, all trajectories are scaled
+to a common duration t
+0
+with ?
+t
+= t
+0
+/t
+f
+. For any new
+goal not on the grid, we use bilinear interpolation of the
+weights and the duration. Thereby we obtain the force f
+Å
+and time scaling parameter for the new goal. Hence, to adjust
+the trajectory to a new goal r
+g
+, the weights used in f
+Å
+are
+interpolated from existing approximations. Each trajectory in
+the grid is represented by a DMP. In effect, we interpolate
+x [m]
+z [m]
+tf [s]
+tf [s]
+-4
+-2
+0
+2
+4
+0
+0.2
+0.4
+0.6
+0.8
+1
+1.2
+1.4
+1.6
+-4
+-2
+0
+2
+4
+0
+0.5
+1
+1.5
+2
+(a) Surface plot of durations t
+f
+with respect to position in the
+(x,z)-plane obtained from training
+data using bicubic interpolation.
+x [m]
+z [m]
+-0.5 0 0.5 1 1.5 2 2.5 3 3.5
+0
+tf
+0
+0.5
+1
+1.5
+2
+2.5
+3
+(b) Selected four point-to-point
+trajectories with a Þfth one in-
+between.
+Fig. 5. Interpolation of the weights from a mesh of point-to-point training
+trajectories. Only trajectories for x³ 0 were computed, since the solutions
+are symmetric with respect to thez-axis. Fig. 5(a) shows a three-dimensional
+plot of the durations t
+f
+with respect to the x- and z-positions of the
+trajectory goals, motivating the bilinear interpolation of the durations. The
+four trajectories in Fig. 5(b) were selected to show the bilinear interpolation
+used to generate the trajectory to the point in-between.
+a new DMP for the new goal. This allows to cover a larger
+range of trajectories than with a simple DMP generalization
+approach. This requires that all solutions on the grid have
+the same number of basis functions. Therefore, we run batch
+Þtting and parameter optimization for all trajectories on the
+grid. In this way, the obtained parameters will be optimal
+for the entire set of learned trajectories. The interpolated
+trajectory for a point inside a grid is shown in Fig. 5(b). This
+approach assumes linear behavior of the trajectory duration
+between the grid points. The assumption is a valid if the
+trajectories satisfy smoothness properties between the grid
+points.
+E. Joining of Trajectories
+In order to generate a sequence of maneuvers, the tra-
+jectories produced by DMPs can be joined. Use cases are
+for instance a ßight through via points, a double ßip, or
+switching from the current trajectory to a different one. The
+latter implies that the goal point of the Þrst trajectory is
+not reached yet. In the simplest case, the trajectories can
+be sequentially reproduced. This approach is referred to as
+simple joining [28], which leads to zero velocity at the
+transition point. A jump in acceleration also occurs due to
+the abruptly altered goal. This problem can be overcome by
+reformulating the DMP as a third-order system [28], [29].
+Two DMPs can then be smoothly joined by overlapping the
+Gaussian basis kernels [28] or by explicitly calculating the
+initial conditions of the second DMP [29]. Alternatively, the
+second-order DMP weights can be adapted online [29].
+To avoid acceleration discontinuities when joining, we
+use an attractor to blend the goal positions at the transition
+point. The novel approach is inspired by proxy-based control
+[30], [31]. There, a virtual proxy object is attached to the
+controlled object in order to smoothly recover from large
+position errors. For joining, we blend the goalr
+g
+fromr
+g,1
+to r
+g,2
+using the system
+m
+p
+¬ r
+g
++
+ö
+d
+p
+ú r
+g
++ ö ?
+p
+(r
+g
+?r
+g,2
+) =0, (19)
+where m
+p
+is the proxy mass, ö ?
+p
+is the time-varying proxy
+stiffness and
+ö
+d
+p
+is the time-varying proxy damping. Con-
+1751
+xg [m] zg [m] ?
+t
+[-]
+t[s]
+x
+g,i
+xg
+z
+g,i
+zg
+?
+t,i
+?
+t
+0 0.5 1 1.5 2 2.5 3 3.5 4
+2
+2.2
+2.4
+0
+0.5
+1
+1
+2
+3
+(a) Blending of the goal positions
+xg (top), zg (middle) and the tem-
+poral scaling factor ?t (bottom).
+z [m] ú z [m/s] ¬ z[m/s
+2
+]
+t[s]
+z z
+j
+¬ z ¬ z
+j
+ú z ú z
+j
+0 0.5 1 1.5 2 2.5 3 3.5 4
+0 0.5 1 1.5 2 2.5 3 3.5 4
+-20
+0
+20
+-2
+0
+2
+-1
+0
+1
+(b) Resulting joined trajectory in
+z-direction (top) with velocities ú z
+(middle) and accelerations ¬ z (bot-
+tom).
+fÅ,x [N]
+t[s]
+fÅ,z [N]
+t[s]
+fÅ,x
+f
+Å,x,j
+fÅ,z
+f
+Å,z,j
+0 0.5 1 1.5 2 2.5 3 3.5 4 0 0.5 1 1.5 2 2.5 3 3.5 4
+-20
+-10
+0
+10
+0
+20
+40
+60
+(c) Blending of the external perturbation forces fÅ,x (left) and fÅ,z
+(right).
+Fig. 6. Joining of two trajectories given in relative coordinates from(0,0)
+T
+to (1,1)
+T
+witht
+f,1
+= 2.5 s and from (0,0)
+T
+to (2,?1)
+T
+witht
+f,2
+= 2 s.
+The two trajectories were joined at t
+j
+= 0.6t
+f,1
+= 1.5 s. To obtain smooth
+blending of the goal positions (xg,zg)
+T
+, the temporal scaling factor?t and
+the perturbation forces fÅ,x , fÅ,z , attractors of type (19) were used. For
+comparison, the trajectory generated using simple joining without blending
+is also shown in all plots (-).
+stant parameters can also be used, although time-varying
+parameters produce smoother results. The initial conditions
+are r
+g
+(0) = r
+g,1
+and ú r
+g
+(0) = 0. System (19) is simulated
+for 0 < t
+j
+< t
+f,1
+, while reproduction of the second DMP
+starts at t
+j
+. Duration of the joined trajectory is therefore be
+t
+f
+=t
+j
++t
+f,2
+. Hence, we start blending the second trajectory
+before reproduction of the Þrst one is Þnished.
+Fig. 6 shows the blended goal, DMP forces and z-
+coordinate for simple joining and proxy-based joining.
+Clearly, proxy-based joining produces a continuous result.
+IV. ANALYSIS AND EXPERIMENTAL RESULTS
+A. Trajectory generalization
+In order to select an appropriate grid size for a given
+maneuver, we evaluated the DMP generalization error for
+various grid sizes (for the point-to-point and perching ma-
+neuvers). Figs 7(a) and 7(b) depict the evaluated generalized
+points for the two maneuvers. We chose the center point of
+the grid and edge midpoints where the expected errors are
+largest. An optimal solution was obtained for each of the
+evaluated points for comparison. The generalization error
+is shown in Fig. 7. We compare the cost function of the
+generalized trajectory to the optimal one. The increase is
+shown in relative terms, as
+÷
+J
+i
+= (J
+dmp,i
+?J
+opt
+)/J
+opt
+. We
+additionally show the RMS of all considered points
+÷
+J
+all
+to evaluate the total generalization error for the grid size.
+Additionally, we provide the RMS error of the generalized
+(x,z) position trajectory w.r.t. the optimal one.
+For both maneuvers the trajectory error e
+RMS
+rises ex-
+ponentially with grid size. However, the cost function is a
+better indicator of the generalization error. The point-to-point
+x [m]
+z [m]
+0 2 4
+0
+1
+2
+3
+(a) Mesh for the point-to-point ma-
+neuver
+x [m]
+z [m]
+0 2 4
+-1
+0
+1
+2
+3
+(b) Mesh for the perching maneuver
+Relative cost function increase
+÷
+J
+? mesh [m]
+? mesh [m]
+e RMS [m]
+0 0.5 1 1.5 2 2.5 3
+0 0.5 1 1.5 2 2.5 3
+0
+0.005
+0.01
+0.015
+0.02
+0.025
+0.03
+0.035
+0.02
+0.03
+0.04
+0.05
+0.06
+0.07
+0.08
+(c) Point-to-point generalization
+error
+Relative cost function increase
+÷
+J
+? mesh [m]
+? mesh [m]
+e RMS [m]
+0 0.5 1 1.5 2 2.5 3
+0 0.5 1 1.5 2 2.5 3
+0
+0.02
+0.04
+0.06
+0.08
+0.1
+0.12
+0
+2
+4
+6
+8
+10
+12
+14
+16
+18
+20
+(d) Perching generalization error
+Fig. 7. Generalization error for the maneuvers. Figs. (a) and (b) show the
+trajectory shape from (0,0) to different goal points. The markers represent
+the interpolation points. Figs. (c) and (d) show the generalization errors
+of the corresponding interpolation points for different grid sizes ?
+mesh
+.
+The thick dashed line in (c) and (d) shows the RMS of all trajectory
+errors
+÷
+J
+all
+. For the point-to-point maneuver (a), the cost function of the
+generalized trajectories remains constant through various mesh size, even
+though the (x,z) trajectory error e
+RMS
+rises exponentially. In contrast, the
+perching maneuver (b) is very sensitive to grid size. At 3 m grid size, the
+maximum cost function increase is 20-fold, for the leftmost generalized
+point. Accordingly, the RMS of all cost functions increases 9-fold. Here,
+the trajectory error e
+RMS
+shows the same behaviour as in the point-to-point
+maneuver. Hence, smaller grid sizes should be used for highly dynamic
+maneuvers.
+maneuver is mostly invariant to the grid size, as the cost
+function increase remains almost constant through all grid
+sizes, at about 5% above the optimal one. Generalization on
+the edges degrades with grid size, and generalization in the
+center of the grid remains almost constant. This could be
+explained by mostly polynomial control inputs for this type
+of maneuver, which can be nicely spatially scaled.
+The perching maneuver shows exponential increase in the
+cost function, dominated by the error in the left grid edge.
+This indicates that the maneuverÕs generalization accuracy
+is very sensitive to grid size. The control inputs for the
+maneuver are nonlinear and obviously do not lend themselves
+to spatial scaling. Hence, for complex maneuvers a smaller
+grid size should be used.
+B. Experimental and simulation results
+The experiments were carried out using an AscTec Hum-
+mingbird quadrotor with a custom quaternion-based attitude
+controller with disturbance observation. The position and
+1752
+goal
+start
+goal 2
+start
+goal 1
+goal
+start
+Fig. 8. Composite photos of the performed experiments that can be seen
+in the video attachment. From left to right: point-to-point maneuver; two
+joined point-to-point maneuvers; perching maneuver.
+t[s]
+?[deg]
+?
+d
+?
+8 8.5 9 9.5 10 10.5 11 11.5
+-50
+-40
+-30
+-20
+-10
+0
+10
+20
+30
+40
+(a) Euler Angle ?.
+x[m]
+z[m]
+r
+d
+r
+-1 -0.5 0 0.5 1 1.5
+0.4
+0.5
+0.6
+0.7
+0.8
+0.9
+1
+1.1
+(b) Referencer
+d
+and actual trajec-
+tory r in the (x,z)-plane.
+Fig. 9. Experimental results of Þve point-to-point maneuvers in minimum
+time. It can be seen that the model inaccuracies lead to large deviations
+for fast maneuvers. Optimal J opt = 2.004? 10
+3
+, experimental J exp =
+3.036?10
+3
+. During the maneuver, the velocity reaches 3.9 m/s att = 9.2 s.
+attitude are measured using an external A.R.T. tracking
+system running at 60 Hz. A marker is rigidly attached
+to the quadrotor frame. The IMU measurement range is
+limited to 300
+?
+/s, therefore our trajectories were computed
+accordingly. The DMP reproduction and position controller
+are running in Simulink, with attitude and thrust commands
+sent wirelessly via XBee. The maneuvers were ßown in the
+(x,z)-plane. Simulations were carried out in Simulink, using
+a full six-degrees of freedom quadrotor model.
+Fig. 8 depicts composite photos of the performed exper-
+iments. We show extensions to the DMP approach using
+the point-to-point maneuver. The perching maneuver was
+reproduced without perching mechanism, so the quadrotor
+was commanded to stabilize at the end of the trajectory.
+Fig. 9 shows the pitch Euler angle and the (x,z)-trajectory
+during Þve point-to-point maneuvers. The limiting factor
+in the experiment is the angular velocity due to the IMU.
+The maximum angle is thus 45
+?
+during the maneuver. The
+trajectory shows large position overshoot at the end of the
+trajectory. Since the velocity reaches 3.9 m/s during the
+maneuver, unmodeled aerodynamics come into effect and
+diminish the tracking accuracy.
+The simulation of trajectory joining in Fig. 10 shows the
+difference between simple joining (attaching two trajectories)
+and the joining method presented in this paper. Simple
+joining results in zero velocity at the joining point. Hence,
+the trajectories are just reproduced one after the other. The
+trajectory stops in the rightmost circle in Fig. 10(a). With
+our joining method, at t
+0,2
+= 0.6t
+f,1
+, the trajectory velocity
+is nonzero at the joining point. Larger accelerations are
+produced than in simple joining. However, the trajectory
+quickly converges to the reproduced one. The trajectory stops
+in the lefttmost circle in Fig. 10(a). Proxy-based joining
+clearly produces smooth trajectories, and leads to the same
+Þnal position as simple joining. Fig. 10 depicts a proxy-
+based joining experiment. The same effect at the end of
+t[s]
+?[deg]
+?
+d ?
+?
+d,s ?s
+start of
+second
+trajectory
+5 6 7 8 9 10 11
+-30
+-20
+-10
+0
+10
+20
+30
+40
+(a) Simulated Euler Angle ?.
+x[m]
+z[m]
+r
+d,s rs
+r
+d,j
+r
+j
+start of second
+trajectory
+simple
+joining
+-0.5 0 0.5 1 1.5 2 2.5
+0.6
+0.8
+1
+1.2
+1.4
+1.6
+(b) Simulated reference and trajec-
+tories for simple joining (r
+d,s
+, rs )
+and proxy-based joining (r
+d,j
+,r
+j
+).
+t[s]
+?[deg]
+?
+d
+?
+6 7 8 9 10
+-40
+-30
+-20
+-10
+0
+10
+20
+30
+(c) Experimental Euler Angle ?.
+x[m]
+z[m]
+r
+d
+r
+-1.5 -1 -0.5 0 0.5 1 1.5
+0.4
+0.6
+0.8
+1
+1.2
+1.4
+1.6
+(d) Experimental reference and tra-
+jectory for proxy-based joining.
+Fig. 10. Simulation and experimental results of joined and simple point-
+to-point maneuvers. The maneuvers were joined at 0.6t
+f,1
+for proxy-based
+joining, and at 1.2t
+f,1
+for simple joining. Circles mark the start of a
+trajectory, and the cross marks the end of a maneuver.
+the trajectory can be seen as in the point-to-point maneuver,
+owing to unmodeled aerodynamics.
+Fig. 11 shows simulation and experimental results for
+the perching maneuver. The attitude controller dynamics are
+not considered in the model used for trajectory generation.
+Therefore, the desired pitch angle of 90
+?
+was not reached
+exectly in simulation nor experiment. This indicates that
+either the controller dynamics have to be considered in the
+trajectory generation, or a method for improving trajectory
+execution is required.
+C. A comment on computational complexity
+We shortly outline the computational complexity for a grid
+of K trajectories, each approximated with N basis funtions,
+and sampled at M points. Ofßine, the optimal trajectory has
+to be computed K times, and a KM ?N matrix must be
+pseudo-inverted. We obtain K ? N weights to be stored.
+For online reproduction Þrst the interpolation weights are
+obtained. The exp(á) function must be evaluatedN times for
+each integration step. Hence, the computational complexity
+during reproduction depends on the integration time step and
+number of basis functions.
+V. CONCLUSION
+In this paper we presented a novel method for learning
+optimal control solutions and generalizing them in real-
+time for a quadrotor-type vehicle with ßat dynamics. The
+generalization is based on an adapted DMP approach. More
+speciÞcally, our algorithm encodes a grid of optimal solu-
+tions that were generated ofßine into a dynamical system
+of second order. The trained DMP is then able to gener-
+alize to unforeseen goal states instantaneously via weight
+intrapolation. The effectiveness of the approach was shown
+in simulations and experiments.
+1753
+t[s]
+?[deg]
+?
+d
+?
+3.5 4 4.5 5 5.5 6 6.5 7
+-20
+0
+20
+40
+60
+80
+(a) Simulated Euler Angle ?.
+x[m]
+z[m]
+r
+d
+r
+-0.5 0 0.5 1 1.5 2 2.5
+0
+0.2
+0.4
+0.6
+0.8
+1
+1.2
+1.4
+1.6
+1.8
+(b) Reference r
+d
+and simulated
+trajectory r.
+t[s]
+?[deg]
+?
+d
+?
+7.5 8 8.5 9 9.5 10 10.5 11 11.5 12
+-20
+0
+20
+40
+60
+80
+(c) Experimental Euler Angle ?.
+x[m]
+z[m]
+r
+d
+r
+-0.8 -0.6 -0.4 -0.2 0 0.2 0.4 0.6 0.8 1
+0.2
+0.4
+0.6
+0.8
+1
+1.2
+1.4
+1.6
+(d) Referencer
+d
+and experimental
+trajectory r.
+Fig. 11. Simulation and experimental results of perching maneuver to
+(1.8 m,0 m,0.6 m). The circle marks start of the maneuver, and the cross
+marks its end. The attitude controller dynamics are not considered in the
+model used for trajectory generation. Therefore, the goal attitude ?g =
+¹
+2
+was not reached in simulation nor experiment.
+Analysis has shown that for rather complex maneuvers,
+such as perching, a smaller grid size should be used to obtain
+good generalization properties. The point-to-point maneuver
+generalization error was shown to be mostly invariant to
+grid size. Furthermore, we presented a real-time approach
+to trajectory joining by proxy-based blending of trajectory
+parameters. This makes it possible to seamlessly combine
+partial solutions to more sophisticated maneuvers.
+Our next steps are to perform a thorough analysis of
+the limitations of the presented approach. We will also
+compare other DMP joining methods with the presented one.
+Furthermore, the approach presented in this paper is fully
+applicable to 6-DOF maneuvers, which we intend to validate.
+ACKNOWLEDGMENTS
+This work has been partially funded by the European Com-
+missions Sixth Framework Programme as part of the project
+SAPHARI (grant number 287513). The authors would like to
+thank R. Weitschat, F. Huber, R. Belder, G. Falconi, C. Heise
+and F. Holzapfel for helpful comments and discussions.
+REFERENCES
+[1] T. Tomi« c, K. Schmid, P. Lutz, A. Domel, M. Kassecker, E. Mair,
+I. Grixa, F. Ruess, M. Suppa, and D. Burschka, ÒToward a Fully
+Autonomous UA V: Research Platform for Indoor and Outdoor Urban
+Search and Rescue,Ó IEEE Robotics Automation Magazine, vol. 19,
+no. 3, pp. 46 Ð 56, 2012.
+[2] K. Schmid, T. Tomi« c, F. Rue§, H. Hirschm¬ uller, and M. Suppa, ÒStereo
+Vision Based Indoor/Outdoor Navigation for Flying Robots,Ó in IROS,
+2013.
+[3] D. Mellinger and V . Kumar, ÒMinimum snap trajectory generation and
+control for quadrotors,Ó in ICRA, 2011, pp. 2520 Ð 2525.
+[4] J. Gillula, H. Huang, M. Vitus, and C. Tomlin, ÒDesign of guaranteed
+safe maneuvers using reachable sets: Autonomous quadrotor aerobatics
+in theory and practice,Ó in ICRA, 2010, pp. 1649 Ð 1654.
+[5] M. Hehn and R. DÕAndrea, ÒQuadrocopter trajectory generation and
+control,Ó in Proceedings of the IFAC World Congress, 2011.
+[6] ÑÑ, ÒReal-time trajectory generation for interception maneuvers with
+quadrocopters,Ó in IROS, 2012, pp. 4979 Ð 4984.
+[7] R. Ritz, M. M¬ uller, M. Hehn, and R. DÕAndrea, ÒCooperative quadro-
+copter ball throwing and catching,Ó in IROS, 2012, pp. 4972 Ð 4978.
+[8] M. Hehn, R. Ritz, and R. DÕAndrea, ÒPerformance benchmarking of
+quadrotor systems using time-optimal control,Ó Autonomous Robots,
+vol. 33, no. 1-2, pp. 69 Ð 88, 2012.
+[9] S. Haddadin, R. Weitschat, F. Huber, M. C. Oezparpucu, N. Mansfeld,
+and A. Albu-Schaeffer, ÒOptimal control for viscoelastic robots and its
+generalization in real-time,Ó in International Symposium on Robotics
+Research (ISRR2013), Singapore, 2013.
+[10] A. Ijspeert, J. Nakanishi, and S. Schaal, ÒMovement imitation with
+nonlinear dynamical systems in humanoid robots,Ó in ICRA, 2002, pp.
+1398 Ð 1403.
+[11] S. Lupashin, A. Schoellig, M. Sherback, and R. DÕAndrea, ÒA simple
+learning strategy for high-speed quadrocopter multi-ßips,Ó in ICRA,
+2010, pp. 1642 Ð 1648.
+[12] O. Purwin and R. DÕAndrea, ÒPerforming aggressive maneuvers using
+iterative learning control,Ó in ICRA, 2009, pp. 1731 Ð 1736.
+[13] R. Ritz, M. Hehn, S. Lupashin, and R. DÕAndrea, ÒQuadrocopter
+performance benchmarking using optimal control,Ó in IROS, 2011, pp.
+5179 Ð 5186.
+[14] H. Sira-Ramirez and S. Agrawal, Differentially Flat Systems. Marcel
+Dekker Inc, 2004.
+[15] C. Darby, W. Hager, and A. Rao, ÒAn hp-adaptive pseudospectral
+method for solving optimal control problems,Ó Optimal Control Ap-
+plications and Methods, vol. 32, pp. 476 Ð 502, 2010.
+[16] A. Rao and D. Benson, UserÕs Manual for GPOPS Version 5.0:
+A MATLAB Software for Solving Multiple-Phase Optimal Control
+Problems Using hp-Adaptive Pseudospectral Methods, August 2011.
+[17] A. Rao, D. Benson, C. Darby, M. Patterson, C. Francolin, I. Sanders,
+and G. Huntington, ÒAlgorithm 902: GPOPS, a MATLAB software for
+solving multiple-phase optimal control problems using the gauss pseu-
+dospectral method,Ó ACM Transactions on Mathematical Software,
+vol. 38, no. 1, p. 9, 2011.
+[18] P. Pastor, H. Hoffmann, T. Asfour, and S. Schaal, ÒLearning and
+generalization of motor skills by learning from demonstration,Ó in
+ICRA, 2009, pp. 763 Ð 768.
+[19] S. Schaal, J. Peters, J. Nakanishi, and A. Ijspeert, ÒControl, planning,
+learning, and imitation with dynamic movement primitives,Ó Univer-
+sity of Southern California, Tech. Rep., 2003.
+[20] R. Weitschat, S. Haddadin, , F. Huber, and A. Albu-Sch¬ affer, ÒDy-
+namic optimality in real-time: A learning framework for near-optimal
+robot motions,Ó in IROS, 2013.
+[21] J. Kober, K. M¬ ulling, O. Kr¬ omer, C. Lampert, B. Sch¬ olkopf, and
+J. Peters, ÒMovement templates for learning of hitting and batting,Ó in
+ICRA, 2010, pp. 853 Ð 858.
+[22] P. Kormushev, S. Calinon, and D. Caldwell, ÒRobot motor skill
+coordination with EM-based reinforcement learning,Ó in IROS, 2010,
+pp. 3232 Ð 3237.
+[23] B. Nemec, M. Zorko, and L. Zlajpah, ÒLearning of a ball-in-a-cup
+playing robot,Ó in Proceedings of the International Workshop on
+Robotics in Alpe-Adria-Danube Region, 2010, pp. 297 Ð 301.
+[24] S. Schaal, ÒDynamic movement primitives a framework for motor
+control in humans and humanoid robotics,Ó University of Southern
+California, Tech. Rep., 2003.
+[25] A. Schoellig, M. Hehn, S. Lupashin, and R. DAndrea, ÒFeasiblity of
+motion primitives for choreographed quadrocopter ßight,Ó in American
+Control Conference, 2011, pp. 3843 Ð 3849.
+[26] A. Schoellig, C. Wiltsche, and R. DAndrea, ÒFeed-forward parameter
+identiÞcation for precise periodic quadrocopter motions,Ó in American
+Control Conference, 2012, pp. 4313 Ð 4318.
+[27] A. Gams, T. Petric, L. Zlajpah, and A. Ude, ÒOptimizing parameters
+of trajectory representation for movement generalization: Robotic
+throwing,Ó in Proceedings of the International Workshop on Robotics
+in Alpe-Adria-Danube Region, 2010, pp. 161 Ð 166.
+[28] T. Kulvicius, K. Ning, M. Tamosiunaite, and F. W¬ org¬ otter, ÒJoining
+movement sequences: ModiÞed dynamic movement primitives for
+robotics applications exempliÞed on handwriting,Ó IEEE Transactions
+on Robotics, vol. 28, pp. 145 Ð 157, 2012.
+[29] B. Nemec and A. Ude, ÒAction sequencing using dynamic movement
+primitives,Ó Robotica, vol. 30, pp. 837Ð846, 9 2012.
+[30] M. V . Damme, B. Vanderborght, R. V . Ham, B. Verrelst, F. Daerden,
+and D. Lefeber, ÒProxy-based sliding mode control of a manipulator
+actuated by pleated pneumatic artiÞcial muscles,Ó in ICRA, 2007, pp.
+4355 Ð 4360.
+[31] R. Kikuuwe, S. Yasukouchi, H. Fujimoto, and M. Yamamoto, ÒProxy-
+based sliding mode control: A safer extension of PID position control,Ó
+IEEE Transactions on Robotics, vol. 26, no. 4, pp. 670 Ð 683, August
+2010.
+1754

@@ -1,0 +1,826 @@
+Action Selection for Touch-based Localisation Trading Off Information
+Gain and Execution Time
+Niccol´ o Tosi
+1
+, Olivier David
+1
+and Herman Bruyninckx
+2
+Abstract— In the context of touch-based object localisation,
+solving the problem of ”where to sense next” is a challenging
+task due to the curse of dimensionality related to belief-state
+reasoning. We present a constrained optimisation scheme that
+computes the next best action maximising the trade off between
+(i) the localisation information gain, (ii) the time required for its
+computation, and (iii) the motion-execution time. This allows
+the robot programmer to have a deterministic inﬂuence on
+the length of every sensing action. The proposed methodology
+is applied to localise a solid object in 3D using a Staubli
+RX90 robot equipped with a force-torque sensor coupled with
+a spherical end effector. A case-study comparison of the task
+executed with two different time constraints is presented.
+I. INTRODUCTION
+Performing scene-model calibration with efﬁciency is a
+major concern for tele-operation applications such as those
+depicted in [1]. In particular, in case of harsh environments
+it is necessary to cope with highly-soiled scenes, e.g. by
+dust, mud and dirty water, which may impede camera-based
+and tactile-based calibration. In this context, force sensing
+widens the set of scenarios in which object localisation is
+made possible, both as a stand-alone tool and as part of a
+multi-sensor system. Speciﬁcally, force sensing is preferred
+over tactile sensing as its performance is less dependent
+on the ﬁnesse of the touched surface and the scale of the
+interaction forces are in the range of 1000N. For the same
+reason, compliant motion may not always be feasible for
+such applications.
+In literature, several works have studied the problem of
+processing force information to infer object pose [2][3].
+However, the problem of ”where to sense next” is still a ma-
+jor challenge for nowadays robotics research. In particular,
+state-of-the-art techniques tackle this problem by selecting
+the action that maximises the expected information gain
+among a set of feasible candidates [4][5]. Since making
+decision in belief state is computationally expensive, follow-
+ing such a pure info-driven approach may cause the robot
+to stay still for a long time before performing any useful
+info-gathering action, while signiﬁcant information could be
+obtained following less-optimal but cheaper solutions.
+Driven by the need to speed up the whole localisation
+process, we present a new decision-making scheme in which
+*This work was sponsored by CEA, LIST, Interactive Robotics Labora-
+tory, France
+1
+Niccol´ o Tosi and Olivier David are with CEA, LIST, Interac-
+tive Robotics Laboratory Rue Noetzlin F-91190 Gif Sur Yvette, France
+fniccolo.tosigfodavidg@cea.fr
+2
+Herman Bruyninckx is professor at the Department of
+Mechanical Engineering, University of Leuven, Belgium
+herman.bruyninckx@mech.kuleuven.be
+the time to reason and execute the next action becomes a
+design parameter to be set explicitly. This allows to tune the
+robot attitude from fully speculative to purely action-driven.
+This paper is organised as follows: Section II summarises
+the state of the art on touch-based localisation and ac-
+tive force sensing; Section III presents the action selection
+methodology; Section IV describes the robot implementa-
+tion.
+II. LITERATURE REVIEW
+A. Touch-based Localisation
+In the early 80s, 3D and 6D polyhedral-object localisation
+was performed using interpretation trees [6], [7]. Then,
+probabilistic schemes were developed to accomplish the
+localisation accounting for geometric and measurement un-
+certainties. Though powerful, probabilistic approaches tend
+to become computationally expensive as the problem com-
+plexity increases with the initial uncertainty and the number
+of DOFs. In order to limit the size of the problem, previous
+works analysed touch-based localisation reducing either or
+both the number of DOFs and the search space dimensions.
+In 2001, Gadeyne et al. [8] performed cube localisation
+in 3DOFs by sampling the solution space and processing
+force-sensor information. In 2005, Gadeyne et al. [2] adopted
+sequential Monte Carlo sampling to estimate contact-state
+formations during cube-in-corner operations using force
+sensing. In 2006, Petrovskaya et al. [3] peformed 6DOF
+force-based localisation with uncertainty of 400mm in po-
+sition and 360 deg in orientation, proposing an enhanced
+Particle Filter scheme named Scaling Series method in a later
+paper [9].
+B. Active Sensing
+In the framework of robotic localisation tasks, the deﬁni-
+tion of an optimised sequence of actions aimed to reduce the
+uncertainty over the pose of the environment elements goes
+under the name of active sensing.
+Previous related works analysed the problem of actively
+sensing the environment for 3D self-localisation tasks. In
+[10], Markov localisation was applied to infer robot position
+inside a structured ofﬁce environment using laser and ultra-
+sound sensors. A cost-vs-utility function was introduced to
+select the best movements and sensing actions to perform.
+Costs were represented by time and energy spent, and utility
+was represented by the expected decrease of uncertainty
+evaluated through the Kullback Leibler Divergence (see
+[11] ), i.e. the non-symmetric measure of the difference
+between the current posterior probability distribution and
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 2270
+the envisioned Probability Density Function (PDF) after the
+sensing action. Further to that work and focusing on reducing
+the sensor resources required, the same task was performed
+using angular and linear odometers, a compass and a contact
+sensor, an angular odometer and a contact sensor [12]. More
+recently, the same operation was accomplished only using a
+clock and a contact sensor [13].
+Active force sensing to perform cube-in-corner tasks with
+autonomous motions was studied in [14]. The full opera-
+tion was decoupled into a compliant sequence of contact
+formations (CFs), stored in the so-called CF Graph. Then,
+the optimisation process was decoupled into a requirement
+for the CF sequence and a requirement for the active sensing
+motions in each CF. Results from this work proved that such
+an exhaustive approach is computationally expensive and
+suggested further research to adjust the level of resolution
+of the estimator and controller to the accuracy required by
+the single action.
+In 2009, Hsiao [4] performed object localisation and
+grasping in 3DOFs using tactile sensors installed on a three-
+ﬁnger hand. The authors focused on the decision-making side
+of the problem by implementing an approximated Partially
+Observable Markov Decision Process (POMDP) [15] scheme
+to maximise the information gain over a ﬁnite-horizon series
+of motions. The best action is chosen by using the Kullback
+Leibler Divergence (KLD) as a metric to decide among a
+pre-determined set of trajectories, deﬁned relatively to the
+best pose estimate of the object. The measurement model
+accounts for both contact and no-contact information.
+In 2012, further to Hsiao’s work, Hebert et al. [5] per-
+formed 3DOF localisation using a hand with force sensors.
+With respect to Hsiao, motion primitives are generated
+and evaluated as the localisation takes place. Furthermore,
+Javdani et al. [16] compared the information-based approach
+followed by Hebert and Burdick with a hypothesis-pruning
+technique through a series of simulations.
+III. ACTION SELECTION DECISION MAKING
+A. Motivation
+The state of the art on active force sensing is facing two
+major challenges: coping with high initial uncertainties and
+selecting sensing actions with efﬁciency. In a previous paper
+[17], we studied the former problem setting up an experiment
+to observe human beings approaching a blind localisation
+task. Then, we introduced a decoupling scheme which allows
+to simplify a high-dimensional problem into a sequence of
+subtasks. In this paper, we focus on the latter problem.
+To the best of our knowledge, previous work on action
+selection for touch-based localisation focused on maximising
+the expected information gain choosing from a set of candi-
+date actions. The computational and motion costs were not
+accounted for in the decision making process. In practice,
+this resulted in the robot devoting most of the time to
+reasoning instead of acting. With respect to the state of the
+art, this paper introduces a new decision-making scheme
+which allows to ﬁnd a feasible solution to the problem of
+”where to sense next” constraining the global time spent for
+the next action, including reasoning and motion execution.
+The allocated time is a design parameter allowing to tune
+the robot behaviour from purely info-gathering to action-
+oriented. In order to facilitate its adoption in real-life indus-
+trial contexts, this new decision-making framework has been
+applied to localise solid objects using a force-torque sensor
+and point-to-point motion primitives.
+B. Inference Scheme
+Adopting a typical Bayes’ ﬁlter, the problem of localising
+an object in a N-dimensional space requires the prediction of
+the object state x
+t
+after action a
+t
+using its dynamic model,
+and to update the belief adopting the new measurement z
+t
+obtained througha
+t
+. In our application, the object to localise
+is rigidly ﬁxed to the environment, so its pose does not
+change over time. Therefore, only the update step is needed:
+P (x
+t+1
+ja
+t
+) =
+P (z
+t
+jx
+t
+)P (x
+t
+)
+P (z
+t
+)
+(1)
+The object is modeled as a polygonal mesh composed by
+a set of facesff
+i
+g and their corresponding normal vectors
+fn
+i
+g. Each measurement is comprised of contact positionz
+p
+and normal vector z
+n
+. Such measurements are supposed to
+be independent.
+P (zjx
+t
+) =P (z
+p
+jx)P (z
+n
+jx): (2)
+As in previous works [3][5], the likelihood functions
+expressing the probability of each face to cause the contact
+and normal measurement are:
+P (z
+p
+jf
+i
+) =
+1
+p
+2
+p
+exp [ 
+1
+2
+dist(z
+p
+;f
+i
+)
+2
+
+2
+p
+] (3)
+and
+P (z
+n
+jf
+i
+) =
+1
+p
+2
+n
+exp [ 
+1
+2
+jjz
+n
+ n
+i
+jj
+2
+
+2
+n
+]: (4)
+A maximum-likelihood approach is followed to solve the
+correspondence problem, i.e. ﬁnding which face to consider
+when calculating the likelihood of a given pose.
+P (zjx
+t
+) = max
+fi
+(P (z
+p
+jf
+i
+)P (z
+n
+jf
+i
+)) (5)
+Touch-based localisation problems typically require infer-
+ence models able to cope with multimodal joint distributions
+P (x
+t
+), for instance particle ﬁlters or histogram ﬁlters. In this
+work, we adopt the former.
+C. Info vs Cost Decision Making
+Previous related works [5][4] tackled the problem of
+choosing the next best action by ﬁrst generatinga complete
+set of candidate actions, then selecting the one that max-
+imises the expected information gain. In this paper, such
+scheme is enriched by constraining the overall computation
+and motion execution.
+2271
+The information gain associated to a candidate action a
+i
+is measured as the KLD between the prior and the posterior
+distribution after executing a
+i
+.
+IG(a
+i
+) =
+Z
+x
+P (x
+t+1
+ja
+i
+) log
+P (x
+t+1
+ja
+i
+)
+P (x
+t
+)
+dx (6)
+However, the measurement associated to a
+i
+is only hypo-
+thetical, so it is necessary to consider the expected informa-
+tion gain instead.
+E[IG(~ z;a
+i
+)] =
+Z
+z
+P (~ z)
+Z
+x
+P (x
+t+1
+ja
+i
+) log
+P (x
+t+1
+ja
+i
+)
+P (x
+t
+)
+dxdz
+(7)
+Moreover, since measurement ~ z may occur at any point
+along the trajectory, the probabilityP () of ending the action
+at time  has to be taken into account [5], so an additional
+expectation over  is to be added to Eq. 7. However, in this
+work, the decision is made under the assumption that each
+action a
+i
+terminates on the nominal contact point along the
+trajectory. Therefore, the next best action is chosen so that
+it maximises the expected information gain.
+a
+
+= arg max
+ai
+E[IG(~ z;a
+i
+)] (8)
+Several strategies may be adopted to call the localisation
+done, e.g. setting a threshold on the eigenvalues of the
+covariance matrix , on the probability entropy or on the
+probability mass of a target point of the object within a given
+tolerance.
+The action-selection algorithm is presented in pseudo-code
+in Alg. 1. Each time the robot needs to make a decision, the
+best solution a
+
+is initialised to ”stay still”, unless an open-
+loop action is available, e.g. a user-deﬁned motion (lines 2-9).
+Then, the timer starts (line 10). While the execution time of
+the current best solution is smaller than the available time,
+candidate actions are generated and evaluated, updating the
+best solution if the expected information is greater than the
+current one (lines 13-21). As the available time intercepts
+the estimated execution time of the current best solution,
+the reasoning is over and a
+
+is performed. The condition at
+line 15 ensures that the next candidate to evaluate respects
+the time constraint. Hence, it is necessary to estimate the
+execution timet
+exec
+and the evaluation timet
+eval
+of a given
+action a
+i
+.
+A set of sensing actions is deﬁned off-line relatively to the
+object geometry. Their speciﬁcation depends on the available
+robot control system and the adopted object representation,
+e.g. a polygonal mesh. For instance, they may aim at touch-
+ing the faces of the mesh moving parallel to the normal
+vector. At run time, candidate actions are generated (line
+14) starting from the conﬁguration with the highest posterior
+then moving to lower-probability conﬁgurations proceeding
+in descending order. To simplify the calculation, the KLD is
+evaluated considering only the contact measurement ~ z as a
+Algorithm 1: Action selection with time allocation
+1 set t
+max
+;
+2 if a
+OL
+is available then
+3 a
+
+=a
+OL
+;
+4 IG(a
+
+) =E[KLD(P
+OL
+jjP
+0
+)];
+5 end
+6 else
+7 a
+
+=stay still;
+8 IG(a
+
+) = 0;
+9 end
+10 t:start();
+11 i = 0;
+12 while t
+exec
+(a
+
+)<t
+max
+ t:elapsed() do
+13 i :=i + 1;
+14 a
+i
+=generateCandidateAction(i);
+15 if t
+exec
+(a
+i
+) +t
+eval
+(a
+i
+)<t
+max
+ t:elapsed() then
+16 IG(a
+i
+) =E[KLD(P
+i
+jjP
+0
+)];
+17 if IG(a
+i
+)>IG(a
+
+) then
+18 a
+
+=a
+i
+;
+19 end
+20 end
+21 end
+22 execute a
+
+;
+23 if a
+
+== stay still then
+24 set t
+max
+= 2t
+max
+;
+25 go back to line 2;
+26 end
+point measurement occurring on the surface of the particle
+from which it was generated.
+Figure 1 graphically illustrates the decision-making at
+different time steps: the starting time t
+0
+, a generic instant
+t
+i
+and t
+final
+when a
+
+is executed. In this case, an open-
+loop action is available, soa
+
+is initialised toa
+OL
+. As time
+passes, a
+
+is updated, until t:elapsed() intersects t
+exec
+(a
+
+),
+and the current best action is executed.
+IV. ROBOT IMPLEMENTATION
+A. Set Up
+The decision making scheme presented in Section III has
+been applied to localise a solid rectangle positioned on top
+of a table using a Staubli RX90 robot equipped with a force-
+torque sensor coupled with a spherical end effector. This set
+up allows to work out the contact point and normal vector
+in case of force interaction between the end effector and the
+environment [18]. Sensor uncertainty is modeled as 
+p
+=
+0:005m and 
+n
+= 6deg.
+B. Problem Description
+The initial uncertainty on the pose of the object is 0.8m
+x 0.5m in translation (fx;yg) and 180 deg in rotation
+(). Further to the observation of human beings facing a
+similar blind-localisation problem, the 3DOFs localisation
+task is divided into two subtasks, namelyS1 andS2. Details
+about the adopted DOF-Decoupled Active Force Sensing
+2272
+Fig. 1. Decision-making time line
+scheme are provided in a previous paper [17]. S1 consists
+of a coarse 2DOFs exploration of the table in which the
+object is represented by its bounding circle to speed up
+the calculation. In this ﬁrst subtask, the decision making is
+simpliﬁed by providing an open-loop action a
+OL
+consisting
+of spanning the table with a zig-zag type of motion. A 2D
+particle ﬁlter scheme is adopted for the inference, using
+both contact and no-contact information. The ﬁrst contact
+triggers the transition to S2, in which the joint posterior
+P (x;y;) has to be estimated. At this level of resolution,
+the object is represented as a rectangle, allowing to solve
+Eq. 5 analytically. Also for S2, a particle ﬁlter is applied.
+The task is considered accomplished if the end effector can
+be placed into one of the two up-facing bottle tops with
+diameter of 30mm, ﬁxed at symmetric known locations on
+top of the solid rectangle, as shown in Figure 2. With the
+diameter of the end effector equal to 25mm, this requires
+the robot to localise the object with a maximum linear error
+smaller than 5mm, which is comparable to state-of-the-art
+examples.
+Fig. 2. Peg-in-hole to validate the localisation
+C. Decision Making
+A set of 12 attraction points and their related candidate
+actions were deﬁned off-line relatively to the rectangle geom-
+etry, as depicted in Figure 3. Basically, each action aims at a
+target point moving parallel to the surface normal. After each
+contact, particles’ weights were calculated as in Eq. 3 and Eq.
+4 and the posterior distribution is updated with Eq. 1. While
+the available time is greater thant
+exec
+(a
+
+), candidate actions
+are generated and evaluated starting from the best-estimate
+particle then moving to lower-posterior conﬁgurations in a
+sequential order.
+Fig. 3. Set of pre-deﬁned attraction points and actions
+In order to estimate the execution time required by a
+generic action t
+exec
+(a), the motion to position the end
+effector in front of the target surface and the one required
+to reach the target point are to be taken into account. In our
+implementation, the robot is position-controlled in cartesian
+space using a trajectory generator to feed the real-time low-
+level position requirement for the PID controller. Let us
+call D the distance between the initial and ﬁnal setpoint,
+v
+max
+the maximum allowed speed and a
+max
+the maximum
+acceleration. A symmetric trapezoidal velocity proﬁle is
+adopted, so it is possible to calculate the execution time to
+cover D in an analytical way. Speciﬁcally,
+t
+exec
+(a) =t
+acc
++t
+c
++t
+dec
+(9)
+Where t
+acc
+and t
+dec
+are the acceleration and deceleration
+time, respectively. Moreover as the velocity proﬁle is sym-
+metric we have:
+t
+acc
+=t
+dec
+: (10)
+In case
+D>
+v
+2
+max
+a
+max
+(11)
+the velocity proﬁle is trapezoidal and the execution time
+expressed in Eq. 9 is calculated as:
+t
+exec
+(a) =t
+c
++ 2t
+acc
+=
+D
+v
+max
+ 
+v
+max
+a
+max
++ 2
+v
+max
+a
+max
+: (12)
+In case
+D
+v
+2
+max
+a
+max
+(13)
+the velocity proﬁle is triangular and symmetric. Assuming
+a constant acceleration a
+max
+, the maximum reached speed
+v
+
+is calculated as:
+v
+
+=t
+acc
+a
+max
+: (14)
+2273
+Since
+v
+
+t
+acc
+=D (15)
+the motion time in Eq. 9 is calculated as:
+t
+exec
+(a) = 2t
+acc
+= 2
+r
+D
+a
+max
+: (16)
+Figure 4 represents the velocity proﬁles used to control
+the robot motion.
+Fig. 4. trapezoidal and triangular velocity proﬁles
+The computational time required to process each action is
+measured empirically and depends on the number of particles
+used by the inference scheme.
+D. Case Study
+Here, we present an example of the localisation task
+performed setting t
+max
+to 10s and 20s. To underline the
+difference in the robot attitude, we require at least four
+contacts on at least two different sides of the rectangle. In
+this application, such condition is sufﬁcient to perform the
+peg-in-hole operation. Figure 5 and 6 illustrate the different
+contact obtained with the two allocated times. The sensing
+actions are summarised in Figure 7 for the sake of clarity.
+As a result of the constrained optimisation, in the 10s
+case, three local actions are selected after the ﬁrst touch,
+as longer sensing motions would make the robot violate the
+10s constraint. Instead, in the 20s case, the robot explores
+opposite sides three times (actions no. 2, 3 and 4). Table
+I presents the time elapsed on the four contact points (C1,
+C2, C3 and C4) and the global task execution time in both
+cases. Setting t
+max
+= 10s, the global localisation task and
+the following peg-in-hole is performed about 12s faster than
+settingt
+max
+= 20s. Therefore, for this speciﬁc application, a
+motion-oriented attitude of the robot is more efﬁcient than a
+more info-driven approach. A comparative video of the two
+demos is available on line [19].
+Fig. 5. Chosen actions with tmax = 10s
+Fig. 6. Chosen actions with tmax = 20s
+V. CONCLUSIONS
+In this paper, the problem of ”where to sense next” in
+touch-based localisation has been formulated as a constrained
+optimisation in which the information gain is explicitly
+traded off with the time cost of computation and execution.
+This enables to deterministically specify the length of the
+following sensing action, which becomes an explicit param-
+eter to be set by the task programmer. This new formulation
+allows to tune the robot attitude from pure info-driven to
+more action-oriented.
+A set of sensing actions is deﬁned off-line relatively to
+the geometry of the object. At run time, candidate motions
+are generated starting from the most probable conﬁguration
+then moving to lower-probability poses in a sequential order.
+Fig. 7. Action selection with tmax = 10s and tmax = 20s
+2274
+TABLE I
+CONTACT POINTS AND TASK ELAPSED TIMES
+tmax = 10s tmax = 20s
+C1 36.9s 36.2s
+C2 53.9s 57.2s
+C3 68.4s 77.0s
+C4 83.5s 97.4s
+Peg-in-hole 98.1s 110.0s
+This allows to focus the search by prioritising actions with
+high expectation of information gain.
+The decision-making scheme has been applied to a 3DOFs
+localisation task consisting of ﬁnding a solid rectangle on
+top of a table. A case study example has been presented to
+illustrate the info-driven and the motion-oriented attitudes of
+the robot in peforming the localisation task with different
+allocated time for the next action.
+FUTURE WORK
+The presented decision making framework is to be ex-
+tended to applications with more complex objects and higher
+dimensional space, studying the beneﬁt of the trade-off be-
+tween information gain and cost of computation and motion.
+REFERENCES
+[1] P. Garrec, F. Geffard, O. David, F. Russotto, Y . Measson, and Y . Perrot,
+“Telerobotics research and development at cea, list,” in ANS EPRRSD
+- 13th Robotics & remote Systems for Hazardous Environments . 11th
+Emergency Preparedness & Response Knoxville, TN, 2011.
+[2] K. Gadeyne, T. Lefebvre, K. Gadeyne, T. Lefebvre, and H. Bruyn-
+inckx, “Bayesian hybrid model-state estimation applied to simulta-
+neous contact formation detection and geometrical parameter estima-
+tion,” Int. J. Robotics Research, vol. 24, pp. 615–630, 2005.
+[3] A. Petrovskaya, O. Khatib, S. Thrun, and A. Y . Ng, “Bayesian esti-
+mation for autonomous object manipulation based on tactile sensors,”
+in In Proc. of ICRA, 2006.
+[4] K. Hsiao, M. I. of Technology. Dept. of Electrical En-
+gineering, and C. Science, Relatively Robust Grasping.
+Massachusetts Institute of Technology, Department of Electrical
+Engineering and Computer Science, 2009. [Online]. Available:
+http://books.google.fr/books?id=tiT0SAAACAAJ
+[5] P. Hebert, J. Burdick, T. Howard, N. Hudson, and J. Ma, “Action infer-
+ence: The next best touch,” Robotics: Science and Systems Workshop
+on Mobile Manipulation, 2012.
+[6] P. C. Gaston and T. Lozano-Perez, “Tactile recognition and localization
+using object models: The case of polyhedra on a plane,” IEEE
+Transactions on Pattern Analysis and Machine Intelligence, vol. 6,
+pp. 257–265, 1983.
+[7] T. Lozano-Prez and W. E. L. Grimson, “Model-based recognition and
+localization from sparse range or tactile data,” 1983.
+[8] K. Gadeyne and H. Bruyninckx, “Markov techniques for object
+localization with force-controlled robots,” 2001.
+[9] A. Petrovskaya, “Towards dependable perception: Guaranteed infer-
+ence for global localization,” 2010.
+[10] D. Fox, W. Burgard, and S. Thrun, “Active markov localization for
+mobile robots,” Robotics and Autonomous Systems, vol. 25, pp. 195–
+207, 1998.
+[11] S. Kullback and R. Leibler, “On information and sufﬁciency,” The
+Annals of Mathematical Statistics, vol. 22, no. 1, pp. 79–86, 1951.
+[12] J. M. O’Kane and S. M. LaValle, “Localization with limited sensing,”
+IEEE Transactions on Robotics, vol. 23, pp. 704–716, August 2007.
+[13] L. Erickson, J. Knuth, J. M. O’Kane, and S. M. LaValle, “Proba-
+bilistic localization with a blind robot,” in Proc. IEEE International
+Conference on Robotics and Automation, 2008.
+[14] T. Lefebvre, H. Bruyninckx, and J. De Schutter, “Task planning with
+active sensing for autonomous compliant motion,” The International
+Journal of Robotics Research, vol. 24, no. 1, p. 61, 2005.
+[15] A. R. Cassandra, L. P. Kaelbling, and M. L. Littman, “Acting optimally
+in partially observable stochastic domains,” pp. 1023–1028, 1994.
+[16] S. Javdani, M. Klingensmith, D. Bagnell, N. Pollard, and S. Srinivasa,
+“Efﬁcient Touch Based Localization through Submodularity,” ArXiv e-
+prints, Aug. 2012.
+[17] N. Tosi, O. David, and H. Bruyninckx, “Dof-decoupled active force
+sensing (d-dafs): A human-inspired approach to touch-based localisa-
+tion tasks,” in IEEE International Conference on Advanced Robotics,
+2013 (forthcoming).
+[18] K. Kitagaki, T. Suehiro, and T. Ogasawara, “Monitoring of a pseudo
+contact point for ﬁne manipulation,” in Intelligent Robots and Sys-
+tems’ 96, IROS 96, Proceedings of the 1996 IEEE/RSJ International
+Conference on, vol. 2. IEEE, 1996, pp. 757–762.
+[19] (2013). [Online]. Available:
+http://people.mech.kuleuven.be/%7Er0267168//Videos/ICRA2014/
+2275

@@ -1,0 +1,1088 @@
+Instantaneous Ego-Motion Estimation using Multiple Doppler Radars
+Dominik Kellner
+1
+, Michael Barjenbruch
+1
+, Jens Klappstein
+2
+, J¨ urgen Dickmann
+2
+and Klaus Dietmayer
+1
+Abstract— The estimation of the ego-vehicle’s motion is a
+key capability for advanced driving assistant systems and
+mobile robot localization. The following paper presents a
+robust algorithm using radar sensors to instantly determine
+the complete 2D motion state of the ego-vehicle (longitudinal,
+lateral velocity and yaw rate). It evaluates the relative motion
+between at least two Doppler radar sensors and their received
+stationary reﬂections (targets). Based on the distribution of their
+radial velocities across the azimuth angle, non-stationary targets
+and clutter are excluded. The ego-motion and its corresponding
+covariance matrix are estimated. The algorithm does not
+require any preprocessing steps such as clustering or clutter
+suppression and does not contain any model assumptions. The
+sensors can be mounted at any position on the vehicle. A
+common ﬁeld of view is not required, avoiding target association
+in space. As an additional beneﬁt, all targets are instantly
+labeled as stationary or non-stationary.
+I. INTRODUCTION
+Standard vehicle odometry is performed by a combination
+of wheel-based odometry and inertial sensing (gyroscopes
+and accelerometers). Inertial sensors are prone to drift, which
+is compensated with periodic GPS absolute position updates.
+On high-traction terrain and with good GPS reception these
+systems provide an accurate motion estimation. But espe-
+cially in slippery terrain or during high-dynamic maneuvers
+wheel speed sensors contain non-systematic errors due to
+wheel slip and slide. They have systematic errors caused
+by kinematic imperfections, unequal wheel diameters or
+uncertainties about the exact wheelbase.
+The growing use of Doppler radars in the automotive
+ﬁeld and continuously increasing measurement accuracy are
+opening new possibilities for a fast and reliable ego-motion
+estimation. It is based on the motion of the ego-vehicle
+relative to stationary radar targets. It is insensitive to the
+interaction of the vehicle to the ground and estimates the
+full 2D motion state. The motion estimation is free of bias
+and drift. This approach is becoming more feasible as the
+importance and number of radar systems in future automotive
+safety systems is growing.
+This paper is organized as follows: Section II reviews
+related work. Section III gives an overview of the system
+and describes in detail the three main steps of the algorithm.
+Simulation results and the inﬂuence of crucial system pa-
+rameters are discussed in Section IV . Section V contains the
+experimental results.
+1
+Dominik Kellner, Michael Barjenbruch and Klaus Dietmayer are with
+driveU / Institute of Measurement, Control and Microtechnology Ulm,
+Germany dominik.kellner@uni-ulm.de
+2
+Jens Klappstein and J¨ urgen Dickmann are with Daimler AG Ulm,
+Germany
+II. RELATED WORK
+In this section only approaches, which are able to estimate
+the full 2D ego-motion with 3 degrees of freedom (DOF), are
+presented. The two major methods are visual odometry and
+wheel-based odometry, combined with GPS or an Inertial
+Measurement Unit (IMU). The main application areas are
+robot localization in rough terrain (e.g. [1]–[4]) and advanced
+driver assistant systems (e.g. [5]–[7]).
+A. Visual Odometry
+Visual odometry estimates the vehicle motion from a
+sequence of camera images and can be categorized as be-
+ing either monocular or stereoscopic, and employing either
+feature tracking or feature matching [3]. Using stereo vision,
+the 3D points can be reconstructed using triangulation, and
+point features are found using e.g. the iterated closest point
+approach. Monocular cameras primarily require tracking
+image features over a certain number of images. The scene
+can be reconstructed using structure from motion. In most
+cases stereo outperforms monocular visual odometry [5].
+To avoid tracking image features over multiple frames
+the feature correspondence between two consecutive frames
+can be used [6]. The ego-motion of a vehicle is estimated
+using the trifocal tensor which relates features between
+three images of the same static scene. Simulation results
+show a position error of circa 30 m (1.5%) for a travel
+distance of 2000 m, and a standard deviation of approxi-
+mately 15 m (0.8%).
+In [5], stereo is computed for every frame obtaining
+3D points. Using the optical ﬂow, point correspondence is
+established in two consecutive frames. The ego-motion of a
+vehicle is estimated using a closed form solution based on
+quaternions. The error for a loop-close after circa 700 m is
+17 m (2.4%).
+A combination of stereo vision with robust frame-to-frame
+motion estimation, an inexpensive inertial measurement unit
+(if visual odometry fails) and a low-cost GPS sensor (to
+prevent long-term drift) is presented in [8]. The achieved
+position error for four loop closing scenes in an outdoor
+environment is 2.2%-5.0% with solely visual odometry and
+0.3%-2.0% for the combination with GPS.
+B. Wheel-based odometry and inertial measurements
+Estimating the full motion state with current vehicle’s
+odometry is still a critical task, since the vehicle’s side-
+slip can be measured directly only by speed over ground
+sensors or multiple antenna GPS attitude systems. A good
+overview of current approaches is presented in [9]. The
+common approach is the determination by the integration of
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 1592
+SystemPMotionPEquationP
+P
+StationaryPTargetPDetection
+,RANSAC3
+TargetsPSensorP1:
+000
+VelocityPProfilePAnalysis
+Ego=MotionP
+P2PDOF:Pv
+x
+Q?P
+Ego=MotionP
+P3PDOF:Pv
+x
+Qv
+y
+Q?P
+wLSQ2
+v
+y
+P=P0
+ODR2
+v
+y
+P=P0
+LSQ3 ODR3
+LSQ2
+v
+y
+P=P0
+wLSQ3
+TargetsPSensorPM:
+Fig. 1. Overview of the different system steps
+inertial sensors and steer angle measurements. Side-slip can
+be estimated only through the extension of velocity heading
+information.
+There are a variety of systems presented using Kalman
+ﬁlters with extended sensors to enhance wheel-based odom-
+etry. A combination of classic odometry and inertial mea-
+surements is used in [2]. In [7] inertial sensors, odometry
+and D-GPS are used to estimate the slip for a vehicle at
+high speed. In [4] a combination of visual odometry, IMU
+and wheel rates is used for a Mars rover. The approach of
+[10] is only based on a low cost IMU.
+C. Radar-based ego-motion
+No existing radar-based system, which is able to estimate
+the full motion state of a vehicle based on a single mea-
+surement cycle is known to the authors. For an overview
+of relative and absolute position measurement using radar
+sensors the reader is referred to [11]. The presented systems
+are based on a single radar and can only determine the
+velocity vector of the radar (2 DOF), but not full 2D vehicle
+motion state (3 DOF).
+Compared to visual odometry, radar-based systems have
+the advantage that Doppler radar sensors can directly mea-
+sure the relative velocity of stationary objects in a single
+measurement, avoiding the derivation by the changing po-
+sition over two or more consecutive frames. Compared to
+IMU, the estimation of motion parameters is not inﬂuenced
+by drift or scaling factors.
+III. EGO-MOTION ESTIMATION ALGORITHM
+Fig. 1 provides an overview of the ego-motion estimation
+system. An arbitrary number of Doppler radar sensors with
+known position and orientation are mounted on the vehicle,
+measuring at each time step an arbitrary number of targets.
+The azimuth position and radial velocity of each target is
+registered and evaluated using the System Motion Equation.
+Subsequently stationary targets are identiﬁed by a statistical
+Fig. 2. From all stationary targets the radial part (green arrow) of the
+relative velocity (blue arrow) is measured by the Doppler radar
+evaluation of this equation. In the ﬁnal step different algo-
+rithms can be used to solve the ego-motion state problem and
+its corresponding covariance matrix. For a 2 DOF estimation
+at least two targets and for a 3 DOF estimation three targets
+(from at least two sensors) have to be captured.
+A. Sensor Measurement Equation
+If a radar sensor j 2 f1;:::;Mg is moved, from its
+point of view all stationary targets move in the opposite
+direction (Fig. 2). The relative velocity of a stationary target
+i
+j
+2f1;:::;N
+j
+g is equal to the inverse sensor velocity vector
+(v
+Sx
+j
+,v
+Sy
+j
+). The radar measures only the corresponding radial
+(Doppler-) velocities of this vector (v
+D
+j;i
+), depending on the
+azimuth position (
+S
+j;i
+). Combining all stationary targets from
+one sensor results in:
+2
+6
+4
+ v
+D
+j;1
+.
+.
+.
+ v
+D
+j;Nj
+3
+7
+5 =
+2
+6
+4
+cos(
+S
+j;1
+) sin(
+S
+j;1
+)
+.
+.
+.
+.
+.
+.
+cos(
+S
+j;Nj
+) sin(
+S
+j;Nj
+)
+3
+7
+5
+"
+v
+Sx
+j
+v
+Sy
+j
+#
+(1)
+The azimuth position is in the local sensor coordinate system,
+as is the resulting velocity vector (v
+Sx
+j
+,v
+Sy
+j
+). For the fusion of
+the velocity information of multiple sensors the velocity has
+to be transformed into a global coordinate system (v
+x
+j
+,v
+y
+j
+),
+depending on the sensor mounting orientation 
+j
+:
+
+v
+Sx
+j
+v
+Sy
+j
+
+=
+
+cos(
+j
+) sin(
+j
+)
+ sin(
+j
+) cos(
+j
+)
+
+v
+x
+j
+v
+y
+j
+
+(2)
+To avoid systematic errors a precise determination of the
+mounting orientation is required. Combining (1) and (2)
+with the global azimuth position
+j;i
+=
+j
++
+S
+j;i
+leads to the
+global measurement equation:
+2
+6
+4
+ v
+D
+j;1
+.
+.
+.
+ v
+D
+j;Nj
+3
+7
+5 =
+2
+6
+4
+cos(
+j;1
+) sin(
+j;1
+)
+.
+.
+.
+.
+.
+.
+cos(
+j;Nj
+) sin(
+j;Nj
+)
+3
+7
+5
+| {z }
+
+v
+x
+j
+v
+y
+j
+
+(3)
+v
+D
+j
+= M
+j
+v
+j
+1593
+Fig. 3. Vehicle motion speciﬁed at reference point (middle of rear axis)
+and the corresponding sensor motion (red -v
+x
+j
+,v
+y
+j
+) at position (blue -x
+j
+,y
+j
+)
+B. System Motion Equation
+The motion of an arbitrary rigid object is fully described
+by the reference point velocity (v
+x
+,v
+y
+) and yaw rate !
+of the object. The reference point is arbitrary and set to
+the middle of the rear axis, with the x-axis parallel and
+the y-axis orthogonal to the moving direction as outlined
+in Fig. 3. The sensor positions are described in system
+coordinates as (x
+j
+,y
+j
+). The velocity vectors (v
+x
+j
+;v
+y
+j
+) of all
+sensors (j = 1 ... M) are given by the following equation
+system:
+2
+6
+6
+6
+6
+6
+4
+v
+x
+1
+v
+y
+1
+.
+.
+.
+v
+x
+M
+v
+y
+M
+3
+7
+7
+7
+7
+7
+5
+=
+2
+6
+6
+6
+6
+6
+4
+ x
+1
+1 0
+y
+1
+0 1
+.
+.
+.
+.
+.
+.
+.
+.
+.
+ x
+M
+1 0
+y
+M
+0 1
+3
+7
+7
+7
+7
+7
+5
+| {z }
+2
+4
+!
+v
+x
+v
+y
+3
+5
+(4)
+[v
+1
+:::v
+M
+]
+T
+= [S
+1
+:::S
+M
+]
+T
+s
+With the chosen reference point the Ackerman condition
+(no side-slip at the rear axis) can be introduced by deleting
+the last element of s and last column of S. Eq. (3) can be
+rewritten for all sensors:
+2
+6
+6
+6
+4
+v
+D
+1
+v
+D
+2
+.
+.
+.
+v
+D
+M
+3
+7
+7
+7
+5
+=
+2
+6
+6
+6
+4
+M
+1
+0 ::: 0
+0 M
+2
+::: 0
+.
+.
+.
+.
+.
+.
+.
+.
+.
+.
+.
+.
+0 0 ::: M
+M
+3
+7
+7
+7
+5
+2
+6
+6
+6
+4
+v
+1
+v
+2
+.
+.
+.
+v
+M
+3
+7
+7
+7
+5
+(5)
+The complete system motion equation is a combination of
+(4) and (5):
+2
+6
+6
+6
+4
+v
+D
+1
+v
+D
+2
+.
+.
+.
+v
+D
+M
+3
+7
+7
+7
+5
+=
+2
+6
+6
+6
+4
+M
+1
+S
+1
+M
+2
+S
+2
+.
+.
+.
+M
+j
+S
+j
+3
+7
+7
+7
+5
+2
+4
+!
+v
+x
+v
+y
+3
+5
+(6)
+v
+D
+= R s
+C. Stationary Target Detection
+A RANdom SAmple Consensus (RANSAC) algorithm
+is used to identify the major group of targets with the
+same velocity proﬁle, assuming they all belong to stationary
+objects. In each iteration, three targets from at least two
+different sensors are randomly chosen and the parameters
+of their velocity proﬁle (s) are determined using (6). The
+-4
+-2
+0
+2
+4
+-1
+-0.5
+0
+0.5
+1
+-5
+0
+5
+Fig. 4. The estimated velocity parameters are represented as a plane (gray)
+in theR-v
+D
+space. All targets from the two sensors in the front (red, blue)
+and in the back (green, black) are shown in this space. They can be divided
+into inliers (ﬁlled) and outlier (empty).
+error of the current ﬁt is calculated by the sum of the radial
+velocity errors of all targets to the determined velocity proﬁle
+of the current ﬁt. In this process a corridor threshold is
+used to identify outliers and limit their error to the corridor
+threshold. After a certain number of iterations (result-driven),
+the best ﬁt is chosen, according to the calculated error
+and/or number of inliers. All outliers are considered as either
+moving objects or clutter and excluded. All inliers are used
+in the velocity proﬁle analysis introduced in the next section.
+Fig. 4. shows an example for the 2 DOF case, in which the
+solutions is a plane in the 3D space. The algorithm only fails
+if there is another group of objects, which all have exactly the
+same linear movement and their number of received targets
+is larger than of the stationary objects in all sensors. Possible
+solutions in this case are presented in [11].
+D. Velocity Proﬁle Analysis
+A Least-SQuares estimator (LSQ) is optimal if measure-
+ment errors are only present in the dependent variable v
+D
+.
+An azimuth position error  in M is interpreted as radial
+velocity error, as shown in Fig. 5. Depending on the position
+in the velocity proﬁle the accuracy of each target varies
+signiﬁcantly. With an increasing shift of the velocity proﬁle,
+the impact of an azimuth position error increases.
+A simple solution to compensate for the azimuth position
+error is a weighting factor dependent on its position in
+the velocity proﬁle (wLSQ). It can be calculated, e.g., by
+determining the amplitude roughly by an unweighted LSQ
+estimator and then calculating the weights according to the
+ratio of its radial velocity to the velocity proﬁle’s amplitude.
+Simulation results show an increasing accuracy especially for
+a larger azimuth measurement error 
+
+and a faster object
+motion, causing larger deviations in the velocity proﬁle.
+An optimal solution is obtained using an Orthogonal Dis-
+tance Regression (ODR), which considers not only a radial
+velocity, but also an azimuth measurement error. It minimizes
+the error of all targets with respect to their measurement
+1594
+Fig. 5. Inﬂuence of a constant azimuth measurement error (
+
+- green)
+on the radial velocity error (
+v
+D - red) depending on the target azimuth
+position () using an ordinary LSQ-estimator. The maximal 
+v
+D is at the
+zero-crossing 
+ZC
+(largest gradient) of the velocity proﬁle.
+covariances 
+
+and 
+v
+D. This approach is described in [12]
+in detail. The optimization problem is solved by a two-
+stage Levenberg-Marquardt algorithm with the LSQ solution
+as initial guess. The superior algorithm searches the best
+system candidate ^ s, using the orthogonal error obtained by
+the subordinated algorithm and a numerical determination
+of the Jacobian matrix. The subordinated algorithm estimates
+the velocity proﬁle parametersv
+j
+based on the current system
+candidate^ s using (4) and then the total orthogonal error of
+all targets independently for each sensor.
+The accuracy of the estimated motion parameters are
+inﬂuenced by a number of system parameters as discussed
+in Section IV. Depending on the subsequent processing step
+(e.g. Kalman ﬁlter) an estimate of the covariance matrix for
+the ascertained parameters is desirable. The covariance of a
+linear equation system (6) can be calculated using its inverse
+Hessian matrix [13]. In this case the covariance matrix is
+computed based on the variance of all targets and the number
+of DOF n
+DOF
+:
+Cov(s) =
+(
+T
+)(R
+T
+R)
+ 1
+(
+P
+M
+j=1
+N
+j
+) n
+DOF
+(7)
+with:  =Rs v
+D
+IV. SIMULATION RESULTS
+A. Simulation Overview
+The performance of the algorithm is investigated by sim-
+ulating a vehicle with four sensors at each corner (ﬁeld of
+view +/- 40
+
+). The measurement uncertainties of the radar
+sensors (f
+cycle
+= 20 Hz) are
+
+= 1
+
+and
+v
+D = 0.1 m/s. Both
+errors are supposed to be zero-mean Gaussian distributions.
+It is assumed that 100 stationary reﬂections are randomly
+distributed in the ﬁeld of views of all radar sensors. The
+simulated route consists of four straight parts (v = 10 m/s,
+t = 6 s) and four constant turn parts (v = 10 m/s,! = 15
+
+/s,
+t = 6 s), resulting in a loop with a total distance of 480 m.
+In a variation, a small side-slip (v
+y
+= 0.1 m/s) is added
+during turns. A Monte-Carlo simulation with 10 000 trials
+was carried out.
+B. Algorithm Comparison
+After a complete round-trip the absolute position (d) and
+motion parameter (!,v) errors are examined for the proposed
+algorithms in Table I.
+TABLE I
+SIMULATION RESULTS:vy = 0.0M/S (TOP) ANDvy = 0.1M/S (BOTTOM)
+IN TERMS OF STANDARD DEVIATION (BIAS ERROR)
+vy = 0 m/s d [m] ![
+
+=s] v [m/s]
+LSQ2 1.97 (1.59) 6.9e-1 (2.6e-2) 1.9e-2 (1.6e-3)
+wLSQ2 1.95 (1.60) 6.9e-1 (3.9e-2) 1.8e-2 (8.0e-4)
+ODR2 1.88 (0.07) 6.7e-1 (2.0e-4) 1.7e-2 (1.1e-3)
+LSQ3 2.24 (0.40) 8.0e-1 (5.6e-3) 1.9e-2 (2.1e-3)
+wLSQ3 2.24 (0.54) 8.1e-1 (8.5e-3) 1.8e-2 (9.0e-4)
+ODR3 2.12 (0.21) 7.8e-1 (2.1e-3) 1.7e-2 (1.1e-3)
+vy = 0.1 m/s d [m] ![
+
+=s] v [m/s]
+LSQ2 2.26 (40.7) 9.4e-1 (6.0e-1) 2.2e-2 (1.3e-2)
+wLSQ2 2.18 (46.1) 1.0e-0 (6.8e-1) 2.0e-2 (7.9e-3)
+ODR2 2.16 (47.7) 9.7e-1 (7.0e-1) 1.9e-2 (6.3e-3)
+LSQ3 2.40 (0.19) 8.0e-1 (2.1e-3) 1.9e-2 (1.9e-3)
+wLSQ3 2.32 (0.28) 8.1e-1 (3.5e-3) 1.8e-2 (7.0e-4)
+ODR3 2.29 (0.10) 7.8e-1 (1.5e-3) 1.8e-2 (1.3e-3)
+The key ﬁndings of the simulations are:
+1) The system shows a promising accuracy with a standard
+deviation in end position < 2.5 m (0.6%) and end
+orientation (< 0.8
+
+) and a bias free 3 DOF estimation.
+2) A small side-slip causes a signiﬁcant position (> 40 m)
+and yaw-rate bias (> 0.6
+
+) in the 2 DOF estimators,
+whereas the velocity error is stable.
+3) A side-slip has no inﬂuence on the 3 DOF estimators.
+4) The velocity estimation and end position is more accu-
+rate for wLSQ than LSQ.
+5) ODR is bias free and most accurate for all parameters,
+but is subject to a longer execution time.
+C. Inﬂuence of system parameters
+The quality of the results depends strongly on a large
+number of parameters, and is analyzed for the yaw-rate
+estimation of ODR2 and ODR3 in this section:
+1) Motion parameters (velocity, yaw rate and their ﬂuctu-
+ations)
+2) Environmental parameters (number of stationary targets
+at each sensor, non-stationary targets and clutter and the
+distribution of the targets inside the ﬁelds of view)
+3) Sensor parameters (number of sensors, mounting posi-
+tion and orientation, azimuth and velocity measurement
+accuracy, ﬁeld of view and sampling rate)
+The ﬁrst simulation examines the inﬂuence of the motion
+parameters (Fig. 6). With increasing velocity the error in-
+creases roughly linearly. With increasing drift (v
+y
+> 0) the
+ODR2 bias error increases linearly and for v
+y
+= 0.09 m/s
+it is larger than the standard deviation of the ODR3. The
+standard deviation of ODR2 is less than that of ODR3 only
+for a drift less than v
+y
+= 0.06 m/s. There is no inﬂuence
+of the drift on the accuracy of ODR3. The yaw-rate of the
+vehicle has a negligible inﬂuence on the results (not shown).
+The second simulation examines the effect of the environ-
+mental parameters (Fig. 7). The standard deviations decrease
+roughly with the inverse square root of the number of targets.
+To examine the effects of moving targets or clutter on the
+estimated parameters, targets with a random azimuth angle
+are added. They have a random radial velocity inside the
+range of the radial velocities of stationary objects. Increasing
+1595
+?[°/s]
+v [m/s]
+0 10 20 30 40 50
+0
+1
+2
+3
+4
+?[°/s]
+v
+y
+[m/s]
+0 0.1 0.2 0.3 0.4 0.5
+0
+2
+4
+6
+Fig. 6. Estimated yaw rate for ODR2 (*) and ODR3 (o) dependent on
+vehicle’s velocity (vy = 0) (top) and drift (bottom) in terms of standard
+deviation (solid) and bias error (dotted)
+?[°/s]
+nr. targets
+0 50 100 150 200 250
+0
+0.5
+1
+1.5
+2
+?[°/s]
+nr. of outliers
+0 100 200 300 400 500
+0
+5
+10
+Fig. 7. Estimated yaw rate for ODR2 (*) and ODR3 (o) dependent on
+the number of stationary targets (top) and number of non-stationary targets
+of ODR3 (o) and ODR3 without outlier detection () (bottom) in terms of
+standard deviation (solid) and bias error (dotted)
+this range, the effects are weakened. For an equal number of
+non-stationary and stationary targets the standard deviation
+increases only with 8%, to double the standard deviation 330
+non-stationary targets (100 stationary) are needed.
+With increasing measurement error in azimuth 
+
+as well
+as radial velocity 
+v
+D, the parameter errors increase almost
+linearly (not shown). A radial velocity error of 0.2 m/s is
+equal to an azimuth position error of 1.5
+
+. The number of
+sensors, ﬁeld of view and orientation can be reduced to the
+following two velocity proﬁle parameters: covered azimuth
+area and number of targets. If the total covered azimuth
+area is larger than 180
+
+, increasing area has only a minor
+inﬂuence on the system’s accuracy, since both amplitude
+and phase-shift of the velocity proﬁle can be interpolated.
+For smaller azimuth areas the accuracy decreases slightly.
+The ﬁeld of view has only a small inﬂuence for one or two
+sensors and a covered azimuth area smaller than 180
+
+. The
+accuracy increases with a larger spatial distribution of the
+mounting positions of the sensors.
+V. EXPERIMENTS
+A. Example Sequence
+An example sequence with two high-resolution Doppler
+radars (
+v
+D = 0.1 m/s, 
+
+= 1
+
+) mounted on both sides in
+front of the vehicle is shown in Fig. 8. The results are
+visualized by integrating the estimated ego-motion over the
+complete sequence (60 s and approximately 300 m). Due to
+the integration over a large time range, minimal errors in
+the estimated yaw rate have a signiﬁcant inﬂuence on the
+later position. At the ﬁrst corner the surface was partly icy,
+resulting in an odometry error due to a side-slip. This error in
+odometry is integrated over time resulting in a large position
+error at the end of the route. However, the proposed system is
+able to detect the side-slip angle and compensate it, resulting
+in a low end-position error. The current positions provided
+by ODR3 are used to build a grid-map. Only targets labeled
+as stationary are registered in the map. Free space, the road
+contour, buildings and the contour of parked cars are visible.
+B. ADMA Benchmark
+The second scenario is a ﬁgure-eight driven quickly in
+a parking lot (v 5-10 m/s). Four Doppler radar sensors
+(
+v
+D = 0.1 m/s, 
+
+= 1
+
+) are mounted at each corner of the
+vehicle and combined using the proposed ODR3 algorithm
+to estimate the velocities at the rear axis and yaw rate. The
+standard wheel-based odometry is taken as a benchmark.
+Both methods are compared in terms of motion and end-
+position errors to an Automotive Dynamic Motion Analyzer
+(ADMA), a high precision Inertial Measurement Unit (IMU)
+with DGPS support. The ﬁnal position is shown in Fig. 9.
+On average, approximately 200 reﬂections are detected in
+each time step. The position estimation of ODR3 is highly
+accurate for this highly dynamic maneuver, with an error
+smaller than 1.1 m after circa 140 m (0.75%). The yaw-rate
+accuracy is almost equal, since the integrated yaw rate sensor
+is roughly independent of the dynamic of the maneuver. The
+velocity error is signiﬁcant larger for the vehicle odometry.
+As shown in Fig. 10, its velocity error is strongly correlated
+to the yaw rate. The fast turns (> 30
+
+=s) causes a small side-
+slip angle and wheel-slippage, which makes wheel-based
+odometry inaccurate as discussed in Section II.
+VI. CONCLUSION
+The presented relative position measurement system is
+based on two or more Doppler radar sensors. Independent
+of their mounting position and orientation, this system is
+able to estimate the full 2D motion state of the vehicle in
+just one measurement cycle using only sensors of existing
+or future safety systems. No additional components have to
+be mounted on the vehicle. The dynamic covariance matrix
+provides a quality criterion for the estimated parameters.
+Using this criterion, the system is able to replace or enhance
+current odometry systems in vehicles. It has been shown that
+the results remain stable even with a large number of moving
+objects or clutter in the ﬁeld of view and also show promising
+accuracy in high dynamic maneuvers.
+1596
+REFERENCES
+[1] L. Ojeda, G. Reina, and J. Borenstein, “Experimental results from
+ﬂexnav: An expert rule-based dead-reckoning system for mars rovers,”
+in Aerospace Conference, 2004. Proceedings. 2004 IEEE, vol. 2,
+pp. 816–825, IEEE, 2004.
+[2] Y . Fuke and E. Krotkov, “Dead reckoning for a lunar rover on uneven
+terrain,” in Robotics and Automation, 1996. Proceedings., 1996 IEEE
+International Conference on, vol. 1, pp. 411–416, IEEE, 1996.
+[3] A. Howard, “Real-time stereo visual odometry for autonomous ground
+vehicles,” in Intelligent Robots and Systems, 2008. IROS 2008.
+IEEE/RSJ International Conference on, pp. 3946–3952, IEEE, 2008.
+[4] D. M. Helmick, Y . Cheng, D. S. Clouse, L. H. Matthies, and S. I.
+Roumeliotis, “Path following using visual odometry for a mars rover in
+high-slip environments,” in Aerospace Conference, 2004. Proceedings.
+2004 IEEE, vol. 2, pp. 772–789, IEEE, 2004.
+[5] H. Badino, “A robust approach for ego-motion estimation using a
+mobile stereo platform,” in Complex Motion, pp. 198–208, Springer,
+2007.
+[6] B. Kitt, A. Geiger, and H. Lategahn, “Visual odometry based on
+stereo image sequences with ransac-based outlier rejection scheme,” in
+Intelligent Vehicles Symposium (IV), 2010 IEEE, pp. 486–492, IEEE,
+2010.
+[7] M. Wada, K. S. Yoon, and H. Hashimoto, “High accuracy road
+vehicle state estimation using extended kalman ﬁlter,” in Intelligent
+Transportation Systems, 2000. Proceedings. 2000 IEEE, pp. 282–287,
+IEEE, 2000.
+[8] M. Agrawal and K. Konolige, “Real-time localization in outdoor
+environments using stereo vision and inexpensive gps,” in Pattern
+Recognition, 2006. ICPR 2006. 18th International Conference on,
+vol. 3, pp. 1063–1068, IEEE, 2006.
+[9] R. Anderson and D. M. Bevly, “Estimation of slip angles using a
+model based estimator and gps,” in American Control Conference,
+2004. Proceedings of the 2004, vol. 3, pp. 2122–2127, IEEE, 2004.
+[10] B. Barshan and H. F. Durrant-Whyte, “Inertial navigation systems
+for mobile robots,” Robotics and Automation, IEEE Transactions on,
+vol. 11, no. 3, pp. 328–342, 1995.
+[11] D. Kellner, M. Barjenbruch, J. Klappstein, J. Dickmann, and K. Di-
+etmayer, “Instantaneous ego-motion estimation using doppler radar,”
+in Intelligent Transportation Systems (ITSC), 2013 16th International
+IEEE Conference on, IEEE, 2013.
+[12] D. Kellner, M. Barjenbruch, J. Klappstein, J. Dickmann, and K. Di-
+etmayer, “Instantaneous lateral velocity estimation of a vehicle using
+doppler radar,” in Information Fusion (FUSION), 2013 16th Interna-
+tional Conference on, IEEE, 2013.
+[13] C. D. Ghilani, Adjustment computations: spatial data analysis. John
+Wiley & Sons, 2010.
+x [m]
+y [m]
+-20 -15 -10 -5 0 5 10 15 20
+0
+5
+10
+15
+20
+25
+30
+35
+Fig. 9. Comparison of integrated radar ego-motion ODR3 (black-dashed),
+standard wheel-based odometry (red-dotted) and INS (black-solid) for a
+ﬁgure-eight driven in a parking lot (start at (0/0)). End points are marked.
+time [s]
+v-Error [m/s]
+0 5 10 15 20 25 30 35
+0
+0.1
+0.2
+0.3
+0.4
+?[°/s]
+0 5 10 15 20 25 30 35
+0
+10
+20
+30
+40
+Fig. 10. Absolute velocity error of wheel-based odometry (red x) and radar
+ego-motion (black +), in relation to the absolute yaw rate of INS (blue *)
+Fig. 8. Integrated ego-motion data of two radar sensors combined (black) and standard vehicle odometry (blue). Targets are mapped using radar-ego-motion
+and their intensity is represented by the color [yellow to red]. Start point: Top Left. (Aerial photography by GeoBasis-DE/BKG, Google)
+1597

@@ -1,0 +1,1261 @@
+Gaussian Process Kernels for Rotations and 6D Rigid Body Motions
+Muriel Lang, Oliver Dunkley and Sandra Hirche
+Abstract—Gaussian Processes (GPs) are gaining increasing
+popularity due to their expressive power for learning the
+dynamics of non-linear time series data, e.g. for human motion
+prediction. However, so far they are restricted to Euclidean
+space: input data such as position and velocity need to be
+Euclidean.In thispaper,weexamineGPsover timeseries of 6D
+rigidbodymotionsincludinglargerotations.AstheuseofEuler
+angles with large rotations results in inaccurate predictions, we
+present an extension of the valid input data to quaternions H
+and dual quaternionsH
+D
+. The quality of a GP prediction over
+unit quaternions is compared with GP prediction over Euler
+angles. The results are evaluated based on experimental data
+from a quadrotor and in a learning task of a collision free
+6D motion trajectory incorporating large rotations based on
+artiﬁcial data from a motion planner.
+I. INTRODUCTION
+In human-robot interaction the robot needs to adapt to
+a human partner to maximize assistive performance. The
+goal-directed interaction of robots with humans is one of
+the most challenging issues in unstructured environments
+such as for instance in elderly care or other general as-
+sistive scenarios. Precise predictions of behavioral goals of
+humans are essential for human-robot interaction, in terms
+of intention estimation from gestures and motions. Due to
+the absence of physical models that can accurately describe
+human movements, stochastic learning models are gaining
+popularity owing to its robustness in predicting dynamic
+human movements from mere observations.
+In order for the robot to learn and adapt to nonlinear
+dynamics of human behavior in human-robot interaction,
+Gaussian Processes (GPs) [1], Gaussian mixture models
+(GMMs) [2] and Hidden Markov models (HMMs) [3],
+[4] have been used. While HMMs are one of the most
+popular methodsfor describing motion primitives supporting
+human-robot interaction, these methods are limited to a
+discrete state space and less suitable for modeling continu-
+ous motion. Therefore, in this work we focus on GPs for
+estimating highly nonlinear dynamics of motion such as
+human behavior. Furthermore, the GPs requires minimum
+modelassumptions[5]andtheprocessismoregeneralizable.
+However, GPs (as well as GMMs) have a drawback so
+far; they are only deﬁned in the Euclidean space because,
+for the matrix inversion, orthogonal coordinate axes are
+required. Hence, the input data for the models are limited
+to position, force data, translational velocities or accel-
+erations. When orientation is required in addition, Euler
+M.Lang, O. Dunkley and S. Hirche are with the Institute for Information-
+Oriented Control, Faculty of Electrical Engineering and Information Tech-
+nology, Technische Universit¨ at M¨ unchen, D-80290 Munich
+muriel.lang at tum.de
+angles are typically used as a rotation representation (see
+for GPs [6], [7] and for GMMs [2]). When the rotation
+angles are small, this approach is sufﬁcient as the space of
+Euler orientations close to zero is approximately Euclidean.
+However, another rotation parametrization is required when
+the rate of orientation change becomes signiﬁcantly large
+at high angular speed, low sampling frequency or if loss
+of input data occurs. One solution for such problem is a
+use of the axis-angle orientation representation. However,
+it requires more extensive probability distributions than the
+normal distribution such as the wrapped Gaussian or the von
+Mises distribution [8]. Furthermore,no efﬁcient composition
+algorithm necessary for the GP prediction is available in the
+space of axis-angles as the vector sum is not deﬁned. In
+contrast,therepresentationbyunitquaternionsdeﬁnedonthe
+unitsphereS
+3
+isappropriatetosolveGPregressionproblems
+regarding large rotations. In addition, the unit quaternions
+is extended to dual quaternions so that it can singularly
+represent 6D rigid body motions in the space S
+3
+?R
+3
+.
+In this paper, we therefore demonstrate how rotations and
+translations represented by dual-quaternions can suitably be
+incorporated to GPs using continuous data. The signiﬁcant
+contribution of the current paper is that we introduce an
+extension of the valid GP input space to the non-Euclidean
+space of quaternionsH
+D
+and dual quaternionsH to perform
+GP predictions on 6D rigid body motions. We deﬁne three
+squared exponential kernels each based on a metric on the
+unit quaternions. We then evaluate the performance of a GP
+prediction over unit quaternions and Euler angles on real
+rotation data and learn a 6D motion trajectory over dual
+quaternions.
+The present paper is organized as follows. In Section II
+the GP kernels are introduced: we deﬁne the GP and explain
+brieﬂy the 6D pose representation by dual quaternions.
+Secondly, we introduce the GP over pure rotations and 6D
+rigid body motions. Finally, in Section III, we compare the
+different metrics using real data and present a solution from
+the GP over dual quaternions for an example data set which
+includes large rotations and highlight it’s superiority over
+regular GPs.
+II. GP FOR 6D RIGID MOTIONS
+In this section the GP over6D rigid motions,parametrized
+by dual quaternions is introduced. This GP can be used
+for modeling and predicting system dynamics including sig-
+niﬁcant rotations and translations. Firstly, some background
+information on GP regression is provided to bieﬂy introduce
+a 6D pose representation by dual quaternions. For better
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 5165
+understanding the GP is ﬁrst examined only on rotations
+before it is extended to full 6D rigid motions.
+A. GP Deﬁnition
+AGPisacollectionofrandomvariables,whicharejointly
+Gaussian distributed.Itcanbeunderstoodasa generalization
+of a Gaussian distribution to an inﬁnitely number of vari-
+ables. Instead of having a deﬁning mean vector ? ?R
+n
+and
+covariancematrix??M
+n?n
+,n?N, the GP is fully speciﬁed
+by a mean function m(x) and a covariance function k(x,x
+?
+).
+The covariancefunction describes the dependenciesbetween
+function values for any input pair (x,x
+?
+) and deﬁnes the
+elements of the kernel matrix K by (K)
+ij
+= k(x
+i
+,x
+j
+) [9].
+Hence, a GP is deﬁned through
+f(x)=GP(m(x),k(x,x
+?
+)). (1)
+In practice, the mean function is often set to zero, as this
+simpliﬁes calculation without limiting the expressive power
+of the process. The essential part in GP model learning is
+the kernel function k(x,x
+?
+) and the estimation of its free
+hyperparameters, such as length-scale ?, or signal vari-
+ance ?
+f
+. To learn the optimal hyperparameters of the GP, a
+gradient descent algorithm is used. The squared exponential
+covariance function
+k(x,x
+?
+)=?
+2
+f
+exp
+
+?
+kx?x
+?
+k
+2
+2?
+2
+
+, (2)
+with hyperparameters ?
+f
+,?, is probably the most widely
+used kernel function in machine learning [5].
+B. 6D Pose Representation by Dual Quaternions
+A unit quaternion q
+r
+=q
+w
++q
+x
+i+q
+y
+j+q
+z
+k?H, with pa-
+rameter entries q
+w
+,q
+x
+,q
+y
+,q
+z
+?R such that kq
+r
+k = 1 is
+used to represent a 3D orientation. An imaginary quater-
+nion q
+t
+=q
+?
+x
+i+q
+?
+y
+j+q
+?
+z
+k, with q
+?
+x
+,q
+?
+y
+,q
+?
+z
+?R is used to
+represent a 3D position. Together, the quaternions deﬁne a
+6D pose and a rigid motion (q
+r
+,q
+t
+). The representations
+SE(3)?(q
+r
+,q
+t
+)?S
+3
+?R
+3
+(3)
+are isomorphic for rigid motions.
+The ring of the dual quaternions is deﬁned as
+H
+D
+={dq | dq= q
+re
++?q
+du
+& q
+re
+,q
+du
+?H}, (4)
+where ? is a dual unit, which holds ?
+2
+=0 [10]. The dual
+quaternion representing the pose (q
+r
+,q
+t
+), is calculated by
+dq:= q
+r
++
+?
+2
+q
+t
+q
+r
+. (5)
+To transform a point p = (p
+x
+,p
+y
+,p
+z
+)
+?
+?R
+3
+by a rigid
+motion parameterized by a dual quaternion dq, the
+point needs to be represented by an imaginary quater-
+nion q
+p
+= p
+x
+i+p
+y
+j+p
+z
+k. Then the transformed point p
+?
+is represented by the imaginary quaternion
+q
+p
+? = dq?q
+p
+?dq, (6)
+where ? is the dual quaternion multiplication and
+dq= q
+re
++?q
+du
+is the conjugate of dq and q is the quater-
+nion conjugate of q [11].
+C. Gaussian Process over Pure Rotations
+A GP overpurerotationsparametrizedby unitquaternions
+isintroducedinthissection.Wesubdivideintoexplainingthe
+GP mapping from input to output space, brieﬂy introducing
+the mean function of the GP over the unit sphere S
+3
+, before
+we specify the metrics over unit quaternions, which we use
+for the kernel function. Finally we compare the kernels to
+highlight their differences.
+1) Input Space to Output Space Mapping: The training
+data we introduce for learning the GP mapping from input
+to output space, consists of unit quaternion samples q on
+the sphere S
+3
+with corresponding velocities. Each rotational
+velocity is represented by a vector v
+TS
+in the tangent
+space TS
+q
+of the corresponding rotation quaternion q, i.e.
+each 3D velocity vector is deﬁned in its tangent space
+to the unit sphere S
+3
+with respective basis. Hence, the
+GaussiandistributionovervelocitiesisinaEuclideantangent
+space and we avoid the need to deﬁne a Gaussian on the
+hypersphere S
+3
+. The velocity in the tangent space TS
+q
+can
+be equivalently represented by a unit quaternion ˙ q, using
+the central projection of v
+TS
+to the sphere, q
+?
+= q˙ q. In the
+GP prediction the velocity vector is projected to the sphere
+to obtain the predicted orientation as a unit quaternion.
+The central projection from the tangent space TS
+q
+of the
+quaternion q, to the hypersphere is deﬁned as
+?
+q
+:TS
+q
+?S
+3
+?
+q
+(v
+TS
+)={?
+v
+kvk
+,
+v
+kvk
+}, (7)
+where v= q+Bv
+TS
+. The basis B is the canonical represen-
+tation of the 3D tangent space TS
+q
+in the 4D spaceR
+4
+[12].
+With this representation we avoid cumbersome learning
+restrictions in the GP, to assure the output to be a unit
+quaternion.
+2) Mean Functions: As well as ordinary GP, the GP
+over quaternions is fully speciﬁed by a mean function m(x)
+and a covariance function k(x,x
+?
+). The mean function is
+deﬁned by orientations and is therefore restricted to the unit
+hypersphere,m:S
+3
+?S
+3
+. As the mean functionin practice is
+often set to zero rotation, i.e. m(q)=(1,0,0,0)
+?
+, we focus
+on distance functions.
+3) Unit Quaternion Metrics: We introduce three metrics
+over points on the unit hypersphere S
+3
+, which are visualized
+in Fig. 1. The ﬁrst two metrics depend on the scalar product
+over quaternions, which is deﬁned as
+hq,q
+?
+i=q
+w
+q
+?
+w
++q
+x
+q
+?
+x
++q
+y
+q
+?
+y
++q
+z
+q
+?
+z
+= qq
+?
+. (8)
+The unit quaternions are a double coverage of the rotations,
+so opposite quaternions represent the same orientation. To
+avoid ambiguity, both quaternions q,q
+?
+are chosen to lay
+on the same hemisphere, such that the scalar product is
+nonnegative hq,q
+?
+i≥ 0. Firstly, the quaternion norm kq?
+q
+?
+k is a good approximation of the distance between similar
+rotations. It yields the same result as the regular vector norm
+of points ?q,q
+?
+?S
+3
+d
+norm
+(q,q
+?
+)=
+q
+qq
+?
+=kq?q
+?
+k. (9)
+5166
+Fig. 1. The distance measures consisting of quaternion norm, arc length
+and projection to the tangent space are depicted with a red dashed, green
+solid and blue dashed-dotted line.
+ThisdistancemeasureiscalculatedintheEuclideanspaceR
+4
+and is not part of the sphere S
+3
+. Secondly, an alternative
+distance measure between unit quaternions q and q
+?
+is the
+arc length between the quaternions. It is obtained by
+d
+arc
+(q,q
+?
+)=arccos(hq,q
+?
+i)=arccos(qq
+?
+). (10)
+The advantage of distance d
+arc
+over d
+norm
+is, that the arc
+is a subset of S
+3
+. This means, the arc length is a distance
+measure on the unit sphere and it precisely measures how
+similar orientations are instead of approximating it. Thirdly,
+we determine the distance between unit quaternions q,q
+?
+in the tangent space. One quaternion, for instance q
+?
+is
+projected to the other’s tangent space TS
+q
+by central pro-
+jection (7). The quaternion q is represented by the origin
+of TS
+q
+. Thenthe tangentspacedistance d
+TS
+q
+(q,q
+?
+) between
+the projected quaternions is the norm of ?
+?1
+q
+(q
+?
+) in the
+Euclidean space TS
+q
+?R
+3
+,
+d
+TS
+q
+(q,q
+?
+)=k?
+?1
+q
+(q
+?
+)k=kq
+?
+TS
+q
+k. (11)
+As this distance measure is symmetric, it
+holds d
+TS
+q
+(q,q
+?
+)=d
+TS
+q
+?
+(q
+?
+,q)?q, q
+?
+?S
+3
+. If the
+quaternions represent opposite orientations, i.e. the
+quaternions are perpendicular, the projected quaternion hits
+the tangent space at the point ∞. Therefore, we include the
+compact boundary R
+3
+=R
+3
+?{∞} in the tangent space,
+to obtain a continuous completion of the distance d
+TS
+q
+on R?{∞}. Choosing any point p 6= q,q
+?
+between the
+quaternions q and q
+?
+as the tangent point would yield
+a bounded distance measures d
+TS
+p
+, like d
+norm
+,d
+arc
+are
+bounded. The maximal distance occurring for 2π rotations
+is
+√
+2 in the quaternion norm measure d
+norm
+and π/2 in the
+arc length measure d
+arc
+. The distance measures d
+norm
+,d
+arc
+and d
+TS
+q
+deﬁne metrics on the unit sphere S
+3
+, as they all are
+non-negative, symmetric and fulﬁll the triangle inequality.
+4) Covariance Functions: Over the metrics from the pre-
+vious subsection,covariancefunctionson S
+3
+are deﬁned.For
+simplicity we focus linear kernel and the family of squared
+exponential kernels in the present study. The deﬁnition of a
+linear kernel over quaternions follows straight forward from
+the scalar product over quaternions (8),
+k
+lin
+(q,q
+?
+):=hq,q
+?
+i. (12)
+The kernel functions over unit quaternions corresponding to
+the squared exponential kernel (2) provide high correlations
+between close unit quaternions and, smoothly descending,
+smaller correlations for the far ones. From the d
+norm
+(9) we
+obtain the regular squared exponential kernel
+k
+norm
+(q,q
+?
+)=?
+2
+f
+exp
+
+?
+kq?q
+?
+k
+2
+2?
+2
+
+, (13)
+where the quaternions q, q
+?
+can be regarded as vectors in
+the R
+4
+. From the square arc length (10) and the linear
+kernel (12) we construct a new kernel function
+k
+arc
+(q,q
+?
+)=?
+2
+f
+exp
+
+?
+(arccos
+2
+(hq,q
+?
+i)
+2?
+2
+
+. (14)
+That k
+arc
+deﬁnes a kernel function which can be proven
+by induction. With the metric over projected points in the
+tangent space (11), a squared exponential kernel function is
+deﬁned through
+k
+TS
+(q,q
+?
+)=?
+2
+f
+exp
+ 
+?
+kq
+?
+TS
+q
+k
+2
+2?
+2
+!
+. (15)
+The proof that (15) deﬁnes a covariance function is analo-
+gousto theonefortheregularsquaredexponentialkernel(2)
+in the Euclidean space.
+5) Comparison of Covariance Functions: In this para-
+graph, we investigate the behavior of the covariance func-
+tions over unit quaternions, as introduced above. To com-
+pare them, the covariances at each time step are calculated
+between a rotated point and the starting conﬁguration for
+a one dimensional full turn. In Fig. 2, the kernel func-
+Fig. 2. The full turn about the z-axis is parametrized by quaternions q.
+Then the function value of the covariance functions k
+norm
+, k
+arc
+and k
+TS
+are
+calculated for (0,q) and are visualized by the red dashed, blue dashed-
+dotted, green solid line, respectively.
+tions k
+norm
+(0,q), k
+arc
+(0,q) and k
+TS
+(0,q) are visualized
+for q ?H representing the rotation from 0 to 2π about
+the z-axis. The function values correspond to the ﬁrst row,
+respectively ﬁrst column of the corresponding covariance
+matrix K. In all cases the covariance decreases, as expected,
+on rotating to the farthest orientation π and symmetrically
+5167
+increases as it departs from π. In the upper part, the covari-
+ances are depicted three times for ﬁxed signal noise ?
+f
+and
+varying length scale ?. In the lower part, the length scale is
+ﬁxed, while the signal variance varies. The steep decrease of
+kernelk
+TS
+,visualizedbyabluedashed-dottedline,compared
+to the kernels k
+norm
+and k
+arc
+, depicted by the red dashed and
+green solid line, encodes the fast increase of the underlying
+metric d
+TS
+q
+. Hence, high correlations are obtained only for
+highly similar orientations.
+The unit sphere S
+3
+can be combined with any Euclidean
+space R
+n
+using the Cartesian set product. This offers a
+straight forward method to perform GP regression over
+spaces that consist of rotation and translation, translational
+velocities, forces etc. However, the Cartesian set product
+neglects all correlations between the subsets and a case
+speciﬁcmanualweightingbetweenrotationandtranslationis
+required. Instead, we propose the GP over dual quaternions
+for 6D rigid motions, as it nicely captures this correlation.
+D. Gaussian Process over 6D Rigid Body Motions
+In this section, we introduce a Gaussian Process
+over S
+3
+?R
+3
+. We extend our input data from pure orien-
+tations to whole 6D poses, parametrized by dual quater-
+nionsH
+D
+. On the special Euclidean groupwe do not address
+the mean function m:SE(3)?SE(3), and it is set to zero.
+1) Input Space to Output Space Mapping: The GP is
+trained on a dataset consisting of input poses and output
+velocities. The training input is parametrized by dual quater-
+nions, whereas the training output is a concatenation of
+rotational velocities in the tangent space and translational
+velocitiesparametrizedby a simple 3D vector.Thevelocities
+in the tangent space are projected to the hypersphere S
+3
+by (7) and with the imaginary quaternion representation for
+the translational velocities, they can be combined to a dual
+quaternion velocity using (5). Hence, the dual quaternion
+velocity represents the rigid motion velocity at a certain 6D
+pose.
+2) Dual Quaternion Distance Measures: We introduce
+three magnitude measures for dual quaternion differ-
+ences. Analogous to how we consider the quaternion dis-
+tance d
+norm
+(q,q
+?
+)=?q as a 4D vector in the squared
+quaternion norm,we now consider the dual quaternion dq=
+q
+re
++?· q
+du
+as a vector tuple (q
+re
+,q
+du
+). Then, the vector
+tuple distance d
+tuple
+(dq,dq
+?
+) = ?dq of the dual quater-
+nions dq,dq
+?
+can be deﬁned as
+d
+tuple
+(dq,dq
+?
+)=kq
+re
+?q
+?
+re
+k+kq
+du
+?q
+?
+du
+k. (16)
+In this distance measure it is disregarded the fact, that
+the second part of a dual quaternion lies in a dual space.
+However, the correlation between rotation and translation
+is captured in the second summand of the distance d
+tuple
+.
+As a second distance measure, we propose the squared
+dual quaternion norm, since this measure is well-known and
+captures the duality of the representation
+d
+2
+dqn
+(dq,dq
+?
+)=kdq?dq
+?
+k
+2
+=k?dqk
+2
+=?q
+re
+?q
+re
+| {z }
+x
+re
++?(?q
+re
+?q
+du
++?q
+du
+?q
+re
+| {z }
+x
+du
+)
+(17)
+The dual quaternion difference ?dq between two 6D
+poses dq and dq
+?
+yields a dual quaternion, which is not
+representing a rigid motion. Therefore, we obtain a dual
+number x
+re
++?x
+du
+for d
+2
+dqn
+. As the dual part x
+du
+can be
+negative, there is no canonical method to extract a real
+number from the squared dual quaternion norm necessary
+forassuring thecovarianceto bepositivesemi-deﬁnite.More
+information about dual numbers can be found in [13]. The
+last magnitude measure we introduce, is calculated from the
+transformation rigid motion
+~
+dq between dual quaternions.
+It denotes the rigid motion which has to be applied to the
+pose dq, to arrive in dq
+?
+and is obtained by
+~
+dq= dq?dq
+?
+. (18)
+From the transformation dual quaternion
+~
+dq= ~ q
+re
++? ~ q
+du
+,
+rotation and translation are obtained by dual quaternion
+decomposition. We deﬁne the squared transformation mag-
+nitude measure as
+d
+2
+mag
+(dq,dq
+?
+)=k~ q
+r
+k
+2
++k~ q
+t
+k
+2
++ck~ q
+r
+~ q
+t
+k, (19)
+where~ q
+r
+is the unitquaternionforrotation,~ q
+t
+theimaginary
+quaternion for translation and c≥0 a nonnegative constant.
+The quaternion norm (9) provides real positive numbers,
+which are combined to capture the correlation between ro-
+tation and translation. In the transformation dual quaternion
+thecorrelationof rotationand translationis alreadycaptured,
+such that there is no need to scale ~ q
+r
+against ~ q
+t
+. The
+factor c deﬁnes how strong the composed part is weighted
+in comparison to pure rotation and translation.
+3) Covariance Functions: The vector tuple distance (16)
+allows us to deﬁne a linear kernel on dual quater-
+nions k
+lin
+(dq,dq
+?
+)=d
+2
+tuple
+(dq,dq
+?
+). Over dual quaternions
+no scalar product is deﬁned, but over quaternion tu-
+ples dq=(q
+re
+,q
+du
+) and dq
+?
+=(q
+?
+re
+,q
+?
+du
+), the analogon to
+a scalar product is
+d
+2
+tuple
+(dq,dq
+?
+)=hq
+re
+,q
+?
+re
+i+hq
+du
+,q
+?
+du
+i
++kq
+re
+?q
+?
+re
+kkq
+du
+?q
+?
+du
+k.
+(20)
+Weobtainasquaredexponentialkernelfunction,byinserting
+the squared transformation magnitude measure (19) in the
+exponential function
+k
+mag
+(dq,dq
+?
+)=?
+2
+f
+exp
+ 
+?
+d
+2
+mag
+(dq,dq
+?
+)
+2?
+2
+!
+. (21)
+Figure 3 illustrates the behavior of the squared exponen-
+tial kernel k
+mag
+on dual quaternions, representing simul-
+taneously constant rotation and translation. In x-direction
+constant rotation about a single axis from 0 to 2π is
+applied, while in y-direction constant translation in one
+direction is applied. The value of the covariance func-
+tion k
+mag
+(dq
+?
+,dq) is color coded for dq
+?
+representing the
+origin (0,0), i.e. dq
+?
+=(1,0,0,0)
+?
++?(0,0,0,0)
+?
+and dq
+representing the rotations and translations in the grid. The
+highest correlations are obtained for points, where both,
+rotation and translation are small, i.e. just a small rigid
+motion has to be applied to move from dq
+?
+to dq. The color
+5168
+Fig. 3. In x-direction a full turn about one axis is shown and in y-direction
+a constant translation from 0 to 1. Each point in the plane is converted to
+a dual quaternion dq, representing the rotation x and translation y. The
+hyperparameters (?,?
+f
+)=(1,1) and c= 0. The value of the covariance
+function k
+mag
+(0,dq) is visualized by the color code of the bar on the right
+side.
+values are symmetric, as the distance on the hypersphere S
+3
+decreases on both sides of π.
+III. EXPERIMENTAL EVALUATION
+In this section, we evaluate the GP over 6D rigid body
+motions. Firstly, the performance of the proposed squared
+exponential kernels for pure orientation is compared with a
+GPoverEuleranglesinarealdataexperiment.Subsequently,
+we apply the GP over dual quaternions to an example setup
+including large rotations, translations and variances, which
+is poorly handled by an ordinary GP. We use the MATLAB
+toolbox GPML from C.E. Rasmussen and H. Nickisch,
+provided on http://gaussianprocess.org/ in our
+implementation to perform GP regression over dual quater-
+nions. All code is written in MATLAB.
+A. Real Data Experiment: 3D Rotation
+We estimate the rotation in a ﬂight trajectory of a quadro-
+copterusingrealdataasgroundtruth.The6Dposetrajectory
+of a Crazyﬂie Nano Quadrotor, visualized by Fig. 4 is
+measured in a passive marker based motion capture system
+(Qualisys, Sweden) at 10Hz. The GP is trained on 7%
+Fig. 4. The ﬂight trajectory of the Crazyﬂie Nano Quatrotor captured in
+a motion capture system is used to compare GPs using Quaternions with
+GPs using Euler angles.
+random samples of 150 poses, that are artiﬁcially pulled
+samples from the motion data. The tracking system noise
+is modeled by white Gaussian noise with standard devia-
+tion 0.03. We use exact inference and a Gaussian likelihood
+andsetthehyperparameters(?
+f
+,?)=(0.08,0.4).Eachﬂight
+trajectory we was recorded for 15 seconds and this data set
+contains rotations of more than 2π. The GP regression is
+performed over pure 3D rotations of the ﬂight trajectory.
+We compare the GP over unit quaternions using the three
+differentsquared exponentialkernels k
+norm
+,k
+arc
+and k
+TS
+with
+a GP over Euler angles (?,?,?) treating the angles like
+a vector in R
+3
+. From the estimated orientation trajectory
+exemplary one signal output is visualized in Fig. 5. We
+arbitrarily select the fourth component q
+z
+of the rotation
+quaternion (q
+w
+,q
+x
+,q
+y
+,q
+z
+)
+?
+? S
+3
+and visualize it over time
+using the different underlying metrics d
+norm
+,d
+arc
+and d
+TS
+q
+.
+For comparison the corresponding signal yaw? of the Euler
+angles is also shown. The predictions using k
+norm
+and k
+TS
+Fig. 5. All signals visualize one DoF of the performed rotation over time.
+The red dashed line depicts the ground truth rotation, the green stars the
+samples used for learning and the blue solid line the mean prediction. The
+ﬁrst signal shows the yaw rotation of the ﬂight trajectory estimated by a GP
+over Euler angles using the Euclidean norm in the kernel. The other signals
+each depict the fourth entry of the GP prediction over unit quaternions using
+the kernels k
+norm
+,k
+arc
+and k
+TS
+. The gray shaded area shows an upper bound
+for the sextuple standard deviation of the prediction.
+resemble each other, as the underlying metrics are similar,
+those using k
+arc
+are more accurate for large rotations. As the
+underlying metric of k
+TS
+precisely measures the orientation
+distance, mean prediction is less erroneous for instance in
+second 13. All GPs over unit quaternions on S
+3
+outperform
+the GP over Euler angles. Even though the yaw angle ? is
+unwrapped to avoid the jump at 2π, the predictions close to
+large rotation fall behind any prediction using quaternions.
+Further, the covariance encoding the prediction uncertainty
+is signiﬁcantly bigger.
+B. Simulated Data Experiment: 6D Rigid Motion
+InthissectionweapplytheGPoverdualquaternionstoan
+example setup incorporating large rotations and translations.
+The aim of this experiment is to learn a collision free 6D
+motion trajectory of a stylus from randomstarting conﬁgura-
+tions to a ﬁxed goal conﬁgurationinside a hole. A set of 500
+trajectories to sufﬁciently cover the 6D space is generated
+by the Open Motion Planning Library (OMPL) [14] using
+the path planner RRTconnect with path simpliﬁcation and
+smoothing. Each trajectory consists of about 200 to 300
+5169
+sequential poses visualized in Fig. 6. The GP over 6D rigid
+motions is trained with 20% randomly chosen sample poses
+from 108406 poses in total. The prediction is performed
+Fig. 6. Artiﬁcially generated 6D rigid motion trajectory of a longish red
+object from a random starting conﬁguration to the goal conﬁguration inside
+the hole.
+stepwise and we iteratively apply the predicted velocity to
+the current pose. To save computationaleffort,the prediction
+is based on the set of n ?N closest poses according to
+the transformation magnitude measure (19). The starting
+conﬁgurations are restricted to the 6D space covered by the
+training trajectories. This assures positive correlation with
+trainingposesrequiredbytheGPprediction.Theexperiment
+is considered successful, when the object maneuvers into
+the hole without collision. In Fig. 7, an initial random
+conﬁgurationis visualized by a large coordinatesystem. The
+smaller coordinate systems represent a subset of training
+trajectory starting poses. The predicted motion trajectory
+correctly follows the training data and arrives at the goal
+pose inside the hole without collision.
+Fig. 7. A successful 6D rigid body motion prediction is visualized. The
+object moves from a random starting conﬁguration to a goal conﬁguration.
+The regression is performed, using GP over dual quaternions with the
+kernel k
+mag
+.
+IV. CONCLUSION
+In this paper we introduce the GP over dual quaternions.
+The essential contribution is the extension of the input data
+of the GP to 6D rigid body motions using the squared
+exponential kernel k
+mag
+deﬁned over dual quaternions. We
+introduce and compare three metrics on the hyperspherethat
+induce the kernels k
+norm
+,k
+arc
+and k
+TS
+for pure rotations. GP
+regression is performed for a task involving large rotations,
+which is poorly handled by a regular GP using Euler an-
+gles, while the GP using dual quaternions can successfully
+overcome the problem and arrives in the goal conﬁguration
+without collision. For future work we plan to predict human
+behavior in human-robot interaction using the GP over dual
+quaternions, as for instance human gaze motion trajectories
+include large rotations.
+ACKNOWLEDGMENT
+The research leading to these results has received funding
+from the European Union Seventh Framework Programme
+FP7/2007-2013 under grant agreement n
+?
+601165 of the
+project “WEARHAP - WEARable HAPtics for humans and
+robots” and from the ERC Starting Grant “Control based
+on Human Models (con-humo)” under grant agreement n
+?
+337654.
+REFERENCES
+[1] J. M. Wang, D. J. Fleet, S. Member, and A. Hertzmann, “Gaussian
+process dynamical models for human motion,” IEEE Trans. Pattern
+Anal. Machine Intell, 2007.
+[2] S. M. Khansari Zadeh and A. Billard, “Learning and control of uav
+maneuvers based on demonstrations.” Presented at Robotics Science
+and Systems, Seattle, June 28 July 1, 2009., 2009.
+[3] D. Kuli´ c, W. Takano, and Y. Nakamura, “Incremental learning of full
+body motions via adaptive factorial hidden markov models,” in in 7th
+International Conference on Epigenetic Robotics, 2007.
+[4] J. M. Hernndez, M. Lawitzky, A. Mrtl, D. Lee, and S. Hirche,
+“An experience-driven robotic assistant acquiring human knowledge
+to improve haptic cooperation,” in Proceedings of the IEEE/RSJ
+International Conference on Intelligent Robots and Systems, 2011.
+[5] C.RasmussenandC.Williams, Gaussian processes for machine learn-
+ing. Adaptative computation and machine learning series, University
+Press Group Limited, 2006.
+[6] J. Ko and D. Fox, “GP-BayesFilters: Bayesian ﬁltering using Gaussian
+process prediction and observation models,” in Intelligent Robots and
+Systems, 2008. IROS 2008. IEEE/RSJ International Conference on,
+pp. 3471–3476, 2008.
+[7] S. Kim and A. Billard, “Estimating the non-linear dynamics of free-
+ﬂying objects.,” Robotics and Autonomous Systems, vol. 60, no. 9,
+pp. 1108–1122, 2012.
+[8] M. Jammalamadaka, J and A. Sengupta, Topics in Circular Statistics.
+Series on Multivariate Analysis (Book 5), Singapore: World Scientiﬁc
+Pub Co Inc; Har/Dskt edition (March 15, 2001), March 2001.
+[9] C. E. Rasmussen, “Gaussian processes for machine learning,” MIT
+Press, 2006.
+[10] E.Ata and Y. Yayli, “Dual unitary matrices and unit dual quaternions,”
+Differential Geometry - Dynamical Systems, vol. 10, pp. 1–12, 2008.
+[11] W. Feiten, M. Lang, and S. Hirche, “Rigid Motion Estimation using
+Mixtures of Projected Gaussians,” 16th International Conference on
+Information Fusion, 2013.
+[12] M. Lang and W. Feiten, “MPG - Fast Forward Reasoning on 6 DOF
+Pose Uncertainty,” in 7th German Conference on Robotics (ROBOTIK
+2012), (Munich, Germany), May 2012.
+[13] F. W. B. Vasantha Kandasamy, Dual Numbers. American Research
+Press.
+[14] I. A. S ¸ucan, M. Moll, and L. E. Kavraki, “The Open Motion Planning
+Library,” IEEE Robotics & Automation Magazine, vol. 19, pp. 72–82,
+December 2012.
+5170

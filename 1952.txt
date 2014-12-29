@@ -1,0 +1,904 @@
+Detection of Slippery Terrain with a Heterogeneous
+Team of Legged Robots
+Duncan W. Haldane*, P´ eter Fankhauser*, Roland Siegwart, and Ronald S. Fearing
+Abstract— Legged robots come in a range of sizes and
+capabilities. By combining these robots into heterogeneous
+teams, joint locomotion and perception tasks can be achieved by
+utilizing the diversiﬁed features of each robot. In this work we
+present a framework for using a heterogeneous team of legged
+robots to detect slippery terrain. StarlETH, a large and highly
+capable quadruped uses the VelociRoACH as a novel remote
+probe to detect regions of slippery terrain. StarlETH localizes
+the team using internal state estimation. To classify slippage of
+the VelociRoACH, we develop several Support Vector Machines
+(SVM) based on data from both StarlETH and VelociRoACH.
+By combining the team’s information about the motion of
+VelociRoACH, a classiﬁer was built which could detect slippery
+spots with 92% (125/135) accuracy using only four features.
+I. INTRODUCTION
+Versatile locomotion over all types of terrain is one of
+the goals of legged robotics. While a great amount of work
+has been presented for legged locomotion on solid grounds,
+safe and fast handling of slippery terrain is still an open
+research problem. The biggest challenge of slippery terrain
+presents its inability to be detected without physical contact.
+Estimating the slipperiness through contact on a step-by-step
+basis is an extremely slow process. For these reasons, we
+have chosen the alternative approach of deploying a group
+of robots. A robot team is more capable of successfully
+fulﬁlling a task than a single robot in many aspects. For
+example, a task can be distributed amongst the team members
+which lowers the constructional and control complexity for
+the individual robots. Furthermore, with parallelization, the
+problem be solved faster, and a redundancy in the team
+allows the task to be executed more robustly.
+With these advantages in mind, we present a framework
+for a small heterogeneous team of legged robots. Our goal
+is to navigate a relatively large and more capable robot, the
+main robot, through an area with slippery regions. These
+slippery patches are potentially hazardous and the main
+robot needs to avoid them in order to protect the sensitive
+This material is based upon work supported by the National Science
+Foundation under IGERT Grant No. DGE-0903711, and Grant No. CNS-
+0931463, and the United States Army Research Laboratory under the Micro
+Autonomous Science and Technology Collaborative Technology Alliance.
+This work was supported in part by the Swiss National Science Founda-
+tion (SNF) through project 200021 149427 / 1 and the National Centre of
+Competence in Research Robotics.
+D.W. Haldane is with the Department of Mechanical Engineering, Uni-
+versity of California, Berkeley, CA 94720 USA, dhaldane@berkeley.edu
+P. Fankhauser and R. Siegwart are with the Autonomous Systems Lab
+(ASL), ETH Zurich, Switzerland, pfankhauser@ethz.ch, rsiegwart@ethz.ch
+R.S. Fearing is with the Department of Electrical Engineering and
+Computer Sciences, University of California, Berkeley, CA 94720 USA,
+ronf@eecs.berkeley.edu
+* These authors contributed equally to this work.
+Main robot
+x
+y
+z
+x
+~
+~
+y
+z
+Camera
+Test surface
+Picket robot
+~
+Fig. 1: Our proof of principle setup consists of the main robot
+StarlETH and one picket robot VelociRoACH. A camera on the
+main robot tracks the picket robot and allows to guide it at a
+constant distance of 0.5 m ahead. The test surface is a whiteboard
+which is either left dry or made slippery with lubricant.
+and expensive onboard equipment. We can achieve this by
+sending multiple smaller robots, the picket robots, ahead
+of the main robot. The picket robots assess the area in
+front of the main robot so that a safe path can be chosen.
+These smaller robots are simpler in construction and cheaper;
+therefore, a loss of a picket robot is tolerable. Due to the
+limited capabilities of the picket robots, they depend on
+localization and guidance assistance from the main robot.
+This collaborative work of the heterogeneous team of legged
+robots enables to safely navigate the main robot through a
+ﬁeld with hazardous slippery regions without putting restric-
+tions on its locomotion speed.
+To apply this approach, many topics need to be addressed.
+Each robot needs to be able to traverse the terrain au-
+tonomously, the robots need to communicate, localize them-
+selves as a group and relatively to the environment, and plan
+and execute a route while probing, mapping and avoiding
+dangerous regions. In this work, we focus on tackling the task
+of detecting slippery areas and localizing the probing robot
+from the main robots perspective. We save the diverse tasks
+of coverage planning, mapping and navigation for future
+work.
+A. Prior Work
+There have been many approaches to terrain classiﬁcation
+using techniques which can be divided into two categories:
+Remote sensing using cameras or radar, and vibration based
+classiﬁcation. For planning purposes, it is desirable to have
+information about terrain before the robot encounters it.
+To this end, terrain classiﬁcation techniques using 3D-point
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 Crown 4576
+clouds [27] or visual data [5] have been developed. These
+methods require complex sensing apparatus, such as cameras
+or laser range ﬁnders, and are largely dependent on the
+presence of texture (visual or physical) in the dataset. An
+alternative, vibration-based terrain classiﬁcation, uses simple
+sensors such as accelerometers or gyroscopes to detect terrain
+using characteristic vibratory signatures ([29], [28], [26],
+[10], [12]). The disadvantage of the vibration-based approach
+is that the robot must be physically present on the terrain,
+which might be hazardous. To avoid stepping on the terrain,
+several classiﬁcation methods use an appendage to identify
+properties of directly adjacent terrain([15], [25], [13]), which
+limits the planning horizon for navigation. The goal of the
+present work is to be able to remotely classify terrain which
+may be devoid of texture, without risking a valuable robot.
+An example of such terrain is a smooth surface which has
+lubricated regions. These spots look visually identical, and
+have no physical texture which could discriminate them.
+More examples include hidden holes and troughs, and haz-
+ards obscured by leaf litter.
+Different forms of heterogeneous mobile robot teams have
+been introduced in the last years. They are varied in aspects
+such as team architecture, task assignment, communication,
+and localization (see [23] for an overview). Our approach is
+similar to work in [20] where a bigger and more intelligent
+main robot assists smaller and less capable robots (picket
+robots) for navigation. In return, the small sensor robots
+can deliver information from areas that are unaccessible
+or dangerous for the bigger robot. Similarly, in [8] a big
+wheeled vehicle was supporting smaller quadruped robots in
+a search and rescue scenario. For a successful collaborative
+navigation a precise localization strategy is required. The
+work of [21] has demonstrated assistive navigation with
+vision based marker detection and pose estimation. How-
+ever, the chosen ﬁducial markers restrict to planar pose
+estimation. A marker-free, model-based tracking algorithm
+for cooperative robots was presented in [19], which requires
+a stereo camera setup. So far, little attention has been given
+to heterogeneous teams involving legged robots. Besides the
+work of [8], an exception to this is the research in [22] where
+the six-legged robot Genghis-II was used collaboratively to
+push boxes with a wheeled vehicle.
+B. Approach
+As a proof of concept, we restrict our robot team to one
+main robot and one picket robot; many other team conﬁg-
+urations are possible. For navigation, we use the inverse of
+the “Follow the leader” approach, wherein the main robot
+drives the picket robot using constant position feedback. The
+picket robot assesses the terrain in front of the main robot
+by using a vibration-based terrain classiﬁer. In Section II-
+A, we describe our experimental setup. The main robot,
+and its sensing capabilities are described in Sections II-B
+and II-D. The picket robot is described in Section II-C,
+and the classiﬁcation approach is described in Section II-
+E. The efﬁcacy of the main robot’s localization approach is
+evaluated in Section III-A, and the accuracy of our classiﬁers
+Fig. 2: The picket robot, VelociRoACH. This hexapedal robot is
+10 cm long, weighs 35 g and is powered by two DC brushed motors
+[14].
+is given in Section III-B. The results from this work are
+summarized in the accompanying video
+1
+.
+II. METHODS
+A. Overview of the Setup
+We evaluated our methods in a laboratory environment as
+shown in Fig. 1. The setup consists of the main robot and
+one picket robot characterizing the ground slipperiness. The
+test surface is a whiteboard (1.20.75 m) which is either left
+dry (coefﬁcient of friction = 0:39) or is sprayed uniformly
+with a silicone-oil-based release agent
+2
+, making the surface
+slippery ( = 0:14). The main robot runs an on-board state
+estimation and carries a downward-facing camera to track
+the smaller robot in front of it. The combination of on-board
+state estimation and visual tracking allows the main robot to
+steer and to localize the picket robot. The estimated pose and
+the desired position of the picket robot is shared between the
+robots via ROS
+3
+messages over 802.15.4 radio. We quantify
+the performance of the pose estimation system by comparing
+the data with the ground truth provided by an external optical
+tracking system.
+B. The Main Robot
+The quadruped StarlETH [17] is used as the main robot,
+which has the shape and weight of a medium-sized dog.
+In addition to its onboard electronics and power supply,
+StarlETH is able to carry a payload of 15 kg, which is
+sufﬁcient for highly accurate perception sensors. All legs
+of the system are fully torque controllable and allow the
+robot move in a variety of different gaits. In our experi-
+ments, StarlETH uses a static walking gait [11], which is
+robust against (unperceived) terrain variations and external
+disturbances. The desired global travel direction (speed and
+heading) is controlled manually with a joystick. For state
+estimation, StarlETH fuses kinematic data from the legs with
+on-board Inertial Measurement Unit (IMU) measurements
+[3]. The algorithm is able to estimate the position of all
+footholds and the 6 DoF pose of the main body without
+prior knowledge on the geometrical structure of the terrain.
+1
+Also available at http://youtu.be/3LDXy5RV AbU
+2
+Pol-Ease 2300 from Polytek
+3
+Robot Operating System
+4577
+VelociRoACH
+IMU
+Steering
+ARTag
+StarlETH
+6 DoF Tracking
+Terrain Classifier
+Localization
+Path plan
+Motion 
+command
+Fig. 3: A block diagram showing the localization and terrain
+classiﬁcation information ﬂows between the members of the robot
+team.
+C. The Picket Robot
+Our joint terrain detection framework makes most sense if
+the picket robot is a cheap and robust robot that is capable
+of traversing terrain at least at the speed of the main robot.
+Smaller robots can be more robust as an effect of size [18],
+and can be cheaper than larger robots by several orders
+of magnitude. We chose the VelociRoACH as our picket
+robot because it fulﬁlls these criteria. The VelociRoACH
+[14] is a hexapedal millirobot (shown in Fig. 2) built with
+cardboard Smart Composite Microstructures [16], making
+it cost efﬁcient to produce. It is 10 cm long, capable of
+traversing rough terrain, and has a top speed of 2.7 m/s.
+The VelociRoACH is driven by the imageproc
+4
+[2] robot
+control board. The imageproc also collects telemetry data at
+1000 Hz, and uses a 802.15.4 radio interface for communi-
+cation and external control
+5
+.
+The main robot drives the picket robot in front of it at
+a distance of 0.5 m to detect slippery patches of terrain.
+We used the following control law to prescribe the desired
+motion of the VelociRoACH:
+_
+~ x
+des
+=K
+p;x
+(~ x
+des
+  ~ x); (1)
+_
+~
+ 
+des
+=K
+p;y
+(~ y
+des
+  ~ y)+K
+p; 
+(
+~
+ 
+des
+ 
+~
+ ); (2)
+where
+_
+~ x
+des
+is the desired forward velocity, ~ x
+des
+and ~ x
+are the target and actual distances to StarlETH, respectively.
+Similarly,
+_
+~
+ 
+des
+is the desired yaw rate, ~ y
+des
+and ~ y are the
+target and actual distances from the midline of the StarlETH,
+respectively, and
+~
+ 
+des
+and
+~
+ are the target and actual yaw
+angles, respectively.
+To steer the VelociRoACH, we assume that differential
+steering dynamics apply and drive the two sides of the
+VelociRoACH at different speed to achieve turning (as was
+done in Buchan and Haldane et. al. [4]). The desired leg
+speeds for the left and right side, _ 
+l;des
+, _ 
+r;des
+are given by
+
+_ 
+l;des
+_ 
+r;des
+
+=
+1
+r
+
+1
+d
+=2
+1  
+d
+=2
+
+_ x
+des
+_
+ 
+des
+
+; (3)
+where r is the effective leg radius, and d is the width of
+the robot.
+4
+Embedded board: https://github.com/biomimetics/imageproc pcb
+5
+Embedded code: https://github.com/dhaldane/roach
+The control loop on position and orientation (from
+StarlETH’s camera to VelociRoACH) is closed at 30 Hz.
+Internally, the VelociRoACH uses PID feedback control at
+1000 Hz to regulate the speed of its legs.
+D. Visual Tracking
+The localization of the picket robot is performed by
+visually tracking a ﬁducial marker attached to the robot. The
+camera is mounted at a ﬁxed position on the front of the
+main robot at a height of 0.5 m and the viewpoint is pointed
+in the direction of travel and downwards at an angle of 30
+
+(see Fig. 1). This created a distance of1 m from camera to
+marker, depending on the relative position of the main and
+picket robot. The camera is a commercial webcam
+6
+used at
+a resolution of 640480 px. The marker is an ARTag [9]
+(side length 6 cm) and we use the ALV AR software library
+[24] to track the pose of the marker relative to the camera
+(and hereby to the main robot). This setup allows for real-
+time tracking of the picket robot’s full 6 DoF relative to the
+camera. Together with the state estimation of our main robot
+and the known conﬁguration of the camera, the picket robot’s
+full pose with respect to the environment can be estimated.
+E. Classiﬁcation
+Slippery terrain is remotely detected by the main robot by
+using the picket robot as a remote probe to explore the envi-
+ronment. The main robot collects 6 DoF information about
+the motion of the picket robot, as it tracks its progress across
+the test surface. At the same time, the picket robot collects
+proprioceptive data about itself as it maneuveres across the
+terrain. The dynamics of the VelociRoACH are comprised
+of repeatable periodic oscillations [14]. We predict that the
+locomotion dynamics of the picket robot (VelociRoACH) are
+perturbed by slippery terrain, allowing the dynamic signature
+of the picket robot to classify low friction regions.
+A set of features which describe the locomotion dynamics
+of the picket robot is therefore needed. To allow for the
+highest possible rate of terrain classiﬁcation, these features
+should be fast to compute and should require the minimum
+possible sampling period. We chose the features to be the
+second, third and fourth statistical moments (variance, skew,
+kurtosis, respectively) of a subset taken from available data.
+Thek-th statistical moment,
+x
+k
+, of an length time-series of
+observations of x is given by
+
+x
+k
+=
+1
+n
+n
+X
+i=1
+x
+k
+i
+: (4)
+The fourth moment of the observed pitch angle  for exam-
+ple, would be denoted 
+
+4
+.
+Features calculated in this fashion have been recently
+used [10] to successfully classify (94% accuracy) diverse
+terrain (tile, carpet, gravel), and were found to be more
+descriptive than FFT-based [29] features. Observations of the
+6 DoF state of the picket robot are used to calculate the
+features. The main robot uses camera measurements (x;y;z
+6
+Logitech HD Pro Webcam C920
+4578
+-20
+-10
+0
+10
+20
+0 0.1 0.2 0.3 0.4
+-0.5
+-0.4
+-0.3
+-0.2
+-0.1
+0
+0 0.1 0.2 0.3 0.4
+Non-Slippery Slippery
+Internal Feature:
+Z Acceleration
+(m/s)
+External Feature:
+Pitch Angle
+(rad)
+Time (s) Time (s)
+Fig. 4: Time trajectories of internal and external data, for slippery
+and non-slippery terrain. The internal data is sampled at 1000 Hz,
+external camera measurements are taken at 30 Hz.
+position, ;; Euler angles), whereas the picket robot uses
+measurements from its 6-axis IMU ( x; y; z accelerations,
+_ !
+1
+; _ !
+2
+; _ !
+3
+rotation rates). An example of the data from which
+these features are calculated from is shown in Fig. 4.
+Support Vector Machines (SVMs) are used to identify
+slippery terrain using the tabulated features. We use the MAT-
+LAB implementation of LIBSVM [6] to do the classiﬁcation,
+withholding 25% of the available data to test the accuracy
+of the classiﬁer.
+Three different SVMs are built to test how well slippery
+terrain could be classiﬁed using different approaches. The
+ﬁrst is the “Internal Classiﬁer”, which uses 18 proprioceptive
+features collected from the picket robot. The second is
+the “External Classiﬁer”, which only uses the 18 features
+collected from the main robot’s camera. The third is the
+“Joint Classiﬁer” which uses the collaborative set of all of the
+above features. All features are normalized before being used
+in a soft-margin SVM. The performance of these classiﬁers
+is given in Section III-B.
+III. RESULTS
+A. Localization
+Precise localization between the main and the picket
+robot is required to meaningfully map out the slippery and
+non-slippery regions of the terrain. Presented ﬁrst are the
+results for an isolated visual tracking experiment, which
+are followed by the localization results for the combined
+estimation of both robots.
+Fig. 5 shows the results for the estimated pose of the
+picket robot relative to the main robot. To isolate the tracking
+procedure, we kept the main robot (and hence the camera)
+stationary to get a ﬁxed transformation between the global
+and the main robot’s coordinate system. In this experiment,
+the picket robot runs along the main robot’s ~ x-axis from
+the lower to the upper camera image border. The estimated
+position through the visual tracker is satisfactorily accurate
+when compared to the ground truth data. The root mean
+0.5
+0.6
+0.7
+0.8
+Relative x-position
+x (m)
+ 
+ 
+Estimation
+Ground truth
+?0.01
+0
+0.01
+0.02
+0.03
+0.04
+Relative y-position
+y (m)
+0 0.5 1 1.5 2 2.5
+0
+10
+20
+Relative yaw-angle
+Time (s)
+?(°)
+~ ~ ~
+Fig. 5: Evaluation data for the visual tracking performance. For
+this experiment, the main robot/camera was kept stationary and the
+picket robot ran along the local ~ x-axis (relative position) from the
+lower to the upper image border.
+squared error (RMSE) is 5 mm for the relative position and
+2
+
+for the relative yaw angle.
+Results for the combined localization are shown in Fig. 6.
+The picket robot is controlled to run in front of the main
+robot at a constant distance. The main robot localizes itself
+with the on-board state estimation. The position of the picket
+robot with respect to the environment is estimated through
+the transformation chain of the main robot’s pose estimation
+and the visual tracking of the marker. The position error
+for the main robot is 6.7 cm after a travel distance of
+2 m (in 18 s). The position error for the picket robot for
+the same experiment is 10.9 cm, which is caused by the
+cumulative error from on-board state estimation and visual
+tracking.
+7
+Clearly, with our estimation setup, the global
+positioning error increases over travelled distance. However,
+our approach does not rely on an absolute global position, but
+rather on a localized estimate of relative position around the
+main robot and picket robot. This information is sufﬁcient
+for the main robot to plan a path avoiding slippery patches
+on the terrain. In this respect, the presented precision of our
+method is regarded as sufﬁcient.
+B. Classiﬁcation
+The minimum necessary sampling period (for a given
+accuracy threshold) is one of the major ﬁgures of merit for
+the application of this classiﬁer. It limits how quickly the
+teams of robots can traverse terrain while mapping friction
+properties, and also limits the minimum detectable size of
+a patch of slippery terrain. Fig. 7 shows the accuracy of
+the three classiﬁers as a function of sampling period. The
+features for the internal classiﬁer are calculated using data
+7
+The cumulative error is highly sensitive to the error in yaw rotation of
+the main robot, which is 1
+
+after the entire travel distance in this experiment.
+4579
+?0.1 0.1 0.3 0.5 0.7 0.9 1.1 1.3 1.5 1.7 1.9 2.1 2.3 2.5
+?0.3
+?0.1
+0.1
+0.3
+x (m)
+y (m)
+ 
+ 
+Main robot
+Picket robot
+Estimation Ground truth
+Fig. 6: The main robot walks for 2 m while the picket robot is
+controlled to move in front of it at a constant distance. After the
+entire travel distance of 2 m the position error is 6.7 cm for the main
+robot and 10.9 cm for the picket robot.
+0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1
+50
+55
+60
+65
+70
+75
+80
+85
+90
+95
+100
+Sampling Period (s)
+Classiﬁer Accuracy (%)
+Internal
+External
+Joint
+Fig. 7: Accuracies of the classiﬁers, as a function of sampling
+period.
+collected at more than 30 times the sampling rate of the
+external measurements. We therefore expect the internal
+classiﬁer to achieve higher accuracy at a lower period than
+the external classiﬁer. This result is shown in Fig. 7.
+In order to develop classiﬁers which could be run faster,
+we used Principal Component Analysis (PCA) on the feature
+data to identify a small set of highly descriptive features.
+Previous work in terrain classiﬁcation has used this approach
+to the reduce the dimensionality of the feature space [12].
+Table I gives the accuracy of the three classiﬁers when they
+are restricted a small subset of the most descriptive features.
+For each classiﬁer in Table I, we give data on classiﬁers of
+rank 1 through 4. The accuracy and dimension of the test set
+are given in the third column, and the last column gives the
+features for each classiﬁer in order of expected importance.
+As shown in Table I, the accuracy of the classiﬁers
+increases as more features are used to detect the slipperiness
+of the terrain. It should be noted that these classiﬁers were
+trained from the same dataset. This means that the External
+Classiﬁer, which requires twice the sampling period of the
+Joint and Internal Classiﬁers, is only able to train and test on
+a dataset of approximately half the size. The Joint Classiﬁer
+has the best performance when using fewer features, and
+is the only one to achieve an accuracy of over 90% when
+four or less features are used. The rank-4 Joint Classiﬁer
+uses features from both the internal and external sets, which
+TABLE I: REDUCED RANK APPROXIMATION
+Classiﬁer Rank Accuracy Features (F)
+(Sampling Window)
+1 58.0 % (76=131) 
+!
+2
+2
+Internal
+2 72.5 % (95=131) 
+ y
+2
+
+!
+1
+2
+(0.31 s)
+3 73.3 % (96=131) 
+ y
+2
+
+!
+1
+2
+
+ z
+2
+4 81.7 % (107=131) 
+!
+3
+2
+
+ z
+2
+
+!
+3
+4
+
+ y
+2
+1 67.9 % (53=78) 
+y
+2
+External
+2 64.1 % (50=78) 
+y
+2
+
+x
+4
+(0.60 s)
+3 83.3 % (65=78) 
+
+2
+
+y
+2
+
+x
+4
+4 75.6 % (60=78) 
+
+2
+
+x
+4
+
+x
+2
+
+y
+2
+1 81.1 % (109=134) 
+!
+2
+2
+Joint
+2 81.1 % (109=134) 
+ z
+2
+
+ z
+3
+(0.31 s)
+3 84.0 % (113=134) 
+
+2
+
+ z
+2
+
+ z
+3
+4 92.9 % (125=134) 
+
+2
+
+ z
+2
+
+ z
+3
+
+!
+1
+2
+allowes it to better classify slippery terrain.
+Several features are repeatedly chosen most effective for
+slippery terrain detection. The variance of the y accelera-
+tion and position (
+ y
+2
+;
+y
+2
+) is much greater for running the
+VelociRoACH on the low friction surface, which allows for
+more lateral motion than other terrains. The variance of the
+pitch rate and angle (
+!2
+2
+;
+
+2
+) is signiﬁcantly less for the low
+friction case. The robot tends to stub its front legs when it
+is being driven with aperiodic differential steering, the low
+friction terrain reduces these impacts and thereby reduces the
+pitch disturbances they cause.
+IV. CONCLUSION
+This work developed a framework for remote terrain
+detection and demonstrated its feasibility with a proof of
+concept experiment. This proposed framework has four main
+pieces, a main robot (1) which is assisted by one or more
+picket robots (2). The main robot has a method to localize
+itself and the picket robots (3), and the picket robots have
+a method to classify terrain (4). To demonstrate the concept
+we used the legged quadruped, StarlETH, as the main robot,
+and VelociRoACH, as the picket robot.
+We demonstrated that a legged odometer based on on-
+board state estimation is sufﬁciently accurate to localize
+the StarlETH in a relevant portion of the global frame
+near a patch of slippery terrain. The StarlETH is able to
+locate the VelociRoACH using visual tracking, and give it
+position feedback to remotely guide it to speciﬁc portions of
+the terrain for classiﬁcation. This type of joint perception
+is advantageous because the picket robot does not have
+the same capability for internal state estimation or remote
+sensing as the main robot.
+For the fourth part of the framework, we tested three
+different types of terrain classiﬁer, all of which could achieve
+an accuracy of over 90% when identifying slippage of
+the picket robot. Instead of traditional slippage detection
+methods, we implemented a SVM based terrain classiﬁer,
+which can be readily extended to identify other types of
+hazardous terrain. The External Classiﬁer, which used only
+features tabulated from camera tracking data of the picket
+4580
+robot, can achieve an accuracy of 94% with a sampling
+period of 0.60 seconds. The Internal Classiﬁer, which only
+uses features tabulated from the internal IMU of the picket
+robot, achieves an accuracy of 98% with just a 0.31 second
+sampling window. Using the full feature space, the Joint
+Classiﬁer has a similar performance to the internal classiﬁer.
+However, the joint classiﬁer distinguished itself as most
+effective for a light-weight classiﬁer. Using PCA, we chose a
+subset of features which are expected to be most effective at
+separating the data. Of all of these low-rank classiﬁers, only
+the rank-4 joint classiﬁer was able to achieve an accuracy
+of over 90% by using features from both the internal and
+external sets.
+A. Future Work
+This proof of concept work used one picket robot driven
+directly in front of one main robot. When the team uses this
+running conﬁguration, it is possible that hazardous terrain
+which threatens the main robot would not be detected. This
+problem could be solved using area coverage [7] wherein a
+robot or team of robots completely canvas an area of interest.
+Complete coverage would be necessary if the main robot
+was a traditional wheeled robot, but legged robots such as
+StarlETH have the ability to discretize terrain into distinct
+footholds. This reduces the problem of area coverage to one
+of probabilistic coverage as has been used for robotic de-
+mining [1]. Only the terrain properties of the future planned
+footholds need to be checked, greatly reducing the time
+the picket robots need to spend mapping the terrain. Future
+work will explore path planning algorithms and picket robot
+formations which will more effectively detect hazardous
+terrain.
+ACKNOWLEDGMENTS
+Thanks to the members of the Biomimetic Millisystems
+Lab for their helpful comments and discussions. Thanks also
+to the Legged Robotics Team at the Autonomous Systems
+Lab for their help and support with the experiments.
+REFERENCES
+[1] E. U. Acar, H. Choset, Y . Zhang, and M. Schervish, “Path Planning for
+Robotic Demining: Robust Sensor-Based Coverage of Unstructured
+Environments and Probabilistic Methods,” The International Journal
+of Robotics Research, vol. 22, no. 7-8, pp. 441–466, Jul. 2003.
+[2] S. S. Baek, F. L. Garcia Bermudez, and R. S. Fearing, “Flight control
+for target seeking by 13 gram ornithopter,” 2011 IEEE/RSJ Int. Conf.
+on Intelligent Robots and Systems, pp. 2674–2681, Sep. 2011.
+[3] M. Bloesch, M. Hutter, M. A. Hoepﬂinger, S. Leutenegger, C. Gehring,
+C. D. Remy, and R. Siegwart, “State Estimation for Legged Robots -
+Consistent Fusion of Leg Kinematics and IMU,” in Robotics: Science
+and Systems Conference (RSS), 2012.
+[4] A. D. Buchan, D. W. Haldane, and R. S. Fearing, “Automatic
+identiﬁcation of dynamic piecewise afﬁne models for a running
+robot,” 2013 IEEE/RSJ International Conference on Intelligent Robots
+and Systems, pp. 5600–5607, Nov. 2013.
+[5] R. Castano, R. Manduchi, and J. Fox, “Classiﬁcation experiments on
+real-world texture,” Third Workshop on Empirical . . . , 2001.
+[6] C.-J. Chang, Chih-Chung and Lin, “LIBSVM: A library for support
+vector machines,” ACM Transactions on Intelligent Systems and Tech-
+nology, vol. 2, no. 3, pp. 1—-27, 2011.
+[7] H. Choset, “Coverage for robotics A survey of recent results,” Annals
+of mathematics and artiﬁcial intelligence, pp. 113–126, 2001.
+[8] F. Dellaert, T. Balch, M. Kaess, R. Ravichandran, F. Alegre,
+M. Berhault, R. McGuire, E. Merrill, L. Moshkina, and D. Walker,
+“The Georgia Tech Yellow Jackets: A Marsupial Team for Urban
+Search and Rescue.” in AAAI Mobile Robot Competition, 2002.
+[9] M. Fiala, “ARTag, a ﬁducial marker system using digital techniques,”
+in Conference on Computer Vision and Pattern Recognition (CVPR),
+vol. 2. IEEE, 2005, pp. 590–596.
+[10] F. L. Garcia Bermudez, R. C. Julian, D. W. Haldane, P. Abbeel,
+and R. S. Fearing, “Performance analysis and terrain classiﬁcation
+for a legged robot over rough terrain,” 2012 IEEE/RSJ International
+Conference on Intelligent Robots and Systems, pp. 513–519, Oct. 2012.
+[11] C. Gehring, S. Coros, M. Hutter, M. Bloesch, M. A. Hoepﬂinger, and
+R. Siegwart, “Control of Dynamic Gaits for a Quadrupedal Robot,”
+IEEE International Conference on Robotics and Automation (ICRA),
+2013.
+[12] P. Giguere and G. Dudek, “Clustering sensor data for autonomous
+terrain identiﬁcation using time-dependency,” Autonomous Robots,
+vol. 26, no. 2-3, pp. 171–186, Mar. 2009.
+[13] ——, “A Simple Tactile Probe for Surface Identiﬁcation by Mobile
+Robots,” IEEE Transactions on Robotics, vol. 27, no. 3, pp. 534–544,
+Jun. 2011.
+[14] D. W. Haldane, K. C. Peterson, F. L. Garcia Bermudez, and R. S.
+Fearing, “Animal-inspired Design and Aerodynamic Stabilization of a
+Hexapedal Millirobot,” IEEE Int. Conf. on Robotics and Automation,
+2013.
+[15] M. a. Hoepﬂinger, C. D. Remy, M. Hutter, L. Spinello, and
+R. Siegwart, “Haptic terrain classiﬁcation for legged robots,” 2010
+IEEE International Conference on Robotics and Automation, pp.
+2828–2833, May 2010.
+[16] A. M. Hoover and R. S. Fearing, “Fast scale prototyping for folded
+millirobots,” IEEE Int. Conf. on Robotics and Automation, pp. 886–
+892, 2008.
+[17] M. Hutter, C. Gehring, M. Bloesch, M. A. Hoepﬂinger, C. D.
+Remy, and R. Siegwart, “StarlETH: A compliant quadrupedal robot
+for fast, efﬁcient, and versatile locomotion,” in Proceedings of
+the International Conference on Climbing and Walking Robots
+(CLAWAR), 2012.
+[18] K. Jayaram, J. M. Mongeau, B. McRae, and R. J. Full, “High-speed
+horizontal to vertical transitions in running cockroaches reveals a
+principle of robustness,” in Society for Integrative and Comparative
+Biology, 2010.
+[19] A. Milella, F. Pont, and R. Siegwart, “Model-based relative
+localization for cooperative robots using stereo vision,” in Conference
+on Mechatronics and Machine Vision. IEEE, 2005.
+[20] R. R. Murphy, “Marsupial and shape-shifting robots for urban search
+and rescue,” IEEE Intelligent Systems and their Applications, vol. 15,
+no. 2, pp. 14–19, 2000.
+[21] L. Parker and B. Kannan, “Tightly-coupled navigation assistance in
+heterogeneous multi-robot teams,” in International Conference on
+Intelligent Robots and Systems (IROS). IEEE, 2004.
+[22] L. E. Parker, “Adaptive heterogeneous multi-robot teams,”
+Neurocomputing, vol. 28, no. 1-3, pp. 75–92, Oct. 1999.
+[23] ——, “Multiple Mobile Robot Systems,” in Springer Handbook of
+Robotics, B. Siciliano and O. Khatib, Eds. Berlin, Heidelberg:
+Springer Berlin Heidelberg, 2008, pp. 921–941.
+[24] K. Rainio, “ALV AR A Library for Virtual and Augmented Reality
+Users Manual (v.2.0),” VTT Technical Research Centre of Finland,
+Tech. Rep., 2012.
+[25] P. R. Sinhat and R. K. Bajcsy, “Robotic Exploration of Surfaces and
+its Application to Legged Locomotion,” IEEE Int. Conf. on Robotics
+and Automation, pp. 221—-226, 1992.
+[26] D. Vail and M. Veloso, “Learning from accelerometer data on a
+legged robot,” Proceedings of the 5th IFACEURON Symposium on
+Intelligent Autonomous Vehicles, 2004.
+[27] N. Vandapel and D. Huber, “Natural terrain classiﬁcation using 3-d
+ladar data,” . . . and Automation, 2004. . . . , no. April, 2004.
+[28] C. Weiss, H. Tamimi, and a. Zell, “A combination of vision- and
+vibration-based terrain classiﬁcation,” 2008 IEEE/RSJ International
+Conference on Intelligent Robots and Systems, pp. 2204–2209, Sep.
+2008.
+[29] C. Weiss, H. Fr, and A. Zell, “Vibration-based Terrain Classiﬁcation
+Using Support Vector Machines,” pp. 4429–4434, 2006.
+4581

@@ -1,0 +1,943 @@
+Motion Planning with Satisﬁability Modulo Theories
+William N. N. Hung
+1
+, Xiaoyu Song
+2
+, Jindong Tan
+3
+, Xiaojuan Li
+4
+, Jie Zhang
+5
+, Rui Wang
+4
+and Peng Gao
+2
+Abstract—Motion planning is an important problem with
+many applications in robotics. In this paper, we focus on
+motion planning with rectangular obstacles parallel to the X,
+Y or Z axis. We formulate motion planning using Satisﬁability
+Modulo Theories (SMT) and use SMT solvers to ﬁnd a feasible
+path from the source to the goal. Our formulation decompose
+the robotic path into N path segments where the two ends
+of each path segment can be constrained using difference
+logic. Our SMT approach will ﬁnd a solution if and only if
+a feasible path exists for the given constraints. We present
+extensive experimental results to demonstrate the scalability
+of our approach.
+I. INTRODUCTION
+Motion planning [1], [2] is an important problem with
+many applications in robotics. From the iRobot vacuum
+cleaner to the Mars Exploration Rovers, motion planning
+is a key ingredient to robots in the real world. In this
+paper,we investigatethe motionplanningproblemforrobots
+with rectangular obstacles parallel to the X, Y, or Z axis.
+Irregular shaped obstacles can be approximatedusing one or
+more rectangular obstacles to cover their space. The basic
+problem is to produce a feasible path that connects a start
+conﬁgurationS and a goal conﬁgurationG. Our formulation
+breaks down the robot path into several connected path
+segments.Thetwoendsofeachpathsegmentareconstrained
+using difference logic. The entire path planning problem is
+formulated using satisﬁability modulo theories (SMT) [3].
+Our formulation is applicable to two dimensional and three
+dimensional space, and it can handle grid-based or gridless
+paths. If there is a feasible path from start S to goal G, our
+SMT approach will be able to ﬁnd that path. If there is no
+feasible path, our SMT approach will also be able to reach
+such a conclusion.
+A SMT problem is a decision problem on a set of
+logical formulas. Each formula is a combination of various
+background theories expressed in classical ﬁrst-order logic
+with equality. The problem is to ﬁnd an assignment to the
+variables that satisfy the given set of logical formulas. The
+typical theories used are the theory of integers, the theory
+1
+William N. N. Hung is with Synopsys Inc., Mountain View, California,
+USA william hung@alumni.utexas.net
+2
+Xiaoyu Song and Peng Gao are with Portland State University, Portland,
+Oregon, USA
+3
+Jindong Tan is with the University of Tennessee, Knoxville, Tennessee,
+USA
+4
+Xiaojuan Li and Rui Wang are with the Beijing Engineering Research
+Center of High Reliable Embedded System, College of Information Engi-
+neering, Capital Normal University, Beijing 100048, China
+5
+Jie Zhang is with the College of Information Science and Technology,
+Beijing University of Chemical Technology, Beijing 100029, China. She is
+now a visiting scholar at the University of Tennessee, Knoxville, Tennessee,
+USA
+of real numbers, and the theories of many data structures
+such as lists and arrays. Difference logic can be considered
+as a subtheory under the theory of integers or the theory of
+real numbers. Many SMT solvers use SAT solvers for their
+core logic reasoning.Overthe past decade,bothSAT solvers
+[4], [5], [6] and SMT solvers [7], [8], [9] have signiﬁcantly
+improved their runtime performance and capacity and they
+have been applied to large and complex problems [10], [11],
+[3].
+Many sampling-based algorithms [1], [2] have been used
+for motion planning. These algorithms typically relax strong
+completeness guarantees to optimize for speed. Timed Au-
+tomata was applied to motion planning in [12]. Linear
+TemporalLogic(LTL)was used formotionplanningin [13],
+[14], [15], [16]. Although they provide powerful expressive
+capabilities, both Timed Automata and LTL suffer from the
+state-explosion problem. On the other hand, SMT solvers
+are a lot more scalable than temporal logic approaches.
+In this paper, we conduct a wide range of experiments to
+demonstrate the scalability of our SMT based approach.
+II. BACKGROUND
+Our core formulation can be expressed in terms of dif-
+ference logic. There are typically two variants of difference
+logic: DLZ (difference logic over integers) and DLR (dif-
+ference logic over reals). In this section, we summarize the
+problem deﬁnition presented in [17], [18].
+Deﬁnition 1 (Difference Logic): LetB ={b
+1
+,b
+2
+,...,b
+n
+}
+be a set of Boolean variables and X = {x
+1
+,x
+2
+,...,x
+m
+}
+be a set of numerical variables. The set of atomic formulas
+of DL(B,X) consists of the Boolean variables in B and
+properties on the numerical variables in X in the following
+forms:
+x
+i
+?x
+j
+≥c and x
+i
+?x
+j
+>c
+where c ? Z for DLZ and c ? R for DLR). The set F of
+all DL formulas is the smallest set containing the atomic
+formula which is closed under negation and conjuction:
+• ??F implies¬??F
+• ??F and ??F implies ????F
+OtherBooleanoperators?,?,?,... canbedeﬁnedinterms
+of negation and conjuntion.
+A valuation of (B,X) consists of two functions (over-
+loaded with the name v) v :B?{T,F} and v :X ?Z for
+DLZ or v : X ? R for DLR. The valuation v is extended
+to all DL(B,X) formulas by letting
+v(x
+i
+?x
+j
+≤c) = T iff v(x
+i
+)?v(x
+j
+)≤c
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 113
+d d
+d
+Fig. 1. Rectilinear path with distanced from obstacles
+d d
+d
+Fig. 2. Smooth path with turns of radiusd
+and applying similar rules for the Boolean operators. The
+differencelogic overother domainscan be deﬁned in similar
+fashion. A formula ? is satisﬁed by a valuation v iff
+v(?) = T. The satisﬁability problem for DL(B,X) is NP-
+complete [17].
+For the rest of this paper, we use := to denote a deﬁnition
+and = to denote equality.
+III. THEORY
+In this section, we formulate an motion planning problem
+as a set of constraints, then map it onto a difference logic
+satisﬁabilityproblem,andﬁnallyaddapathlengthconstraint
+to restrict the travel distance for the robot path.
+We are given a three dimensional space W?L?H. The
+robotneedsto movefromthe source (s
+x
+,s
+y
+,s
+z
+) to the desti-
+nation (d
+x
+,d
+y
+,d
+z
+). There areM rectangular obstacles in the
+three dimensional space. Each obstacle j can be deﬁned us-
+ing their three dimensional span [x
+j
+L
+,x
+j
+H
+],[y
+j
+L
+,y
+j
+H
+],[z
+j
+L
+,z
+j
+H
+],
+wherex
+j
+L
+≤x
+j
+H
+,y
+j
+L
+≤y
+j
+H
+,z
+j
+L
+≤z
+j
+H
+. Since the obstacles are
+all rectangular in nature, the robot can move in rectilinear
+directions, i.e. parallel to the X, Y, or Z axis. We require
+the robot paths to maintain a minimum separation distance
+d from all obstacles. Since all paths are rectilinear in nature,
+the robot turns are all 90 degree turns. These 90 degree
+turns can be smoothed out with curves of radius d. By
+controlling the size of d, we can prevent sharp turns for
+the robot. An example rectilinear path is shown in Figure 1.
+The corresponding smooth path is shown in Figure 2.
+A. N-Segment 3D Path Planning
+Suppose we want to solve a path planning problem on a
+three dimensional spaceW?L?H, we can divide the path
+into N path segments: p
+1
+,p
+2
+,...,p
+N
+. Each path segment
+p
+i
+is a straight line from a source vertex (x
+s
+i
+,y
+s
+i
+,z
+s
+i
+) to a
+destination vertex (x
+d
+i
+,y
+d
+i
+,z
+d
+i
+). The (x,y,z) coordinates of
+each source and destination must be within the region for
+i = 1,...,N:
+0≤ x
+s
+i
+≤W
+0≤ y
+s
+i
+≤L
+0≤ z
+s
+i
+≤H
+0≤ x
+d
+i
+≤W
+0≤ y
+d
+i
+≤L
+0≤ z
+d
+i
+≤H (1)
+We deﬁne three boolean expressions?
+x
+i
+, ?
+y
+i
+and ?
+z
+i
+such that
+for i = 1,...,N:
+?
+x
+i
+:= (x
+s
+i
+=x
+d
+i
+)
+?
+y
+i
+:= (y
+s
+i
+=y
+d
+i
+)
+?
+z
+i
+:= (z
+s
+i
+=z
+d
+i
+)
+Since each pathsegmentp
+i
+go alongthe X, Y or Z direction,
+we have the following property for i = 1,...,N:
+(?
+x
+i
+??
+y
+i
+)?(?
+y
+i
+??
+z
+i
+)?(?
+x
+i
+??
+z
+i
+) (2)
+Since we have only one source and one goal, the source of
+each path segment i is the same as the destination of its
+preceding path segment n
+i?1
+. Hence for i = 2,...,N, we
+have:
+x
+s
+i
+= x
+d
+i?1
+y
+s
+i
+= y
+d
+i?1
+z
+s
+i
+= z
+d
+i?1
+(3)
+The robot path should be connected to the source and
+destination:
+x
+s
+1
+=s
+x
+y
+s
+1
+=s
+y
+z
+s
+1
+=s
+z
+x
+d
+N
+=d
+x
+y
+d
+N
+=d
+y
+z
+d
+N
+=d
+z
+(4)
+Each path segment i must be separated from the obstacle
+j by a minimum separation distance d for i = 1,...,N and
+j = 1,...,M:
+(x
+j
+L
+?x
+s
+i
+≥d?x
+j
+L
+?x
+d
+i
+≥d)?
+(x
+s
+i
+?x
+j
+H
+≥d?x
+d
+i
+?x
+j
+H
+≥d)?
+(y
+j
+L
+?y
+s
+i
+≥d?y
+j
+L
+?y
+d
+i
+≥d)?
+(y
+s
+i
+?y
+j
+H
+≥d?y
+d
+i
+?y
+j
+H
+≥d)?
+(z
+j
+L
+?z
+s
+i
+≥d?z
+j
+L
+?z
+d
+i
+≥d)?
+(z
+s
+i
+?z
+j
+H
+≥d?z
+d
+i
+?z
+j
+H
+≥d) (5)
+The path planning problem is essentially the conjunction
+offormulas(1)–(5). withthesourceanddestinationvariables
+for each path segment. Our formulationis applicable to both
+discrete and continuous path planning. We can use SMT
+114
+solvers to ﬁnd solutions to these formulas. If there is no
+feasible path, SMT solvers can also conﬁrm there is no
+solution.
+B. N-Segment Plannar Path Planning
+The single layer path planning or plannar path planning is
+a special case of the 3D path planning problem wherez = 0
+for all coordinates. All the formulas in the previous subsec-
+tion can be greatly simpliﬁed for this problem. Formula (2)
+becomes:
+?
+x
+ni
+??
+y
+ni
+The rest of the formulas: (1), (3), (4) and (5) can also be
+trivially simpliﬁed.
+C. Mapping to Difference Logic
+Given an N-segment path planning problem, we can
+declare integer variables for the (X,Y,Z) coordinates of the
+source and destination vertices of each path segment i:
+x
+s
+i
+,y
+s
+i
+,z
+s
+i
+,x
+d
+i
+,y
+d
+i
+,z
+d
+i
+The constraints in (1)–(5) are essentially formulas using
+numeric relation operators≤,≥ and = on the variables(and
+constants) as well as Boolean operators ?, ? to connect
+the results of the above relation opertors. Since a = b is
+equivalentto¬((a<b)?(a>b)), all of the above formulas
+can be easily expressed in terms of difference logic.
+D. Path Length Constraints
+Oneconsiderationforpathplanningistominimizeorlimit
+the length of the robot path. In general, this can become an
+optimization problem. However, we can set a limit L to the
+length of the robot path:
+N
+X
+i=1
+|x
+d
+i
+?x
+s
+i
+|+|y
+d
+i
+?y
+s
+i
+|+|z
+d
+i
+?z
+s
+i
+|≤L (6)
+Notice formula (6) is not a difference logic formuation, but
+it can still be solved by SMT solvers.
+IV. EXPERIMENTS
+In this section, we present experiments on random bench-
+marks to evaluate our motion planner. Each random bench-
+mark is generated using the following scheme: We are given
+threedimensionalspaceW?L?H andthenumberofobsta-
+cles M. The source (s
+x
+,s
+y
+,s
+z
+) and destination (d
+x
+,d
+y
+,d
+z
+)
+arechosenrandomlyinthethreedimensionalspace.Foreach
+obstacle j, we randomly generate its three dimensional span
+[x
+j
+L
+,x
+j
+H
+],[y
+j
+L
+,y
+j
+H
+],[z
+j
+L
+,z
+j
+H
+], where x
+j
+L
+≤ x
+j
+H
+, y
+j
+L
+≤ y
+j
+H
+,
+z
+j
+L
+≤ z
+j
+H
+. for j = 1,...,M, such that the obstacle lies
+within the three dimensional space W ? L? H. We use
+the motion planning described in Section III with the Z3 [7]
+SMT solver. All experiments are conducted on Linux with
+an Intel i7 processor and 2GB memory.
+Table I shows experiments on a variety of random three
+dimensional benchmarks. Each row in the table shows a
+different size W?L?H or a different number of obstacles
+M. The number of path segments N for each experiment is
+ 0
+ 10
+ 20
+ 30
+ 40
+ 50
+ 60
+ 70
+ 0 5 10 15 20 25 30 35 40
+Reachable Benchmarks
+Path Segments
+80x80x80 M=32
+160x160x160 M=8
+40x40x40 M=32
+Fig. 3. Number of reachable benchmarks vs. number of path segmentsN
+ 0
+ 0.05
+ 0.1
+ 0.15
+ 0.2
+ 0.25
+ 0.3
+ 0 5 10 15 20 25 30 35 40
+Time
+Path Segments
+80x80x80 M=32
+160x160x160 M=8
+40x40x40 M=32
+Fig. 4. Average time for reachable benchmarks vs.N
+set to 4? M. The minimum separation distance between
+the robot motion path and the obstables is d = 1. For
+each row in the table, we generate 100 different benchmarks
+using different random seeds for the same W ? L ? H
+and M. Such large number of different random seeds will
+enable the result to be easily reproduced. Each one of
+those 100 random benchmarks is either reachable (from
+source to destination)or not reachable.The “count” columns
+under “Reachable” (or “Unreachable”) shows how many of
+those benchmarks can (or cannot) be routed from source to
+destination. The “time” columns shows the avarage time for
+the Z3 SMT solver on these benchmarks. Given the same
+number of obstacles, such as M = 8, Table I shows that
+our approach takes roughly the same amount of time (on
+average) to solve the random benchmarks even if the size of
+the three dimensional space increase from 10? 10? 10 to
+640?640?640.
+To understand how many path segmentsN are needed for
+motion planning, we took the randomly generated bench-
+marks from 3 rows of Table I: 80?80?80 with M = 32,
+115
+TABLE I
+RANDOM 3D BENCHMARKS WITHd = 1
+Reachable Unreachable Total
+W?L?H M N
+count time count time count time
+10?10?10 2 6 70 0.008 30 0.000 100 0.005
+10?10?10 4 8 59 0.017 41 0.000 100 0.010
+10?10?10 8 10 34 0.023 66 0.006 100 0.012
+20?20?20 2 6 75 0.004 25 0.000 100 0.003
+20?20?20 4 8 66 0.012 34 0.000 100 0.008
+20?20?20 8 10 44 0.020 56 0.008 100 0.013
+20?20?20 16 10 30 0.030 70 0.016 100 0.020
+40?40?40 2 6 80 0.005 20 0.000 100 0.004
+40?40?40 4 8 68 0.014 32 0.000 100 0.009
+40?40?40 8 10 52 0.021 48 0.009 100 0.015
+40?40?40 16 10 33 0.035 67 0.019 100 0.024
+40?40?40 32 12 13 0.065 87 0.028 100 0.033
+80?80?80 2 6 90 0.005 10 0.000 100 0.005
+80?80?80 4 8 68 0.012 32 0.000 100 0.008
+80?80?80 8 10 48 0.021 52 0.008 100 0.014
+80?80?80 16 10 30 0.038 70 0.019 100 0.025
+80?80?80 32 12 17 0.079 83 0.036 100 0.043
+80?80?80 64 14 7 0.157 93 0.064 100 0.070
+160?160?160 2 6 86 0.004 14 0.000 100 0.004
+160?160?160 4 8 77 0.013 23 0.000 100 0.010
+160?160?160 8 10 60 0.022 40 0.010 100 0.017
+160?160?160 16 10 39 0.038 61 0.020 100 0.027
+160?160?160 32 12 16 0.084 84 0.039 100 0.046
+160?160?160 64 14 8 0.175 92 0.076 100 0.084
+160?160?160 128 14 3 0.313 97 0.128 100 0.134
+320?320?320 2 6 85 0.005 15 0.000 100 0.004
+320?320?320 4 8 69 0.013 31 0.000 100 0.009
+320?320?320 8 10 60 0.023 40 0.010 100 0.018
+320?320?320 16 10 35 0.040 65 0.020 100 0.027
+320?320?320 32 12 18 0.084 82 0.039 100 0.047
+320?320?320 64 14 9 0.193 91 0.081 100 0.091
+320?320?320 128 14 3 0.347 97 0.147 100 0.153
+320?320?320 256 16 3 0.743 97 0.315 100 0.328
+640?640?640 2 6 87 0.005 13 0.000 100 0.004
+640?640?640 4 8 70 0.013 30 0.000 100 0.009
+640?640?640 8 10 56 0.022 44 0.011 100 0.017
+640?640?640 16 10 37 0.039 63 0.019 100 0.027
+640?640?640 32 12 21 0.085 79 0.039 100 0.049
+640?640?640 64 14 13 0.193 87 0.084 100 0.098
+640?640?640 128 14 5 0.388 95 0.161 100 0.173
+640?640?640 256 16 1 0.870 99 0.357 100 0.363
+640?640?640 512 18 0 0.000 100 0.743 100 0.743
+ 0
+ 0.02
+ 0.04
+ 0.06
+ 0.08
+ 0.1
+ 0.12
+ 0 5 10 15 20 25 30 35 40
+Time
+Path Segments
+80x80x80 M=32
+160x160x160 M=8
+40x40x40 M=32
+Fig. 5. Average time for unreachable benchmarks vs.N
+ 0
+ 0.02
+ 0.04
+ 0.06
+ 0.08
+ 0.1
+ 0.12
+ 0.14
+ 0 5 10 15 20 25 30 35 40
+Time
+Path Segments
+80x80x80 M=32
+160x160x160 M=8
+40x40x40 M=32
+Fig. 6. Average time for all benchmarks vs.N
+116
+ 15
+ 20
+ 25
+ 30
+ 35
+ 40
+ 45
+ 50
+ 55
+ 60
+ 0 2 4 6 8 10 12 14 16 18 20
+Reachable Benchmarks
+Minimum Separation Distance
+Fig. 7. Number of reachable benchmarks vs. minimum separation distance
+d
+ 0.006
+ 0.008
+ 0.01
+ 0.012
+ 0.014
+ 0.016
+ 0.018
+ 0.02
+ 0.022
+ 0.024
+ 0.026
+ 0 2 4 6 8 10 12 14 16 18 20
+Time
+Minimum Separation Distance
+Reachable
+Unreachable
+Total
+Fig. 8. Average time for benchmarks vs. minimum separation distanced
+160? 160? 160 with M = 8, and 40? 40? 40 with
+M = 32. There are 100 randomly generated benchmarks
+from each of those three rows. We change the number of
+path segments N from 2 to 20. The number of benchmarks
+that are reachable (from source to destination) is shown
+in Figure 3. The average time to solve these benchmarks
+using Z3 is shown in Figure 4 for reachable benchmarks,
+Figure 5 for unreachable benchmarks, and Figure 6 for all
+benchmarks,AsweincreasethenumberofpathsegmentsN,
+we can see that the numberof reachablebenchmarksquickly
+saturates, but the average time for Z3 continues to increase.
+Note that average time for reachable benchmarks tend to be
+larger than unreachable benchmarks.
+Toevaluatetheimpactoftheminimumseparationdistance
+d between motion path and the obstacles, we took the 100
+randomly generated benchmarks from Table I where the
+three dimensional space is 160? 160? 160, the number
+of obstacles M = 8, the number of path segments N = 10,
+and we change d from 1 to 20. The number of benchmarks
+ 0
+ 10
+ 20
+ 30
+ 40
+ 50
+ 60
+ 70
+ 0 50 100 150 200 250 300 350 400 450 500
+Reachable Benchmarks
+Path Length Constraint
+Fig. 9. Number of reachable benchmarks vs. path lengthL
+ 0
+ 0.1
+ 0.2
+ 0.3
+ 0.4
+ 0.5
+ 0.6
+ 0.7
+ 0 50 100 150 200 250 300 350 400 450 500
+Time
+Path Length Constraint
+Reachable
+Unreachable
+Total
+Fig. 10. Average time for benchmarks vs. path lengthL
+that are reachable (from source to destination) is shown in
+Figure 7. It is obvious that when the minimum separation
+distance d increases, the number of reachable benchmarks
+decreases. The average time to solve these benchmarks
+using Z3 is shown in Figure 8. Note that average time for
+reachable benchmarks tend to be larger than unreachable
+benchmarks. Figure 8 suggests that increasing minimum
+separation distance d does not cause the average time to
+increase. In fact, the average total time dropped slightly as
+d increased.
+Theaboveexperimentswereconductedwithoutpathlengh
+constraints.To evalutethe impact of a path length constraint,
+we took the 100 randomly generated benchmarks from
+TableIwherethethreedimensionalspaceis 160?160?160,
+thenumberofobstaclesM = 8,thenumberofpathsegments
+N = 10, and we add a path length restriction L from
+10 to 480. The number of benchmarks that are reachable
+(from source to destination) is shown in Figure 9. It is
+obviousthatwhenthepathlengthLincreases,thenumberof
+reachable benchmarks increases. The average time to solve
+117
+these benchmarks using Z3 is shown in Figure 10.
+V. CONCLUSIONS
+In this paper, we focus on motion planning for robots
+with rectangular obstacles parallel to the X, Y or Z axis.
+We formulate motion planning as a SMT problem and use
+SMT solvers to ﬁnd a feasible path from the source S
+conﬁguration to the goal G conﬁguration. Our formulation
+decompose the robotic path into N path segments along the
+X, Y or Z direction. The two ends of each path segment
+can be constrained using difference logic. If a feasible path
+exists for the given constraints, our SMT approach will ﬁnd
+the solution. Otherwise, the SMT solvers will prove there
+is no feasible solution. Experimental results show that our
+approach is scalable to handle large problems.
+REFERENCES
+[1] H. Choset, K. M. Lynch, S. Hutchinson, G. A. Kantor, W. Burgard,
+L. E. Kavraki, and S. Thrun, Principles of Robot Motion: Theory,
+Algorithms, and Implementations. MIT Press, May 2005.
+[2] S. M. LaValle, Planning Algorithms. Cambridge University Press,
+2006.
+[3] L. De Moura and N. Bjørner, “Satisﬁability modulo theories: introduc-
+tion and applications,” Communications of the ACM, vol. 54, no. 9,
+pp. 69–77, September 2011.
+[4] N. Een, A. Mishchenko, and N. Amla, “A single-instance incremental
+SAT formulation of proof- and counterexample-based abstraction,” in
+Proc. Formal Methods in Computer-Aided Design, ser. FMCAD ’10,
+2010, pp. 181–188.
+[5] L.Yin,F.He,W.N.N.Hung,X.Song,andM.Gu,“Maxterm covering
+for satisﬁability,” IEEE Transactions on Computers, vol. 61, no. 3, pp.
+420–426, March 2012.
+[6] A. Biere, “Lingeling, Plingeling and Treengeling Entering the SAT
+Competition 2013,” in Proc. SAT Competition 2013: Solver and
+Benchmark Descriptions, ser. Department ofComputerSciences Series
+of Publications B, A. Balint, A. Belov, M. Heule, and M. J¨ arvisalo,
+Eds., vol. B-2013-1. University of Helsinki, 2013, pp. 51–52.
+[7] L. De Moura and N. Bjørner, “Z3: an efﬁcient SMT solver,” in Proc.
+International Conference onToolsandAlgorithms forthe Construction
+and Analysis of Systems, ser. TACAS’08. Berlin, Heidelberg:
+Springer-Verlag, 2008, pp. 337–340.
+[8] A. Cimatti, A. Griggio, B. Schaafsma, and R. Sebastiani, “The Math-
+SAT5SMTSolver,” in Proceedings of TACAS,ser. LNCS,N.Piterman
+and S. Smolka, Eds., vol. 7795. Springer, 2013.
+[9] J. Christ, J. Hoenicke, and A. Nutz, “SMTInterpol: An Interpolating
+SMT Solver,” in Model Checking Software: Proc. SPIN, ser. Lecture
+Notes inComputer Science, A. Donaldson and D.Parker, Eds. Berlin,
+Heidelberg: Springer, 2012, vol. 7385, pp. 248–254.
+[10] C. Flanagan, K. R. M. Leino, M. Lillibridge, G. Nelson, J. B. Saxe,
+and R.Stata, “Extended static checking forjava,” in Proceedings of the
+ACM SIGPLAN 2002 Conference on Programming language design
+and implementation, ser. PLDI ’02, 2002, pp. 234–245.
+[11] P. Godefroid, P. de Halleux, A. V. Nori, S. K. Rajamani, W. Schulte,
+N. Tillmann, and M. Y. Levin, “Automating software testing using
+program analysis,” IEEE Software, vol. 25, no. 5, pp. 30–37, Sep.
+2008.
+[12] M. M. Quottrup, T. Bak, and R. Izadi-Zamanabadi, “Multi-robot
+planning: a timed automata approach,” in Proceedings of the 2004
+IEEE International Conference on Robotics and Automation, ser.
+ICRA, 2004, pp. 4417–4422.
+[13] G. E. Fainekos, H. Kress-gazit, and G. J. Pappas, “Temporal logic
+motion planning for mobile robots,” in Proc. IEEE International
+Conference on Robotics and Automation, Apr. 2005.
+[14] ——, “Hybrid controllers for path planning: A temporal logic ap-
+proach,” in Proc. IEEE Conference on Decision and Control, Dec.
+2005, pp. 4885–4890.
+[15] A. Bhatia, M. R. Maly, L. E. Kavraki, and M. Y. Vardi, “Motion plan-
+ning with complex goals,” IEEE Robotics and Automation Magazine,
+vol. 18, no. 3, pp. 55–64, Sep. 2011.
+[16] H. Kress-Gazit, T. Wongpiromsarn, and U. Topcu, “Correct, reactive,
+high-level robot control: Mitigating the state explosion problem of
+temporal logic synthesis,” IEEE Robotics and Automation Magazine,
+vol. 18, no. 3, pp. 65–74, Sep. 2011.
+[17] M. Mahfoudh, P. Niebert, E. Asarin, and O. Maler, “A satisﬁability
+checker for difference logic,” in 5th International Symposium on the
+Theory and Applications of Satisﬁability Testing, 2002.
+[18] S. Cotton, E. Asarin, O. Maler, and P. Niebert, “Some progress in
+satisﬁability checking for difference logic,” in Formal Techniques,
+Modelling and Analysis of Timed and Fault-Tolerant Systems, ser.
+Lecture Notes in Computer Science, vol. 3253. Springer, 2004, pp.
+263–276.
+118

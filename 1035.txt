@@ -1,0 +1,1462 @@
+Monocular Simultaneous Multi-Body Motion Segmentation and
+Reconstruction from Perspective Views
+Reza Sabzevari and Davide Scaramuzza
+AbstractÑIn this paper, we tackle the problem of mapping
+multiple 3D rigid structures and estimating their motions
+from perspective views through a car-mounted camera. The
+proposed method complements conventional localization and
+mapping algorithms (such as Visual Odometry and SLAM)
+to estimate motions of other moving objects in addition to
+the vehicleÕs motion. We present a theoretical framework for
+robust estimation of multiple motions and structures from
+perspective images. The method is based on the factorization
+of the projective trajectory matrix without explicit estimation
+of projective depth values. We exploit the epipolar geometry of
+calibrated cameras to generate several hypotheses for motion
+segments. Once the hypotheses are obtained, they are evaluated
+in an iterative scheme by alternating between estimation of 3D
+structures and estimation of multiple motions. The proposed
+framework does not require any knowledge about the number
+of motions and is robust to noisy image measurements. The
+method is evaluated on street-level sequences from a car-
+mounted camera. A benchmark dataset is also used to compare
+the results with previous works, although most of the related
+works use synthetic scenes simulating desktop environments.
+I. INTRODUCTION
+This paper addresses the problem of simultaneous
+estimation of multiple motions of rigid objects and their 3D
+structure from 2D image correspondences. Such 2D points
+belong to a sequence of images captured by a car-mounted
+camera under perspective camera model. The method
+presented in this article has strong ties to Structure from
+Motion (SfM), and consequently it provides complementary
+capabilities to related problems in robotics, i.e. Visual
+Odometry (VO) and SLAM.
+A. Motivations
+During the last decade, VO and SLAM have been widely
+studied and recent advancements in VO have resulted in
+fairly accurate estimation of vehiclesÕ motion with respect
+to the environment [1]. Using VO, the vehicle can localize
+itself with respect to the static parts of the scene while all
+the moving parts are treated as outliers. The VO pipeline can
+provide a sparse reconstruction of the environment as well
+as the positions of the vehicle with respect to the sparse
+map. The missing parts in this pipeline are localization of
+other moving objects and estimation of their motions as well
+as reconstructing the 3D structures of these objects. Such
+additions to VO would be beneÞcial to driver assistance
+systems in estimating the motions of other vehicles and
+The authors are with the Robotics and Perception Group, University of
+Zurich, SwitzerlandÑhttp://rpg.ifi.uzh.ch
+This research was supported by the Hasler FoundationÑproject number
+13027Ñand the Swiss National Science Foundation through the National
+Center of Competence in Research Robotics.
+pedestrians. This paper proposes a framework that provides
+the aforementioned missing parts in navigation algorithms
+that are widely used in robotics.
+B. Related Work
+The problem of estimating multiple motions and structures
+from 2D correspondences of multiple images is known as
+Multi-body Structure from Motion or motion segmentation
+and estimation. The works on multi-body SfM problem can
+be categorized into two major groups: i) approaches for afÞne
+camera model, and ii) methods that can also be applied
+to perspective camera model. Solving this problem under
+perspective camera model is more challenging, because it
+requires estimation of the perspective depth scales, which
+is also a challenging problem by itself. Murakami et al.
+[2] studied the conditions that a projective factorization is
+feasible without estimating the projective depth values, and
+showed that is possible only under strict assumptions; i.e. all
+the camera coordinates lie on a single plane that is parallel
+to all image planes.
+There are several works in the literature that provide
+rather good motion segmentation and estimation under afÞne
+camera model. The seminal work of Costeira and Kanade [3]
+formulated the multi-body SfM as a factorization problem.
+The framework proposed by them is for the afÞne and
+orthographic camera models, as discussed in details in
+Section II. Since this method is purely based on algebraic
+calculations, it is very sensitive to noise and outliers. Yan
+and Pollefeys contribution in [4] can fairly handle outliers
+but since it relies on local estimation of subspaces, it cannot
+handle the cases where two or more parts of the scene have
+the same motion but are not spatially correlated.
+On the contrary, the multi-body SfM problem has not been
+well studied for perspective images. Vidal et al. [5] proposed
+a geometric approach to estimate multiple structures and
+motions from two perspective views. This work was then
+extended to three views in [6], but since both methods are
+geometric based approaches, they are not robust to noise and,
+thus, cannot be used for real-world applications. Schindler et
+al. [7] proposed a method for n-view multi-body SfM based
+on model selection. Their method uses 2-view geometry
+and, by linking motion segments between multiple pairs of
+frames, it propagates the initial segmentation to n-views.
+Differently, Li et al. [8] proposed a factorization approach
+to identify multiple rigid motions in perspective images. The
+method is based on an initial estimation of projective depth
+scales and consequently is not robust to noise. The details
+of this approach are discussed in Section II.
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 European Union 23
+The opportunities that multi-body SfM provides to the
+robotics applications, especially to VO, is rarely investigated
+in the literature. Furthermore, most of the experiments in
+the literature are based on synthetic datasets. One of the few
+works in this context was done by Vidal in [9], who applied
+subspace clustering techniques to motion segmentation in
+perspective images. However, the motion segmentation was
+applied on optical ßow information of an outdoor sequence
+to segment the motions but not for estimating the motions.
+C. Contributions
+This article proposes a theoretical framework to estimate
+motions and 3D structures of multiple rigid-body objects
+from perspective views collected by a car-mounted camera.
+The method is based on matrix factorization and assumes
+that the camera is calibrated. Unlike other factorization
+methods, which are based on a good initialization of motion
+segments, our method generates several hypotheses for initial
+motion-segments, which makes it more robust to noise.
+Experiments on a real-world dataset show that, despite the
+presence of many outliers in case of change of illumination in
+outdoor environments, the method provides accurate motion
+segmentation and reliable reconstruction. Furthermore since
+the proposed framework estimates motions and structures in
+an incremental way (does not need all the image frames at
+once), it is intrinsically compatible with similar problems in
+robotics (e.g. SLAM and VO) and can be easily integrated
+in such approaches.
+D. Structure of the Paper
+In section II, the theoretical background of single-body
+and multi-body SfM both for afÞne and perspective views is
+discussed. The discussion in the next section is mainly based
+on the factorization approaches to different variations of
+SfM problem for rigid motions. In Section III, the proposed
+framework and its theoretical concepts are thoroughly
+described. Results of the proposed approach on a street-
+level dataset as well as comparisons with other methods on
+a benchmark dataset are presented in Section IV.
+II. STRUCTURE AND MOTION: A FACTORIZATION
+APPROACH
+Structure from motion can be considered as the
+simultaneous solution for two dual problems: i) recovering
+an unknown structure from known camera positions, ii)
+determining of viewerÕs positions or camera motion from a
+set of known 2D correspondences. In general, 3D structure
+and camera motion can be estimated by applying epipolar
+geometry between every pair of images or using the multi-
+view geometry. The inter-image relations are linked by the
+fact that a unique shape is projected onto the images captured
+from different views. Since the extracted features are sparse
+2D image points, the estimated 3D structure is also a sparse
+3D point cloud.
+Consider a set of p 2D point correspondences in multiple
+views accumulated in a matrix W. Given matrix W, the SfM
+problem consists of solving simultaneously for the position
+of points in 3-D space, denoted as S, and the relative pose
+of the cameras representing the motion, denoted as M. A
+set of popular approaches estimate M and S matrices via
+factorization approaches using solely the collection of such
+2D image point correspondences (i.e. matrix W) [10], [11]
+and [3].
+A. Single Motion, Rigid Object and AfÞne Camera
+For the afÞne camera model, rigid SfM problem can be
+formulated in the mathematical context of bilinear matrix
+factorization. So, the 2D image trajectories used by SfM can
+be described by bilinear matrix models [11]. In more detail,
+by deÞning the image coordinate of a point i in frame g as
+the vector w
+gi
+=[x
+gi
+y
+gi
+]
+T
+, we may write the measurement
+matrix W that gathers the coordinates of all the points in all
+the views as:
+W=
+2
+6
+4
+w
+11
+::: w
+1p
+.
+.
+.
+.
+.
+.
+.
+.
+.
+w
+f 1
+::: w
+f p
+3
+7
+5=[w
+1
+::: w
+p
+]; (1)
+where f is the number of frames (g = 1 ::: f ), p is the
+number of points (i= 1 ::: p) and vector w
+i
+is column i of
+matrix W that represents image coordinates for i-th point in f
+views. In case of a rigid object, the camera motion matrices
+M
+g
+and the 3D points s
+i
+can be expressed as:
+M
+g
+=
+
+R
+g1
+R
+g3
+R
+g5
+R
+g2
+R
+g4
+R
+g6
+
+
+
+
+t
+g1
+t
+g2
+
+and s
+i
+=
+2
+6
+6
+4
+X
+i
+Y
+i
+Z
+i
+1
+3
+7
+7
+5
+; (2)
+where M
+g
+2R
+24
+is the projection matrix containing rotation
+and translation components and s
+i
+is a 4-vector containing
+the coordinate of the i-th point in 3D space. The recovered
+structure s
+i
+and motion M
+g
+are up to a nonsingular linear
+transformation and Euclidean upgrade is possible via a 44
+transformation matrix. So, a 2D point i in a frame g is given
+by w
+gi
+=M
+g
+s
+i
+.
+We can collect all the image measurements and their
+respective bilinear components M
+g
+and s
+i
+in a global matrix
+form. Thus, the factorization model of image trajectories can
+be formulated as
+W
+2 fp
+=M
+2 f4
+S
+4p
+; (3)
+where the bilinear components M and S are deÞned as:
+M=
+2
+6
+4
+M
+1
+.
+.
+.
+M
+f
+3
+7
+5 and S=
+
+s
+1
+ s
+p
+
+: (4)
+In general, the rank of W is constrained to be rankfWg r
+where r minf2 f; pg. For case of afÞne camera model
+the rank of matrix W would be at most four. In practice, the
+image measurements cannot be noise free, which increases
+the rank of matrix W. So, the rank-four constraint should be
+enforced in the factorization.
+24
+B. Single Motion, Rigid Object and Perspective Camera
+In case of the perspective camera model, vector w
+gi
+in
+Eq. (1) denotes the homogeneous coordinates of i-th point
+in g-th image frame that is scaled by the projective depth
+l
+gi
+, such that
+w
+gi
+=l
+gi
+[x
+gi
+y
+gi
+1]
+>
+=[u
+gi
+v
+gi
+l
+gi
+]
+>
+: (5)
+Consequently, Eq. (3) becomes:
+W
+3 fp
+=M
+3 f4
+S
+4p
+: (6)
+The rank-4 factorization of Eq. (6) is possible if the depth
+scales l
+gi
+are known. Using epipolar geometry, Sturm and
+Triggs [10] proposed a method to estimate l
+gi
+up to a
+global scale factor. This can be achieved by estimating the
+fundamental matrices F
+gg
+0 and, consequently, the epipoles
+e
+gg
+0 that relate every pair of consecutive frames g and g
+0
+.
+These two elements (F
+gg
+0 and e
+gg
+0) can be estimated in
+a least-squares manner using the 8-point algorithm [12].
+Thus, the relation between depth scales l
+gi
+and l
+g
+0
+i
+in two
+consecutive frames will be as:
+l
+gi
+=
+ 
+e
+gg
+0w
+gi
+
+>
+ 
+F
+gg
+0w
+g
+0
+i
+
+
+
+e
+gg
+0w
+gi
+
+
+2
+l
+g
+0
+i
+: (7)
+By writing Eq. (7) for every pair of corresponding image
+points and every pair of consecutive image frames, the depth
+values can be recovered recursively up to an arbitrary initial
+value for l
+1i
+. In practice, the image measurements are noisy,
+and relying only on geometric estimations will not provide
+enough robustness. The robustness can be increased by
+iteratively alternating between two steps: i) rank-4 estimation
+of matrices of structure S and motion M (given an initial
+estimate for depth values l
+gi
+), ii) estimating the depth values
+that improve the previous estimations of structure and motion
+[13]. In more detail, if the depth values are initialized as
+l
+gi
+= 1, then the best rank-4 estimation of W will be:
+W
+3 fp
+
+÷
+M
+3 f4
+÷
+S
+4p
+;
+÷
+W =
+÷
+M
+÷
+S;
+(8)
+where
+÷
+S and
+÷
+M are the best rank-4 estimations for structure
+and motion, respectively, and
+÷
+W is an approximation of W
+given by
+÷
+S and
+÷
+M. Once the estimations for motion and
+structure are obtained, the depth values are estimated as:
+l
+gi
+=
+
+
+w
+ig
+  ÷ w
+ig
+
+
+; (9)
+where ÷ w
+ig
+is an approximation of w
+ig
+given by Eq. (8). In
+[13] the convergence of such iterative scheme for estimation
+of depth scale as well as structure and motion is proved.
+C. Multiple Motions of Rigid Objects
+If the 2D image correspondences belong to the motions
+of multiple objects, the image measurement matrix W that
+envelopes all the image correspondences belonging to several
+motions can be written as:
+W=[W
+1
+jW
+2
+j:::jW
+n
+]; (10)
+where n is the number of motions and W
+j
+, j = 1 ::: n, is
+the matrix containing 2D point correspondences belonging
+to the j-th motion. Basically, matrix W is the horizontal
+concatenation of W
+j
+matrices, each containing p
+j
+points that
+comply with motion j, where p=
+n
+Œ
+j=1
+p
+j
+is the total number
+of points for all the motions. So, the camera motion matrix
+M and the structure matrix S can be written as:
+M=[M
+1
+jM
+2
+j:::jM
+n
+] and S=
+2
+6
+6
+6
+4
+S
+1
+0 ::: 0
+0 S
+2
+::: 0
+.
+.
+.
+.
+.
+.
+.
+.
+.
+.
+.
+.
+0 0 ::: S
+n
+3
+7
+7
+7
+5
+: (11)
+In this case, the generic SfM equation, W = M S, can be
+rewritten as:
+[W
+1
+j:::jW
+n
+]=[M
+1
+j:::jM
+n
+]
+2
+6
+4
+S
+1
+.
+.
+.
+S
+n
+3
+7
+5: (12)
+For the afÞne camera model, W2 R
+2 fp
+and W
+j
+2
+R
+2 fp
+j
+contain image coordinates. So, the camera motion
+matrix M belongs toR
+2 f4n
+, which represents the horizontal
+concatenation of individual motion matrices M
+j
+2 R
+2 f4
+.
+Similarly, the structure matrix S2R
+4np
+is the diagonal
+concatenation of individual structures S
+j
+2R
+4p
+j
+. To recover
+multiple structures and motions, the sparse structure of S
+is employed and, using Eq. (12), the image measurement
+matrix W is factorized in a way that minimizes the noise in
+zero areas of matrix S. This can be achieved by iteratively
+alternating between estimating two components: i) the 3D
+structures by maximizing the sparsity of matrix S, ii) the
+motion matrices by minimizing the reprojection error and
+discarding the points from matrices W and S that cause
+large reprojection errors. Costeira and Kanade [3] proposed
+this factorization method for the orthographic and afÞne
+camera models. The main ßaw of this method is that a good
+initializationÑusually close to the Þnal solutionÑof motion
+segmentation is required, otherwise, most of the points will
+be discarded as they violate the sparsity constraint.
+For the case of perspective camera model, matrix W
+belongs to R
+3 fp
+and matrix W
+j
+2R
+3 fp
+j
+, both holding
+homogenous image coordinates scaled by depth values l
+gi
+.
+Consequently, matrix M is a 3 f 4n matrix which contains
+individual motion matrices M
+j
+2R
+3 f4
+. Li et al. [8] proposed
+an approach for projective factorization of multiple rigid
+motions based on depth estimation of Strum and Triggs
+[10]. In their method, an initial motion segmentation as
+well as initial depth estimation are required. An iterative
+reÞnement stage alternates between estimating the depth
+values and motion segments. Once the motion segments and
+depth values are converged, motion and structure for each
+motion-segment are estimated via factorization.
+25
+III. METHOD
+In this section, the proposed methodology for estimating
+relative motion and structure of independently moving
+objects is discussed. Given f perspective views of p points
+belonging to rigid objects moving under n classes of motions,
+the goal is to segment these points based on their motions,
+estimate the motions, and recover the position of these points
+in the 3D coordinate.
+In more detail, consider setP =
+
+P
+1
+; ::: P
+p
+	
+containing
+indices for p point trajectories, such that:
+P =
+n
+[
+j=1
+P
+j
+; (13)
+whereP
+j
+is the set of point trajectories that obey motion j.
+Thus, setP
+j
+will include p
+j
+columns of matrix W (see Eq.
+(1)) such that:
+P
+j
+=
+n
+w
+(1)
+j
+; :::; w
+(p
+j
+)
+j
+o
+;
+W
+j
+=
+h
+w
+(1)
+j
+; :::; w
+(p
+j
+)
+j
+i
+;
+(14)
+where matrix W
+j
+contains all columns of matrix W that had a
+similar motion among f frames.
+So, Þnding subsets ofP, holding Eq. (13), results in a
+motion segmentation hypothesis. Given y hypotheses for
+motion segments, they should be evaluated by calculating the
+reprojection error with respect to all the estimated motions
+and structures. In the evaluation phase, matrices W, S, and
+M as in Eq. (12) are formed with respect to one of the
+motion hypotheses. After initializing these matrices, the
+reprojection error is minimized by iteratively alternating
+between estimating the structures S while Þxing matrix M
+and estimating the motions M while Þxing matrix S. The
+reprojection error for all motion segmentation hypotheses
+are calculated and the ones with the smallest reprojection
+error is reported as the best motion segmentation hypothesis
+describing the trajectory matrix W. The outline of our
+algorithm is presented in Alg. (1).
+Algorithm 1 Outline of Simultaneous Motion Segmentation
+and Reconstruction
+Input: 2D image correspondences
+Output: Motions and structures of rigid bodies
+ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ
+1: Generate hypotheses for motion segments (see Alg. (2))
+2: Compute reprojection error for every motion
+segmentation hypothesis (see Alg. (3))
+3: return The structures and motions for the hypothesis
+with the smallest reprojection error
+A. Generating Hypotheses for Motion Segments
+In this section, our approach for generating hypotheses for
+segmenting p point trajectories into n motions is discussed.
+Such hypotheses for motion segments is used to initialize the
+algorithm. To generate a hypothesis, a set of sample points
+from the trajectory matrix W that have been moved similarly
+among the f frames are selected. Then, by estimating
+the motion from these sample points, other points in the
+trajectory matrix are evaluated to identify those that comply
+with the same motion as the sample set. This process is
+repeated with the reminders of matrix W in a multi-RANSAC
+scheme, as presented in [14], Þtting a single-motion rigid-
+body SfM model to identify the motion segments.
+Given setP, we would like to sample k points from this
+set that represent a unique motion, where k is the minimum
+number of points that represent a motion. Given the fact that
+the points closer to each other are more probable to be from
+the same structure, such minimal set is generated in a way
+that neighboring points are selected with higher probability.
+So, if point P
+i
+has already been selected, then point P
+0
+i
+will
+be selected with the following probability:
+P(P
+i
+jP
+0
+i
+)=
+8
+<
+:
+1
+z
+exp 
+kP
+i
+ P
+0
+i
+k
+2
+s
+2
+if P
+i
+6= P
+0
+i
+0 if P
+i
+= P
+0
+i
+; (15)
+where z is the normalization constant and s will be selected
+heuristically [14].
+Considering Eq. (15), for each hypothesis, k points from
+set P are selected, and a new trajectory matrix W
+(s)
+j
+is
+constructed using these points. Afterwards, the set of point
+trajectories encapsulated in matrix W
+(s)
+j
+should be veriÞed
+to see if they represent a unique motion. To that end, for
+every pair of frames, point correspondences in matrix W
+(s)
+j
+are triangulated and the perspective camera motion as well as
+the 3D structure will be estimated by enforcing the epipolar
+constraints [15], such that:
+(w
+g
+0
+i
+
+w
+gi
+) E= 0; (16)
+where vectors w
+g
+0
+i
+and w
+gi
+are normalized vectors
+in homogeneous coordinates (i.e. w
+gi
+= [x
+gi
+y
+gi
+1]
+>
+)
+representing two corresponding points on a pair of frames
+and matrix E is the essential matrix.
+1
+By writing Eq. (16) for all the k points, we will have a
+linear system of equations, of which the essential matrix E
+will be the null space of (w
+g
+0
+i
+
+w
+gi
+). Once the essential
+matrix is estimated, the motion matrix M will be given by
+singular value decomposition of E as:
+E=
+ö
+TR;
+ö
+T=
+2
+4
+0  t
+z
+t
+y
+t
+z
+0  t
+x
+ t
+y
+t
+x
+0
+3
+5
+; t=[t
+x
+t
+y
+t
+z
+]
+>
+;
+M=[Rjt];
+(17)
+whereR2R
+33
+andM2R
+34
+. The estimated motion matrixM
+in Eq. (17) represents the relative motion (including rotation
+1
+Operator
+ denotes the Kronecker product.
+26
+and translation) between two frames up to an arbitrary scale
+factor.
+A calibrated camera can be described by an image plane
+perpendicular to the Z-axis and distanced 1 from the origin
+[15]. So, Eq. (5) turns to w
+gi
+=[x
+gi
+y
+gi
+1] and there is no
+need to estimate the depth scales as in Eq. (9). Furthermore,
+if the image points are normalized to lie on the unit sphere
+(i.e. x
+2
+gi
++ y
+2
+gi
++ z
+2
+gi
+= 1) instead of the image plane, the 3D
+structure can be estimated up to a general scale factor. Thus,
+the estimation of 3D structure and camera motion can be
+formulated as a bilinear factorization problem (see Eq. (6)).
+All k points in trajectory matrix W
+(s)
+j
+agree on a unique
+motion if the reprojection error of the estimated structure is
+less than a threshold e, such that:
+kW
+(s)
+j
+ (M
+j
+S
+(s)
+j
+)k<e; (18)
+where matrix M
+j
+is the estimated camera motion and matrix
+S
+(s)
+j
+contains the estimated structure. If Eq. (18) does not
+hold, sampling points from matrix W continues until a set of
+points that have a similar motion is identiÞed.
+Once a motion is identiÞed, other points in setP will be
+veriÞed to check whether they comply with the identiÞed
+motion using:
+S
+j
+=M
+>
+j
+W
+j
+; (19)
+where matrices S
+j
+and W
+j
+represent the points that are in set
+P P
+j
+.
+To generate a motion segmentation hypothesis, this
+process will be repeated until all the points inP (or the
+columns of trajectory matrix W) are associated to a motion-
+segment. Alg. (2) shows the algorithm for generating y
+motion segmentation hypothesis.
+Algorithm2 Generating hypotheses for motion segmentation
+Input: 2D image correspondences
+Output: Several motion segmentation hypotheses
+ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ
+1: for c= 1 to y do
+. % generate y hypotheses for motion segments%
+2: whileP6=? do
+3: j=1 . % j represents the motion index%
+4: while (reprojection error >e) do
+. % reject invalid hypotheses%
+5: Sample k points from setP and form W
+(s)
+j
+6: Estimate M
+j
+and S
+(s)
+j
+. % using epipolar geometry%
+7: Calculate the reprojection error
+8: end while
+9: Remove points W
+(s)
+j
+from W
+10: Estimate structure for W with respect to M
+j
+11: Remove points fromP that comply with M
+j
+12: j=j+1
+13: end while
+14: end for
+B. Evaluating Motion Segmentation Hypotheses
+From every hypothesis, an initial estimate for motion
+segments and 3D structures is given. This helps to form
+matrices W, M and S as in Eq. (12). Once these matrices
+are formed, the estimation of structures and motion-segments
+is reÞned iteratively. This can be achieved by alternatively
+estimating the structures matrix
+÷
+S while Þxing motions and
+estimating the motions matrix
+÷
+M while Þxing structures,
+where matrices
+÷
+M and
+÷
+S are deÞned in Eq. (8).
+Considering (8) and (12), given the multiple motions
+matrix
+÷
+M, estimation of multiple structures matrix
+÷
+S can be
+formalized as an optimization problem that solves a linear
+system of equations.
+In more detail, Eq. (8) can be rewritten in form of Ax=b,
+such as:
+b
+M
+  !
+S = vec(
+÷
+W); (20)
+where matrix
+b
+M2R
+3 f p4np
+contains 4np
+j
+columns for every
+motion in a block-diagonal way, and is deÞned as:
+b
+M=
+2
+6
+6
+6
+4
+b
+M
+1
+b
+M
+2
+.
+.
+.
+b
+M
+n
+3
+7
+7
+7
+5
+3 f p4np
+;
+b
+M
+j
+=
+h
+ù
+M
+( j)
+1
+ù
+M
+( j)
+2
+:::
+ù
+M
+( j)
+f
+i
+>
+3 f p
+j
+4np
+j
+; j= 1 ::: n;
+ù
+M
+( j)
+g
+=
+2
+6
+4
+÷
+M
+g
+.
+.
+.
+÷
+M
+g
+3
+7
+5
+3p
+j
+4np
+j
+; g= 1 ::: f;
+÷
+M
+g
+=
+
+÷
+M
+g1
+j
+÷
+M
+g2
+j :::j
+÷
+M
+gn
+
+;
+÷
+M
+g
+2R
+34n
+;
+(21)
+and
+  !
+S is a column-wise vectorization of matrix
+÷
+S, such that:
+  !
+S
+4np1
+=
+
+s
+1
+0
+a
+s
+2
+::: 0
+a
+s
+p
+1
+0
+a
+0 ::: 0
+a
+s
+p
+j
+0
+a
+0 ::: 0
+a
+s
+p
+n
+
+>
+;
+(22)
+where 0
+a
+and 0
+a
+0 are vectors of a and a
+0
+zeros, where
+a= 4(n 1) and a
+0
+= 4n. Finally, vec(
+÷
+W) is the column-wise
+vectorization of
+÷
+W. Structure of these matrices is shown in
+Fig. (1).
+Now, we can solve Eq. (20) to estimate the structures.
+The equations belonging to non-zero values of
+  !
+S can be
+used to create systems of equations to estimate structures in
+a least-squares sense. To that end, every non-zero block of
+  !
+S Ñrepresenting a moving structureÑforms an independent
+linear system of equations which can be solved individually.
+Note that, it is also possible to exploit the sparsity of vector
+  !
+S as an additional constraint in the optimization process (as
+in [3]) and solve Eq. (20) for all the structures and motions
+simultaneously.
+To estimate the motions, we can rewrite Eq. (8) as:
+27
+(
+÷
+S
+>
+
+ I
+3 f
+) vec(
+÷
+M)= vec(
+÷
+W); (23)
+whereI
+3 f
+is a 3 f3 f identity matrix, vec(
+÷
+M) is column-wise
+vectorization of
+÷
+M.
+Fig. 1. Structure of matrices in Eq. (20) for p points having n motions in
+f frames.
+Using Eq. (20) and Eq. (23) the algorithm alternates
+between estimating multiple structures and multiple motions
+until they converge. The algorithm to identify the best motion
+segmentation hypothesis is outlined in Alg. (3).
+Algorithm 3 Evaluate hypotheses
+Input: Motion segmentation hypothesis
+Output: Reprojection error for each hypothesis
+ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ
+1: for all motion hypotheses do
+2: Generate multi-body SfM matrices W, S and M
+. % with respect to Eq. (12)%
+3: repeat
+4: Given motion matrix M Solve Eq. (20) for S
+5: Given structure matrix S Solve Eq. (23) for M
+6: until Convergence
+7: return Reprojection error
+8: end for
+IV. EXPERIMENTS
+A popular street-level datasetÑKITTI dataset
+2
+Ñis used
+for the experiments. This dataset was originally created
+to benchmark VO algorithms [16]. It consists of several
+sequences collected by a perspective car-mounted camera
+driving in urban areas. The whole dataset was visually
+inspected and several sequences containing different types
+of multiple motions were extracted.
+Although the motion model could be constrained, in the
+experiments, the motion-segments are modeled as a 6-degree
+of freedom motion. Thus, the 8-point algorithm [12] is used
+to estimate the unconstrained motions. In this case, at least 8
+points are required (k= 8), but in the constrained case, fewer
+points would be enough to identify individual motions.
+The case of pedestrians is not studied, because pedestrianÕs
+motion cannot be considered as a rigid motion. Furthermore,
+in most cases, there are not sufÞcient and stable features on
+pedestrians to be considered as individual bodies.
+2
+http://www.cvlibs.net/datasets/kitti/
+The input to our pipeline is the sequence of images. First,
+feature points are extracted from the images and matched
+between consecutive frames. In our experiments, SIFT
+features [17] are used to detect feature points and to track
+the features among the frames two-way matching scheme is
+used to reduce the rate of outliers. The feature matches are
+then passed to the algorithm, which automatically rejects the
+outliers during motionsÕ hypotheses generation stage. The
+outputs of the algorithm are the estimated structures and
+motions.
+Fig. (2) to (5) show samples from different scenarios and
+the results obtained by our algorithm. As the sequences are
+from a car-mounted camera, in all these Þgures the camera
+is moving forward and consequently the static parts of the
+scene are identiÞed as individual motions. In Fig. (2) the
+camera equipped car is moving forward and passing another
+car. So, in addition to the motion belonging to the static parts
+of the scene, the relative backward motion of the front car is
+identiÞed as a different motion. Fig. (3) shows the case when
+a vehicle is moving perpendicularly to the camera motion.
+Another scenario is presented in Fig. (4), which shows a
+vehicle coming from the opposite direction while turning left.
+In this experiment, although there are some false negatives
+from the car, most of the points are segmented correctly.
+Fig. (5) shows the case where a car is coming straight
+from the opposite direction and its corresponding motion
+is segmented from the camera motion. Table I shows the
+amount of reprojection error and percentage of misclassiÞed
+points for the sequences presented in Fig. (2) to (5). The
+reprojection error for each point on every frame is calculated
+askw
+ig
+  ÷ w
+ig
+k, and the classiÞcation error is deÞned as:
+ClassiÞcation Error= 100
+No. of misclassiÞed points
+Total No. of points
+:
+Our algorithm is also tested on the Checkerboard sequence
+from the Hopkins 155 dataset [18], which consists of
+104 sub-sequences.
+3
+For this sequence, median and mean
+reprojection errors among all the sub-sequences are 1:03 and
+0:77 pixels, respectively. Since the sequences are collected
+by a hand held camera, in some cases where the camera is
+almost static, the camera motion is not large enough to be
+identiÞed as an individual motion-segment by our algorithm.
+In these cases, the camera motion will be joined with the
+most similar one in the scene (such as Fig. (6)) or will not
+be detected at all. In such cases, by ignoring the small camera
+motion, the mean and median classiÞcation errors are 0:35%
+and 0:23%, but considering camera motion, the classiÞcation
+error raises up to 23:5%. Fig. (6) shows the result of our
+algorithm on a sample of Checkerboard sequence. For this
+sample, although the algorithm cannot identify the camera
+movement as an individual motion segment, the other two
+motions are segmented with zero classiÞcation error. In the
+literature, according to [19], the best performance obtained
+for the Checkerboard sequence has mean classiÞcation error
+1:24% and median classiÞcation error 0:0%.
+3
+http://www.vision.jhu.edu/data/hopkins155/
+28
+Fig. 2. Forward-Backward: car-mounted camera is moving forward passing another car which is also moving forward (moving backward with respect to
+the camera). Different colors represent the segmented trajectories.
+Fig. 3. Forward-Perpendicular: car-mounted camera is moving forward and a motorbike is driving perpendicularly to the carÕs motion. Different colors
+represent the segmented trajectories.
+Fig. 4. Forward-Backward Curve: car-mounted camera is moving forward and another car is coming backward from the opposite direction and turning
+left. Different colors represent the segmented trajectories.
+Fig. 5. Forward-Backward: car-mounted camera is moving forward and another car is coming from the opposite direction. Different colors represent the
+segmented trajectories.
+29
+TABLE I
+REPROJECTION AND SEGMENTATION ERRORS FOR SEQUENCES FROM KITTI DATASET (FIG. (2) TO (5))
+Sequence Number of Number of Number of Mean Reprojection Median Reprojection Segmentation
+Related to Frames Points MisclassiÞed Points Error (pixels) Error (pixels) Error (%)
+Fig. (2) 5 193 0 1.63 1.43 0
+Fig. (3) 5 608 3 1.69 1.54 0.49
+Fig. (4) 5 573 9 2.14 1.67 1.57
+Fig. (5) 5 283 0 2.31 2.26 0
+Fig. 6. A sample of Checkerboard sequence from Hopkins 15: the obtained
+classiÞcation error was zero (ignoring near-constant camera motion); median
+and mean reprojection error are 0:93 and 1:05 pixels, respectively. The
+difference between camera motion (points on the up-right checkerboard)
+and another motion in the scene was not large enough to be distinguished.
+In our experiments, parameters (in Eq. (15)) is in domain
+of[0:05;0:3] and the evaluation of feature point classiÞcation
+is done visually.
+V. CONCLUSIONS AND FUTURE PERSPECTIVE
+This paper provided a theoretical framework for estimating
+3D structures of rigid objects, together with the motion
+associated to each structure, from perspective images. The
+motivation of this research was to complement visual
+navigation algorithms, like VO and SLAM, with the
+capability of considering both static and dynamic parts of
+the scene for localization and mapping. The experiments
+were designed to be compatible with the motivation. Thus,
+street-level sequences were mainly used for the experiments,
+although a benchmark dataset was also used to compare the
+performance of our method with previous works.
+Although the current implementation of our algorithm
+does not run in real-time, this can be improved by an
+implementation for parallel processing or by using motion
+constraints. Since generating and evaluating each hypothesis
+is independent of other hypotheses, these two processes can
+be highly parallelized. Moreover, using motion constraints
+(e.g. planar motion), the 6-degree of freedom motion models
+used in this work can be reduced to fewer degrees of
+freedom, which results in a considerable boost in timing.
+REFERENCES
+[1] D. Scaramuzza and F. Fraundorfer, ÒVisual odometry: Part I: The Þrst
+30 years and fundamentals,Ó IEEE robotics & automation magazine,
+vol. 18, no. 4, pp. 80Ð92, 2011.
+[2] Y . Murakami, T. Endo, Y . Ito, and N. Babaguchi, ÒDepth-estimation-
+free condition for projective factorization and its application to 3d
+reconstruction,Ó in Asian Conference on Computer Vision (ACCVÕ13).
+Springer, 2013, pp. 150Ð162.
+[3] J. P. Costeira and T. Kanade, ÒA multibody factorization method for
+independently moving objects,Ó International Journal of Computer
+Vision (IJCVÕ98), vol. 29, no. 3, pp. 159Ð179, 1998.
+[4] J. Yan and M. Pollefeys, ÒA general framework for motion
+segmentation: Independent, articulated, rigid, non-rigid, degenerate
+and non-degenerate,Ó in European Conference on Computer Vision
+(ECCVÕ06). Springer, 2006, pp. 94Ð106.
+[5] R. Vidal, Y . Ma, S. Soatto, and S. Sastry, ÒTwo-view multibody
+structure from motion,Ó International Journal of Computer Vision
+(IJCVÕ06), vol. 68, no. 1, pp. 7Ð25, 2006.
+[6] R. Vidal and R. Hartley, ÒThree-view multibody structure from
+motion,Ó IEEE Transactions on Pattern Analysis and Machine
+Intelligence (TPAMIÕ08), vol. 30, no. 2, pp. 214Ð227, 2008.
+[7] K. Schindler, U. James, and H. Wang, ÒPerspective n-view
+multibody structure-and-motion through model selection,Ó in European
+Conference on Computer Vision (ECCVÕ06). Springer, 2006, pp. 606Ð
+619.
+[8] T. Li, V . Kallem, D. Singaraju, and R. Vidal, ÒProjective factorization
+of multiple rigid-body motions,Ó in IEEE Conference on Computer
+Vision and Pattern Recognition (CVPRÕ07). IEEE, 2007, pp. 1Ð6.
+[9] R. Vidal, ÒMulti-subspace methods for motion segmentation from
+afÞne, perspective and central panoramic cameras,Ó in IEEE
+International Conference on Robotics and Automation (ICRAÕ05).
+IEEE, 2005, pp. 1216Ð1221.
+[10] P. Sturm and B. Triggs, ÒA factorization based algorithm for multi-
+image projective structure and motion,Ó in European Conference on
+Computer Vision (ECCVÕ96). Springer, 1996, pp. 709Ð720.
+[11] C. Tomasi and T. Kanade, ÒShape and motion from image streams
+under orthography: a factorization method,Ó International Journal of
+Computer Vision (IJCVÕ92), vol. 9, no. 2, pp. 137Ð154, 1992.
+[12] R. Truesdalc, K. T. M. Micropaloeonr, and J. Fenner, ÒA computer
+algorithm for reconstructing a scene from two projections,Ó Nature,
+vol. 293, p. 133, 1981.
+[13] J. Oliensis and R. Hartley, ÒIterative extensions of the sturm/triggs
+algorithm: Convergence and nonconvergence,Ó IEEE Transactions
+on Pattern Analysis and Machine Intelligence (TPAMIÕ07), vol. 29,
+no. 12, pp. 2217Ð2233, 2007.
+[14] M. Zuliani, C. S. Kenney, and B. Manjunath, ÒThe multiransac
+algorithm and its application to detect planar homographies,Ó in IEEE
+International Conference on Image Processing (ICIPÕ05), vol. 3.
+IEEE, 2005, pp. IIIÐ153.
+[15] Y . Ma, S. Soatto, J. Kosecka, and S. Sastry, An Invitation to 3-D
+Vision: From Images to Gometric Models. springer, 2004.
+[16] A. Geiger, P. Lenz, and R. Urtasun, ÒAre we ready for autonomous
+driving? the kitti vision benchmark suite,Ó in IEEE Conference on
+Computer Vision and Pattern Recognition (CVPRÕ12). IEEE, 2012,
+pp. 3354Ð3361.
+[17] D. G. Lowe, ÒDistinctive image features from scale-invariant
+keypoints,Ó International journal of computer vision (IJCVÕ04),
+vol. 60, no. 2, pp. 91Ð110, 2004.
+[18] R. Tron and R. Vidal, ÒA benchmark for the comparison of 3-d motion
+segmentation algorithms,Ó in IEEE Conference on Computer Vision
+and Pattern Recognition (CVPRÕ07). IEEE, 2007, pp. 1Ð8.
+[19] R. Vidal, ÒSubspace clustering,Ó IEEE Signal Processing Magazine,
+vol. 28, no. 2, pp. 52Ð68, 2011.
+30

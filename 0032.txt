@@ -1,0 +1,931 @@
+Bayesian Optimisation
+for Active Perception and Smooth Navigation
+Jefferson R. Souza, Roman Marchant, Lionel Ott, Denis F. Wolf and Fabio Ramos
+Abstract—A key challenge for long-term autonomy is to
+enablearobottoautomaticallymodelpropertiesoftheenviron-
+ment while actively searching for better decisions to accomplish
+itstask.Thisamountstotheproblemofexploration-exploitation
+in the context of active perception. This paper addresses active
+perception and presents a technique to incrementally model the
+roughness of the terrain a robot navigates on while actively
+searching for waypoints that reduce the overall vibration
+experienced during travel. The approach employs Gaussian
+processesinconjunctionwithBayesianoptimisationfordecision
+making. The algorithms are executed in real-time on the robot
+while it explores the environment. We present experiments with
+an outdoor vehicle navigating over several types of terrains
+demonstrating the properties and effectiveness of the approach.
+I. INTRODUCTION
+Field robotics has seen signiﬁcant progress over the last
+decade. Today, autonomous mobile robots are successfully
+employed in outdoor applications, such as mines, ports,
+agriculture, among many others. In these situations, a robot
+is expected to operate autonomously for long periods of time
+while navigating through different types of terrains. Although
+much has been done in designing autonomous robots that
+operate on speciﬁc conditions, actively learning the charac-
+teristics of the environment without human intervention can
+signiﬁcantly improve robustness and expand the applicability
+of ﬁeld robotics to many different areas.
+In this paper we develop an active perception approach
+to learn the roughness of the terrain a robot traverses on.
+The harmful effect of vibration is an important problem for
+terrain robots [1], [2]. Excessive shaking can cause hardware
+damage, and it is well known to shorten the lifespan of an
+unmanned ground vehicle. Furthermore, vibration affects the
+quality of the information provided by the sensors. Undesi-
+rable noise is introduced to images, laser scan measurements
+and inertial measurement unit data, ultimately affecting the
+reliability in accomplishing the goals due to poor accuracy
+in localisation, mapping, and navigation.
+Our goals are to achieve a good understanding of the
+environment, while keeping the robot as safe as possible.
+We propose an active learning approach to terrain roughness
+estimation and develop a planning algorithm that automati-
+cally trades off exploration and exploitation. The proposed
+Jefferson R. Souza and Denis F. Wolf are with the Institute of Mathe-
+matics and Computer Science, University of S˜ ao Paulo, S˜ ao Carlos, Brazil
+fjrsouza; denisg@icmc.usp.br
+Roman Marchant, Lionel Ott and Fabio Ramos are with the
+School of Information Technologies, The University of Sydney, NSW
+2006, Australia fr.marchant; l.ottg@acfr.usyd.edu.au
+fabio.ramos@sydney.edu.au
+methodology consists of three steps. First, acceleration data
+acquired from an inertial measurement unit (IMU) is pre-
+processed by a ﬁltering stage. Secondly, the ﬁltered data is
+used to continuously learn and update a Gaussian Process
+(GP) [3] model of the vibrations. Finally, new sampling
+locations are selected using a Bayesian Optimisation (BO)
+algorithm that trades off automatically between exploration
+and exploitation.
+The main contributions of this work are:
+1) A terrain roughness estimation model from acceleration
+data built using GP regression;
+2) A planning algorithm based on BO that exploits and
+improves the terrain roughness model.
+The remainder of this paper is organised as follows.
+Section II reviews the state of the art in terrain rough-
+ness estimation, spatial modelling with GPs and informative
+path planning algorithms. Section III presents the proposed
+methodology, detailing the principles behind GP regression
+applied to vibration estimation, providing a brief overview of
+the BO algorithm and describing the active learning approach
+based on BO for informative planning. The experimental
+setup, results and analysis are shown in section IV. Finally,
+section V provides conclusions and suggests directions for
+future works.
+II. RELATED WORK
+A. Terrain Roughness Estimation
+In [4], explored areas of the terrain are classiﬁed based
+on vibration. Features from the data are obtained using
+combinations of Power Spectral Density and Fast Fourier
+Transform, which are used to classify terrain using a support
+vector machine. In [5], a vision and vibration-based approach
+fuses terrain predictions from image data and vibration. The
+robot uses images to classify the terrain, and vibration data
+to verify its prediction. Classiﬁcation is performed using
+SVMs and results show 87% of correct classiﬁcation. The
+main drawback of this approach is that it only classiﬁes
+different terrains in a discrete manner, whereas in this work
+we are able to predict the amount of vibration expected in a
+continuous domain, with an associated level of uncertainty.
+B. GPs in Spatial Modelling
+GP regression [3], initially developed in geostatistics and
+known as Kriging, has been used widely for modelling
+spatially correlated data. GPs have been used for various
+robotic applications, such as the estimation of a wireless
+signal strength in an indoor environment [6], modelling gas
+distribution across space [7], [8], building a solar map [9],
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 4081
+learning occupancy maps of an outdoor environment with
+integral kernels [10] and modelling large-scale terrain using
+point-cloud information [11]. To the best of our knowledge,
+GPs have never been used to estimate the roughness of terrain
+from acceleration data.
+C. Informative Path Planning
+In [12], a greedy algorithm for sequential path planning
+was developed by exploiting the sub modularity of Mutual
+Information (MI). [13] selected sensing locations for temper-
+ature measurement using entropy reduction and MI. These
+approaches do not consider the expected value of the studied
+phenomenon, and are active in the sense of uncertainty
+reduction. Recently, [7] developed a BO algorithm [14] for
+choosing informative sensing locations that take the expected
+value of the phenomenon into account. A speciﬁc acquisition
+function that includes a penalty on the distance travelled to
+acquire consecutive observations was developed and applied
+to real robotics problems.
+III. METHODOLOGY
+Our main goal is to reduce the amount of vibration experi-
+enced by the robot while navigating on different terrains. To
+achieve this, we propose a method to learn a representation
+of the terrain roughness, ultimately favouring movement
+through traversable areas that generate lower vibration levels.
+The method, shown in Fig. 1 consists of four steps:
+ Preprocessing: Filters are applied to noisy measure-
+ments provided by an IMU to smooth the data as
+described in section III-A.
+ Vibration modelling: GP regression is used to create a
+statistical model of vibration when traversing a terrain
+and to predict the vibration levels across space in un-
+sampled areas. Details are presented in section III-B.
+ Planning: Bayesian optimisation is employed to select
+locations to be visited, depending on the expected level
+of vibration and the uncertainty in the prediction. This
+is described in section III-D.
+ Localisation and Mapping: Localises the robot in an
+unknown environment and creates a map of the area.
+Localisation is used by the vibration modelling step to
+assign vibration measurements to different parts of the
+terrain. We used a SLAM package built in ROS
+1
+named
+Gmapping
+2
+.
+A. Preprocessing
+To prevent an excessive amount of noise being transferred
+to the vibration modelling module, we propose a prepro-
+cessing, ﬁltering stage. Given the original signal w(t), we
+evaluated the performance of two different strategies for
+ﬁltering unwanted noise, producing a ﬁltered signal w
+f
+(t).
+a Wavelet Filter: Discrete wavelet transform (DWT) [15]
+provides a continuous multi-resolution version of the
+original signal. By retaining only the fourth level of
+1
+Robot Operating System http://wiki.ros.org/
+2
+Gmapping http://wiki.ros.org/gmapping
+Modelling
+(Gaussian Process)
+Actuators
+Planning
+(Bayesian Optimization)
+Inertial 
+Measurement Unit
+Localization
+Robot
+Environment
+LIDAR, Encoders
+Terrain Roughness
+Building Conﬁguration
+Preprocessing
+Software
+Hardware
+Fig. 1. Block diagram of the proposed system. Data ﬂow is represented
+by arrows.
+0 500 1000 1500 2000 2500 3000 3500 4000 4500
+0
+0.2
+0.4
+0.6
+0.8
+1
+Time [sec]
+Linear Acceleration [m/sec
+2
+]
+ 
+ 
+Raw Data
+Wavelet Filter
+0 500 1000 1500 2000 2500 3000 3500 4000 4500
+0
+0.2
+0.4
+0.6
+0.8
+1
+Time [sec]
+Linear Acceleration [m/sec
+2
+]
+ 
+ 
+Raw Data
+Low Pass Filter
+Fig. 2. Application of two digital ﬁlters on raw IMU data.
+the Daubechies DWT transform coefﬁcients, we obtain a
+ﬁltered approximation of the original signal in which high
+frequency noise is no longer present.
+b Low Pass Filter: A simple non-recursive digital low pass
+ﬁlter [16] is implemented to smooth the original signal.
+The output signal is given by the following expression:
+w
+f
+(t) =
+N
+X
+j=0
+w(t j)
+N
+: (1)
+Depending on the bandwidth (directly related to N) of
+the low pass ﬁlter, a lag or delay is observed in the output
+signal. By setting N = 100 we ﬁx a ﬁltering bandwidth
+that removes noise and keeps an upper bound on the lag.
+Fig. 2 shows both ﬁlters applied to real data acquired with
+an accelerometer. From this plot alone, it is difﬁcult to decide
+which is more effective. We return to this discussion in the
+experimental section and evaluate the performance of the
+ﬁlters in the context of the whole system to select the ﬁltering
+strategy that delivers the best results.
+4082
+B. GP for Vibration Model
+GP regression is an effective technique for modelling
+complex spatial processes, such as the terrain roughness in
+an outdoor environment. By using a set of training points, a
+GP can provide a prediction of the unknown function with
+an associated uncertainty over a continuous domain.
+Formally, a GP is completely deﬁned by a mean function
+m(x) and a covariance functionk(x;x
+0
+). It learns the repre-
+sentation of an unknown functionf in a supervised learning
+set up using a setS of known observations,S =fx
+i
+;y
+i
+g
+N
+i=1
+,
+with x
+i
+2R
+D
+being an input in a D dimensional space and
+y
+i
+2 R the correspondent noisy output. Given a test point
+x
+
+(unsampled location), the GP returns a prediction of the
+value of f(x
+
+) with the corresponding uncertainty. Noisy
+observations of the underlying function f(x) are modelled
+as Gaussian distributed,y =f (x)+, whereN
+ 
+0;
+2
+n
+
+.
+Given a covariance function k(x;x
+0
+), the covariance ma-
+trixK(X;X) can be computed by evaluating the covariance
+function for all observations. The predictive distribution for
+test locations X
+
+is given by
+y
+
+jX;y;X
+
+N (
+
+; 
+
+);
+where,
+
+
+= K(X
+
+;X)K
+ 1
+X
+y; (2)
+
+
+= K(X
+
+;X
+
+) K(X
+
+;X)K
+ 1
+X
+K(X;X
+
+); (3)
+with K
+X
+=K(X;X) +
+2
+n
+I.
+By selecting different covariance functions, our GP vi-
+bration model can adapt more easily to complex vibration
+models. The particular covariance functions considered in
+this paper are Linear, Exponential, Squared Exponential,
+Mat´ ern 3 and Mat´ ern 5, their respective equations are given
+by:
+k
+LI
+(x;x
+0
+) = 
+2
+f
+xx
+0
+; (4)
+k
+EXP
+(x;x
+0
+) = 
+2
+f
+exp
+ 
+ 
+p
+r
+
+; (5)
+k
+SQEXP
+(x;x
+0
+) = 
+2
+f
+exp
+
+ 
+r
+2
+
+; (6)
+k
+MAT3
+(x;x
+0
+) = 
+2
+f
+
+1 +
+p
+3r
+
+exp
+
+ 
+p
+3r
+
+; (7)
+k
+MAT5
+(x;x
+0
+) = 
+2
+f
+
+1 +
+p
+5r +
+5r
+3
+
+exp
+
+ 
+p
+5r
+
+; (8)
+wherer = (x x
+0
+)L(x x
+0
+)
+T
+, L is a diagonal matrix of size
+D, whose elements are L
+ii
+= 1=l
+2
+i
+, a length-scale parameter
+associated to each dimension of the input space. The matrix
+L and the factor
+f
+, or signal variance, are hyper-parameters
+of these covariance functions. Therefore, the set of hyper-
+parameters that fully determine the GP is given by:
+ =f
+f
+;l
+1
+;l
+2
+;:::;l
+D
+;
+n
+g (9)
+By tuning these hyper-parameters, the behaviour of the
+GP regression is adapted to achieve a good representation of
+the unknown function. The optimal set of hyper-parameters
+Algorithm 1 Bayesian Optimisation
+1: x
+i
+: chosen sampling point at iteration i.
+2: s: acquisition function.
+3: f: unknown function. (terrain roughness)
+4: for i = 1; 2; 3;::: do
+5: Find x
+i
+= arg max
+x
+s(x)
+6: Acquire a sample from f at location x
+i
+.
+7: Update the GP model of f with the new sample.
+8: end for
+
+
+can be found by maximising the log marginal likelihood
+(LML),
+
+
+= arg max
+
+LML(y;X;); (10)
+with,
+LML(y;X;) = 
+1
+2
+y
+T
+K
+ 1
+X
+y 
+1
+2
+logjK
+X
+j 
+n
+2
+log2: (11)
+We also combine Covariance Functions (CFs) to obtain
+new functions. The sum and product of two CFs are valid
+CFs [17][18]:
+k
+SUM
+(x;x
+0
+) =
+M
+X
+i=1
+k
+i
+(x;x
+0
+) (12)
+k
+PROD
+(x;x
+0
+) =
+M
+Y
+i=1
+k
+i
+(x;x
+0
+) (13)
+Depending on the number of covariance functionsM, the di-
+mensionality of the hyper-parameter vector can grow quickly,
+making the optimisation on this high dimensional space more
+costly.
+C. Bayesian Optimisation
+The Bayesian Optimisation algorithm (Algorithm 1) [14],
+was designed to ﬁnd the extreme of an unknown, noisy, and
+costly to evaluate function f, i.e. to ﬁnd the maximum
+x
+?
+= arg max
+x
+f(x) (14)
+or minimum
+x
+?
+= arg min
+x
+f(x) = arg max
+x
+( f(x)) : (15)
+BO is completely deﬁned by two elements, the prior
+and the acquisition function. We use a GP prior as the
+statistical model of the unknown function. This model uses
+acquired samplesx
+i
+to build a representation of the unknown
+function and perform regression over the un-sampled space.
+Equations 2 and 3 detail the predicted mean  and variance
+ respectively. The second fundamental element in BO is the
+acquisition function, which encodes the utility of sampling
+at location x. The combination of these two elements (GP
+prior and acquisition function) can provide a smart trade off
+between exploration and exploitation.
+At each iteration, a new sampling location is selected by
+reasoning over previously acquired information. By maximi-
+sing the acquisition function s, we select the best location
+to sample the unknown function of the terrain roughness.
+4083
+D. BO for Informative Planning
+Choosing an appropriate model to represent the studied
+phenomenon is necessary but not sufﬁcient to achieve good
+results. The location of the observations plays a fundamental
+role in the quality of the resulting model and its prediction
+accuracy. The most popular approach to choose sensing
+locations is by maximising the mutual information between
+the sampled and un-sampled domain [19]. However, [7] has
+shown that BO can be used as a suitable alternative strategy
+that not only considers the uncertainty in the model, but
+also uses the predicted value to choose sampling locations,
+automatically trading off between exploration and exploita-
+tion. We use this strategy to learn the roughness of the
+terrain, while at the same time using this roughness to select
+waypoints for navigating in areas with less vibration.
+We use an active sampling procedure based on BO (see
+section III-C). By maximising the acquisition functions, we
+select the best location to sample the unknown function.
+For terrain roughness estimation we use Distance Upper
+Conﬁdence Bound (DUCB) as the acquisition function s
+(Algorithm 1), given by
+DUCB(xjx
+ 
+) =(x) +(x) +d(x;x
+ 
+); (16)
+where d(x;x
+ 
+) is the Euclidian distance between the last
+sampled locationx
+ 
+and the candidate locationx, and < 0
+ensures that goal locations are close to each other, with the
+purpose of reducing the cost of traversing the environment.
+The predicted values(x) given by the GP model are large
+for higher vibration levels, and by minimising f (Equation
+15), we reduce the total vibration experienced by the robot
+while traversing the environment. The term (x) represents
+the variance of the GP model. When maximising Equation
+16, note that the ﬁrst term favours areas of lower vibration
+and the second term favours areas with higher uncertainty.
+In brief, the robot will tend to favour routes with lower
+vibration while visiting areas that reduce the uncertainty in
+its predictions.
+Initially, the uncertainty will be high over the entire
+domain, i.e. the second term of Equation 16 will prevail,
+favouring the exploration of unknown terrain. As the robot
+senses unknown locations the uncertainty reduces. After
+some time, the predicted values of the phenomenon (ﬁrst
+term of Equation 16) become more important to plan sensing
+locations, i.e. favouring exploitation. The smoothness of the
+transition between exploration and exploitation depends on
+the smoothness of the covariance function and the parameter
+.
+IV. EXPERIMENTAL RESULTS
+To evaluate the capabilities and performance of the pro-
+posed methodology, we implemented the described system
+and tested its performance on a wheeled robot, Husky, by
+Clearpath Robotics (Fig. 3). The vehicle is equipped with
+a laser scanner, an inertial measurement unit and odometry,
+and was deployed outdoors in an area with different terrain
+characteristics. We assumed that vibration is independent of
+the orientation of the vehicle during navigation, and speed
+Fig. 3. Clearpath HUSKY robotic platform used in the experiments.
+was kept constant throughout the entire trajectory. These
+assumptions simplify the model signiﬁcantly, as we can
+now learn a mapping function from a spacial location to
+vibration directly, at a small cost in accuracy for the testing
+area – the GP automatically increases the noise level 
+2
+n
+to
+accommodate these simpliﬁcations. Learning more complex
+models that map from location, speed and orientation to
+vibration is possible but require substantially longer ex-
+ploration trajectories as the problem’s input dimensionality
+increases.
+Our proposed method runs in real-time on a standard
+laptop and is implemented in C++. We use ROS to interface
+with the robot and our method, and to provide localisation.
+A. Model
+In the ﬁrst experiment, our focus is to ﬁnd a suitable
+model that can represent the environment properly. To this
+end we need to choose a ﬁltering strategy for preprocessing
+the data and a covariance function that yields good prediction
+results. We compare the predictive performance of our model
+by combining a low pass ﬁlter or a wavelet ﬁlter with the
+covariance functions detailed in section III-B.
+The robot was driven randomly over the environment
+shown in Fig. 5(a), only with the purpose of gathering
+data. The linear acceleration data for the vertical axis of
+the robot was collected at a frequency of 10Hz and each
+measurement was spatially referenced using the localisation
+of the robot. This dataset, consisting of 1000 measurements,
+was partitioned into 70% for training and 30% for testing
+purposes. For each combination of ﬁlters and covariance
+functions we ran the experiments 10 times, comparing their
+performance using two indicators with their respective mean
+and standard deviation: 1) the time required to learn the
+representation in seconds and 2) Root Mean Squared Error
+(RMSE) over the test set in m=s
+2
+. These results are shown
+in Table I and Fig. 4.
+Overall, the low pass ﬁlter has smaller error than the
+wavelet ﬁlter for every covariance function. There is clear
+evidence that sums or products of covariance functions take
+much longer to train than individual covariance functions,
+4084
+TABLE I
+RESULTS FOR PREPROCESSING FILTERS AND COVARIANCE FUNCTION. RMSE OBTAINED FROM 30% OF THE TEST DATA, AND TRAINING TIME FOR
+MAXIMISING LML WITH 700 OBSERVATIONS.
+Low Pass Filter Wavelet Filter
+Index Covariance function RMSE
+ 
+10
+ 2
+m=s
+2
+
+Time (s) RMSE
+ 
+10
+ 2
+m=s
+2
+
+Time (s)
+1 Linear (LI) 6:88360:5393 3:28360:3272 9:78690:7096 3:13820:4614
+2 Exponential (EP) 5:40130:4583 5:12600:7097 7:48700:4479 4:36000:7276
+3 Squared EP (SE) 5:59940:4510 5:11910:5014 7:71270:7563 5:67060:5639
+4 Mat´ ern 3 (M3) 5:27960:5485 5:05070:5947 8:14091:0812 5:32400:6323
+5 Mat´ ern 5 (M5) 5:27410:4984 4:95800:6434 8:09890:7176 5:53550:6924
+6 Sum (SE, M3, M5) 5:28480:3319 70:80610:283 7:51040:7193 67:50014:940
+7 Prod (SE, M3, M5) 5:20420:5799 47:94519:168 8:02470:9952 27:8135:0636
+8 Sum (LI, EP, SE, M3, M5) 5:16850:4569 107:8426:586 8:03980:7777 123:6412:516
+9 Prod (LI, EP, SE, M3, M5) 5:42070:3824 80:98850:401 9:13811:6532 37:97614:008
+0 1 2 3 4 5 6 7 8 9 10
+0.04
+0.06
+0.08
+0.1
+0.12
+Covariance Functions
+RMSE [m/sec
+2
+]
+ 
+ 
+Wavelet Filter
+Low Pass Filter
+(a) RMSE
+0 1 2 3 4 5 6 7 8 9 10
+0
+50
+100
+150
+Covariance Functions
+Time [sec]
+ 
+ 
+Wavelet Filter
+Low Pass Filter
+(b) Time
+Fig. 4. Results for preprocessing ﬁlters and Covariance Functions (CFs).
+RMSE obtained from 30% of the test data, and training time for maximising
+LML with 700 observations. The index of the CFs are shown in Table I.
+which is an expected result given the increase in the dimen-
+sionality of the hyper-parameter search space. The Linear
+covariance function presents the fastest training time, howe-
+ver, the error is too large to be acceptable. Considering the
+rest of the relatively fast covariance functions, Mat´ ern 5 is the
+one that produces the smallest error without compromising
+training time.
+The best set of hyper-parameters for Mat´ ern 5, found by
+maximising Equation 11, are:
+f
+f
+;l
+posx
+;l
+posy
+;
+n
+g =f0:104; 1:016; 0:990; 0:028g (17)
+Fig. 5(b) shows the mean and Fig. 5(c) the variance of
+the learnt GP model using a low pass ﬁlter and Mat´ ern 5
+covariance function with optimal hyper parameters given by
+Equation 17. The mean of the vibration estimate shows a
+clear distinction between two explored terrains, grass and
+asphalt.
+B. Path Planning
+The second experiment consists of autonomously selecting
+sampling locations using the BO algorithm described in
+section III-D. The selected covariance function (Mat´ ern 5)
+in section IV-A and the optimal hyper parameters were
+determined from Equation 17. We use a low pass ﬁlter
+to remove high-frequency noise from the IMU due to its
+simplicity and good results obtained in the previous section.
+The parameters of the acquisition function DUCB,f;g,
+are set tof1:25; 0:0125g. These were manually tuned result-
+ing in the right amount of exploration () while choosing
+consecutive sensing locations near each other (). However,
+a strategy such as [20] could be used for optimising these
+parameters automatically.
+First, we check the explorative behaviour of our method.
+The robot is programmed to autonomously select sampling
+locations using BO over the large environment shown in Fig.
+5(a), with approximately 1000m
+2
+. The trajectory followed by
+the robot (including waypoints) and the estimated vibration
+across the domain are shown in Fig. 5(d). It can be seen
+that the robot covers the whole area, and achieves this in
+about 17 minutes. Over time, the robot will explore areas of
+low vibration more often than areas with high vibration. As
+a result, low vibration areas will be modelled with higher
+accuracy. Note that this is not a problem, as the objective
+is not only to learn the best model of vibration over the
+entire region, but also to minimise excessive vibration during
+navigation. The predicted values for vibration agree with the
+expected results, considering that the locations with obstacles
+are identiﬁed as peaks in Fig. 5(d) and the asphalt area has
+a lower vibration level on average.
+Finally, we compare our sampling method to an entropy
+based planner [21], where sampling locations are selected
+based only on entropy reduction. The comparison is con-
+ducted in two smaller scenarios where the robot is forced to
+stay in a restricted area (Fig. 6(a) and Fig. 6(f)). These scenes
+contain obstacles that produce sharp changes in vibration
+levels. Fig. 6 shows the path followed by the robot, the
+selected sampling locations, and the vibration prediction over
+the domain for each scenario.
+In terms of the quality of the model produced by each
+4085
+(a) Map matching (b) Mean (c) Variance (d) Predicted mean after autonomous
+navigation
+Fig. 5. (a) The scenario used for the ﬁrst experiment bounded by the map generated by the robot. (b) Mean of the predicted vibration. (c) Variance for
+the prediction. (d) Predicted mean after autonomous navigation. Distance is in metres and prediction is in m=s
+2
+.
+(a) Grass Scene (b) Vibration Map and Path BO (c) Vibration Map and Path En-
+tropy
+(d) Position Heatmap BO (e) Position Heatmap En-
+tropy
+(f) Asphalt Scene (g) Asphalt BO (h) Asphalt Entropy (i) Position Heatmap BO (j) Position Heatmap En-
+tropy
+Fig. 6. Comparison between BO and Entropy planning strategies. (a) and (f) show experiment area as a rectangle and obstacles that generate vibration
+are marked with circles. (b),(c),(g) and (h) show a surface for the prediction of vertical acceleration in m=s
+2
+and axis in metres. (d), (e), (i) and (j) show
+a heat map representing the time spent at each location by the robot for the duration of the experiment.
+strategy, both show correctly the area(s) of high vibration.
+However, the most interesting and expected result is that the
+BO algorithm avoids areas of high vibration after identifying
+them during exploration whereas the entropy based planner
+chooses sampling locations only based on uncertainty, dis-
+regarding the amount of expected vibration. Position-based
+heat-maps are generated for the path followed by each robot.
+It can be seen that for BO the robot covers the whole area but
+concentrates in locations with lower vibration (Fig. 6(d) and
+Fig. 6(i)). In contrast, the entropy based sampling approach
+(Fig. 6(e) and Fig. 6(j)) is spread over the whole sampling
+domain homogeneously.
+Table II shows a numeric comparison between the total
+vertical acceleration (vibration) experienced by the robot on
+each scenario and presents a quantitative indicator. The BO
+planner clearly results in less vibration over the trajectory,
+in terms of mean and standard deviation, but achieves an
+equally accurate model of the environment.
+V. CONCLUSIONS
+We propose a simple yet effective active learning method
+to learn the characteristics of the terrain in outdoor environ-
+ments. Particularly, we model terrain roughness using a GP
+trained with acceleration measurements on the vertical axis
+of the robot. To do this efﬁciently and maintain the robot
+as safe as possible at the same time, we use a BO approach
+for choosing sampling locations, automatically trading off
+4086
+TABLE II
+AVERAGE ACCELERATION IN[m=s
+2
+] FOR BO AND ENTROPY PLANNERS.
+Scenario Method Mean Std
+Grass BO 0.096 0.068
+Grass Entropy 0.154 0.148
+Asphalt BO 0.103 0.122
+Asphalt Entropy 0.127 0.256
+between exploration and exploitation. A representation of the
+roughness was learnt by selecting a covariance function and
+hyper parameters that best predict the vibration phenomenon
+across space. Additionally, we evaluated the BO method
+and compared it against an entropy reduction strategy. Here
+the robot learns a model of the terrain roughness, while at
+the same time reducing unnecessary exposure to excessive
+vibration.
+We believe the contributions made in this paper are an
+important step towards long-term autonomy for outdoor
+robotics. The roughness of the terrain can now be quickly
+modelled while reducing the risk of potential damages to
+the robot in an efﬁcient manner. The algorithms were imple-
+mented and executed in a real robot while navigating in an
+unstructured environment, demonstrating empirical evidence
+of their effectiveness for real-time applications.
+As future work, we will consider more input dimensions
+beyond the vibration model, such as the speed, the travel
+direction, and features from a visual perception system.
+These can help building a more complete representation and
+understanding of the environment.
+ACKNOWLEDGMENT
+The authors would like to acknowledge the ﬁnancial
+support of CNPq Foundation, through the Science without
+Borders program, Ministry of Science and Technology of
+Brazil, process 207255/2012-1.
+REFERENCES
+[1] P. Komma, C. Weiss, and A. Zell, “Adaptive Bayesian Filtering for
+Vibration-based Terrain Classiﬁcation,” in IEEE International Confer-
+ence on Robotics and Automation (ICRA), 2009.
+[2] C. Weiss, N. Fechner, M. Stark, and A. Zell, “Comparison of Different
+Approaches to Vibration-based Terrain Classiﬁcation,” in European
+Conference on Mobile Robots (ECMR), 2007.
+[3] C. E. Rasmussen and C. K. I. Williams, Gaussian Processes for
+Machine Learning. The MIT Press, Cambridge, 2006.
+[4] C. Weiss, H. Fr¨ ohlich, and A. Zell, “Vibration-based Terrain Clas-
+siﬁcation Using Support Vector Machines,” in IEEE International
+Conference on Intelligent Robots and Systems (IROS), 2006.
+[5] C. Weiss, H. Tamimi, and A. Zell, “A Combination of Vision and
+Vibration-based Terrain Classiﬁcation,” in IEEE International Confer-
+ence on Intelligent Robots and Systems (IROS), 2008.
+[6] B. Ferris, D. Hahnel, and D. Fox, “Gaussian Processes for Signal
+Strength-Based Location Estimation,” in Robotics Science and Systems
+(RSS), 2006.
+[7] R. Marchant and F. Ramos, “Bayesian Optimisation for Intelligent
+Environmental Monitoring,” in IEEE International Conference on
+Intelligent Robots and Systems (IROS), 2012.
+[8] C. Stachniss, C. Plagemann, A. Lilienthal, and W. Burgard, “Gas Dis-
+tribution Modeling Using Sparse Gaussian Process Mixture Models,”
+in Robotics Science and Systems (RSS), 2008.
+[9] P. A. Plonski, P. Tokekar, and V . Isler, “Energy-Efﬁcient Path Planning
+for Solar-Powered Mobile Robots,” in International Symposium on
+Experimental Robotics (ISER), 2012.
+[10] S. T. O’Callaghan and F. T. Ramos, “Gaussian Process Occupancy
+Maps,” The International Journal of Robotics Research, 2012.
+[11] S. Vasudevan, F. Ramos, E. Nettleton, and H. Durrant-Whyte, “Gaus-
+sian Process Modelling of Large-Scale Terrain,” Journal of Field
+Robotics, 2009.
+[12] A. Krause and C. Guestrin, “Near-optimal Observation Selection
+using Submodular Functions,” in Association for the Advancement
+of Artiﬁcial Intelligence Conference on Artiﬁcial Inteligence (AAAI),
+2007.
+[13] C. Guestrin, A. Krause, and A. P. Singh, “Near-Optimal Sensor
+Placements in Gaussian Processes,” in International Conference on
+Machine Learning (ICML), 2005.
+[14] E. Brochu, V . M. Cora, and N. de Freitas, “A Tutorial on Bayesian
+Optimization of Expensive Cost Functions, with Application to Active
+User Modeling and Hierarchical Reinforcement Learning,” University
+of British Columbia, Tech. Rep. arXiv:1012.2599, 2010.
+[15] C. S. Burrus, R. A. Gopinath, and H. Guo, Introduction to Wavelets
+and Wavelet Transforms: A Primer. Prentice Hall, 1998.
+[16] M. G. Siqueira and P. S. R. Diniz, The Electrical Engineering
+Handbook, Chapter 2, Digital Filters. Elsevier Academic Press, 2005.
+[17] S. Brahim-Belhouari and A. Bermak, “Gaussian Process for Non-
+Stationary Time Series Prediction,” Computational Statistics and Data
+Analysis, 2004.
+[18] B. Sch¨ oolkopf and A. Smola, Learning with Kernels. The MIT Press,
+Cambridge, Massachuset, 2002.
+[19] A. Singh, A. Krause, C. Guestrin, W. Kaiser, and M. Batalin, “Efﬁcient
+Planning of Informative Paths for Multiple Robots,” in International
+Joint Conference on Artiﬁcial Inteligence (IJCAI), 2007.
+[20] J. Snoek, H. Larochelle, and R. P. Adams, “Practical Bayesian Op-
+timization of Machine Learning Algorithms,” in Neural Information
+Processing Systems (NIPS), 2012.
+[21] A. Singh, F. Ramos, H. Whyte, and W. Kaiser, “Modeling and Decision
+Making in Spatio-temporal Processes for Environmental Surveillance,”
+in IEEE International Conference on Robotics and Automation (ICRA),
+2010.
+4087

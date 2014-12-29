@@ -1,0 +1,1408 @@
+SVO: Fast Semi-Direct Monocular Visual Odometry
+Christian Forster, Matia Pizzoli, Davide Scaramuzza
+?
+Abstract—We propose a semi-direct monocular visual odom-
+etry algorithm that is precise, robust, and faster than current
+state-of-the-art methods. The semi-direct approach eliminates
+the need of costly feature extraction and robust matching
+techniques for motion estimation. Our algorithm operates
+directly on pixel intensities, which results in subpixel precision
+at high frame-rates. A probabilistic mapping method that
+explicitly models outlier measurements is used to estimate 3D
+points, which results in fewer outliers and more reliable points.
+Precise and high frame-rate motion estimation brings increased
+robustness in scenes of little, repetitive, and high-frequency
+texture. The algorithm is applied to micro-aerial-vehicle state-
+estimation in GPS-denied environments and runs at 55 frames
+per second on the onboard embedded computer and at more
+than 300 frames per second on a consumer laptop. We call our
+approach SVO (Semi-direct Visual Odometry) and release our
+implementation as open-source software.
+I. INTRODUCTION
+Micro Aerial Vehicles (MAVs) will soon play a major role
+in disaster management, industrial inspection and environ-
+ment conservation. For such operations, navigating based
+on GPS information only is not sufﬁcient. Precise fully
+autonomous operation requires MAVs to rely on alterna-
+tive localization systems. For minimal weight and power-
+consumption it was therefore proposed [1]–[5] to use only
+a single downward-looking camera in combination with an
+Inertial Measurement Unit. This setup allowed fully au-
+tonomous way-point following in outdoor areas [1]–[3] and
+collaboration between MAVs and ground robots [4], [5].
+To our knowledge, all monocular Visual Odometry
+(VO) systems for MAVs [1], [2], [6], [7] are feature-
+based. In RGB-D and stereo-based SLAM systems how-
+ever, direct methods [8]–[11]—based on photometric error
+minimization—are becoming increasingly popular.
+In this work, we propose a semi-direct VO that combines
+the success-factors of feature-based methods (tracking many
+features, parallel tracking and mapping, keyframe selection)
+with the accurracy and speed of direct methods. High frame-
+rate VO for MAVs promises increased robustness and faster
+ﬂight maneuvres.
+An open-source implementation and videos of this work
+are available at: http://rpg.ifi.uzh.ch/software
+A. Taxonomy of Visual Motion Estimation Methods
+Methods that simultaneously recover camera pose and
+scene structure from video can be divided into two classes:
+?
+The authors are with the Robotics and Perception Group, University
+of Zurich, Switzerland—http://rpg.ifi.uzh.ch. This research was
+supportedbytheSwissNationalScienceFoundationthroughprojectnumber
+200021-143607 (“Swarm of Flying Cameras”), the National Centre of
+Competence in Research Robotics, and the CTI project number 14652.1.
+a) Feature-Based Methods: The standard approach is
+to extract a sparse set of salient image features (e.g. points,
+lines) in each image; match them in successive frames using
+invariant feature descriptors; robustly recover both camera
+motion and structure using epipolar geometry; ﬁnally, reﬁne
+the pose and structure through reprojection error minimiza-
+tion. The majority of VO algorithms [12] follows this proce-
+dure, independent of the applied optimization framework. A
+reason for the success of these methods is the availability of
+robust feature detectors and descriptors that allow matching
+between images even at large inter-frame movement. The
+disadvantage of feature-based approaches is the reliance on
+detection and matching thresholds, the neccessity for robust
+estimation techniques to deal with wrong correspondences,
+and the fact that most feature detectors are optimized for
+speed rather than precision, such that drift in the motion
+estimate must be compensated by averaging over many
+feature-measurements.
+b) Direct Methods: Direct methods [13] estimate struc-
+ture and motion directly from intensity values in the image.
+The local intensity gradient magnitude and direction is used
+in the optimisation compared to feature-based methods that
+consider only the distance to some feature-location. Direct
+methods that exploit all the information in the image, even
+from areas where gradients are small, have been shown to
+outperform feature-based methods in terms of robustness in
+scenes with little texture [14] or in the case of camera-
+defocus and motion blur [15]. The computation of the
+photometric error is more intensive than the reprojection
+error, as it involves warping and integrating large image
+regions. However, since direct methods operate directly on
+the intensitiy values of the image, the time for feature
+detection and invariant descriptor computation can be saved.
+B. Related Work
+MostmonocularVOalgorithmsforMAVs[1],[2],[7]rely
+on PTAM [16]. PTAM is a feature-based SLAM algorithm
+that achieves robustness through tracking and mapping many
+(hundreds)offeatures.Simultaneously,itrunsinreal-timeby
+parallelizingthemotionestimationandmappingtasksandby
+relying on efﬁcient keyframe-based Bundle Adjustment (BA)
+[17]. However, PTAM was designed for augmented reality
+applications in small desktop scenes and multiple modiﬁca-
+tions(e.g.,limitingthenumberofkeyframes)werenecessary
+to allow operation in large-scale outdoor environments [2].
+Early direct monocular SLAM methods tracked and
+mapped few—sometimes manually selected—planar patches
+[18]–[21]. While the ﬁrst approaches [18], [19] used ﬁltering
+algorithms to estimate structure and motion, later methods
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 15
+[20]–[22]usednonlinearleastsquaresoptimization.Allthese
+methods estimate the surface normals of the patches, which
+allows tracking a patch over a wide range of viewpoints,
+thus, greatly reducing drift in the estimation. The authors
+of [19]–[21] reported real-time performance, however, only
+withfewselectedplanarregionsandonsmalldatasets.AVO
+algorithm for omnidirectional cameras on cars was proposed
+in [22]. In [8], the local planarity assumption was relaxed
+and direct tracking with respect to arbitrary 3D structures
+computed from stereo cameras was proposed. In [9]–[11],
+the same approach was also applied to RGB-D sensors.
+With DTAM [15], a novel direct method was introduced
+that computes a dense depthmap for each keyframe through
+minimisation of a global, spatially-regularised energy func-
+tional. The camera pose is found through direct whole image
+alignment using the depth-map. This approach is compu-
+tationally very intensive and only possible through heavy
+GPU parallelization. To reduce the computational demand,
+themethoddescribedin[23],whichwaspublishedduringthe
+review process of this work, uses only pixels characterized
+by strong gradient.
+C. Contributions and Outline
+The proposed Semi-Direct Visual Odometry (SVO) al-
+gorithm uses feature-correspondence; however, feature-
+correspondence is an implicit result of direct motion estima-
+tion rather than of explicit feature extraction and matching.
+Thus, feature extraction is only required when a keyframe
+is selected to initialize new 3D points (see Figure 1). The
+advantage is increased speed due to the lack of feature-
+extraction at every frame and increased accuracy through
+subpixel feature correspondence. In contrast to previous
+direct methods, we use many (hundreds) of small patches
+rather than few (tens) large planar patches [18]–[21]. Using
+many small patches increases robustness and allows neglect-
+ing the patch normals. The proposed sparse model-based
+imagealignmentalgorithmformotionestimationisrelatedto
+model-baseddenseimagealignment[8]–[10],[24].However,
+we demonstrate that sparse information of depth is sufﬁcient
+to get a rough estimate of the motion and to ﬁnd feature-
+correspondences. As soon as feature correspondences and
+an initial estimate of the camera pose are established, the
+algorithm continues using only point-features; hence, the
+name “semi-direct”. This switch allows us to rely on fast and
+established frameworks for bundle adjustment (e.g., [25]).
+A Bayesian ﬁlter that explicitly models outlier measure-
+ments is used to estimate the depth at feature locations. A
+3D point is only inserted in the map when the corresponding
+depth-ﬁlter has converged, which requires multiple measure-
+ments. The result is a map with few outliers and points that
+can be tracked reliably.
+The contributions of this paper are: (1) a novel semi-
+direct VO pipeline that is faster and more accurate than
+the current state-of-the-art for MAVs, (2) the integration
+of a probabilistic mapping method that is robust to outlier
+measurements.
+Sparse Model-based
+Image Alignment
+Feature Alignment
+Pose & Structure 
+Reﬁnement
+Motion Estimation Thread
+New Image
+Last Frame
+Map
+Frame
+Queue
+Feature
+Extraction
+Initialize
+Depth-Filters
+Mapping Thread
+Is 
+Keyframe?
+yes
+Update
+Depth-Filters
+yes:
+insert
+new Point
+no
+Converged?
+Fig. 1: Tracking and mapping pipeline
+SectionIIprovidesanoverviewofthepipelineandSection
+III, thereafter, introduces some required notation. Section IV
+and V explain the proposed motion-estimation and mapping
+algorithms. Section VII provides experimental results and
+comparisons.
+II. SYSTEM OVERVIEW
+Figure 1 provides an overview of SVO. The algorithm
+uses two parallel threads (as in [16]), one for estimating
+the camera motion, and a second one for mapping as the
+environment is being explored. This separation allows fast
+and constant-time tracking in one thread, while the second
+thread extends the map, decoupled from hard real-time
+constraints.
+The motion estimation thread implements the proposed
+semi-direct approach to relative-pose estimation. The ﬁrst
+step is pose initialisation through sparse model-based image
+alignment: the camera pose relative to the previous frame
+is found through minimizing the photometric error between
+pixels corresponding to the projected location of the same
+3D points (see Figure 2). The 2D coordinates corresponding
+to the reprojected points are reﬁned in the next step through
+alignment of the corresponding feature-patches (see Figure
+3). Motion estimation concludes by reﬁning the pose and
+the structure through minimizing the reprojection error in-
+troduced in the prevous feature-alignment step.
+In the mapping thread, a probabilistic depth-ﬁlter is ini-
+tialized for each 2D feature for which the corresponding
+3D point is to be estimated. New depth-ﬁlters are initialised
+whenever a new keyframe is selected in regions of the image
+where few 3D-to-2D correspondences are found. The ﬁlters
+are initialised with a large uncertainty in depth. At every
+subsequentframethedepthestimate isupdatedinaBayesian
+fashion (see Figure 5). When a depth ﬁlter’s uncertainty
+becomes small enough, a new 3D point is inserted in the
+map and is immediately used for motion estimation.
+16
+III. NOTATION
+Before the algorithm is detailed, we brieﬂy deﬁne the
+notation that is used throughout the paper.
+The intensity image collected at timestep k is denoted with
+I
+k
+:Ω?R
+2
+7?R,whereΩistheimagedomain.Any3Dpoint
+p=(x,y,z)
+?
+?S on the visible scene surfaceS?R
+3
+maps
+to the image coordinates u=(u,v)
+?
+?Ω through the camera
+projection model π :R
+3
+7?R
+2
+:
+u=π(
+k
+p), (1)
+where the prescript k denotes that the point coordinates are
+expressed in the camera frame of reference k. The projection
+π is determined by the intrinsic camera parameters which
+are known from calibration. The 3D point corresponding to
+an image coordinate u can be recovered, given the inverse
+projection function π
+?1
+and the depth d
+u
+?R:
+k
+p=π
+?1
+(u,d
+u
+), (2)
+whereR?Ω is the domain for which the depth is known.
+The camera position and orientation at timestep k is ex-
+pressed with the rigid-body transformation T
+k,w
+?SE(3). It
+allows us to map a 3D point from the world coordinate frame
+tothecameraframeofreference:
+k
+p=T
+k,w
+·
+w
+p.Therelative
+transformation between two consecutive frames can be com-
+puted with T
+k,k?1
+=T
+k,w
+·T
+?1
+k?1,w
+. During the optimization,
+we need a minimal representation of the transformation
+and, therefore, use the Lie algebra se(3) corresponding to
+the tangent space of SE(3) at the identity. We denote the
+algebra elements—also named twist coordinates—with ? =
+(?,?)
+T
+?R
+6
+, where ? is called the angular velocity and ?
+the linear velocity. The twist coordinates ? are mapped to
+SE(3) by the exponential map [26]:
+T(?)=exp(
+ˆ
+?). (3)
+IV. MOTION ESTIMATION
+SVO computes an initial guess of the relative camera
+motion and the feature correspondences using direct methods
+and concludes with a feature-based nonlinear reprojection-
+error reﬁnement. Each step is detailed in the following
+sections and illustrated in Figures 2 to 4.
+A. Sparse Model-based Image Alignment
+The maximum likelihood estimate of the rigid body trans-
+formation T
+k,k?1
+between two consecutive camera poses
+minimizes the negative log-likelihood of the intensity resid-
+uals:
+T
+k,k?1
+=argmin
+T
+ZZ
+¯
+R
+?
+h
+?I
+ 
+T,u
+
+i
+du. (4)
+The intensity residual ?I is deﬁned by the photometric
+difference between pixels observing the same 3D point. It
+can be computed by back-projecting a 2D point u from the
+previous image I
+k?1
+and subsequently projecting it into the
+current camera view:
+?I
+ 
+T,u
+
+=I
+k
+
+π
+ 
+T·π
+?1
+(u,d
+u
+)
+
+
+?I
+k?1
+(u) ? u?
+¯
+R, (5)
+p
+3
+T
+k,k?1
+u
+?
+3
+I
+k?1
+I
+k
+u
+3
+p
+2
+p
+1
+u
+1
+u
+2
+u
+?
+1
+u
+?
+2
+Fig. 2: Changing the relative pose T
+k,k?1
+between the current and the
+previous frame implicitly moves the position of the reprojected points in the
+new image u
+?
+i
+. Sparse image alignment seeks to ﬁnd T
+k,k?1
+that minimizes
+thephotometricdifferencebetweenimagepatchescorrespondingtothesame
+3D point (blue squares). Note, in all ﬁgures, the parameters to optimize are
+drawn in red and the optimization cost is highlighted in blue.
+p
+3
+I
+r
+2
+I
+k
+u
+4
+p
+2
+p
+1
+u
+3 u
+?
+1
+u
+?
+3
+u
+?
+2
+I
+r
+1
+p
+3
+u
+1
+u
+2
+u
+?
+4
+Fig. 3: Due to inaccuracies in the 3D point and camera pose estimation,
+the photometric error between corresponding patches (blue squares) in
+the current frame and previous keyframes r
+i
+can further be minimised by
+optimising the 2D position of each patch individually.
+I
+r
+2
+I
+k
+?u
+?
+1
+?u
+?
+3
+?u
+?
+2
+I
+r
+1 ?u
+?
+4
+w
+T
+w,k
+p
+3 p
+2
+p
+1
+p
+3
+Fig. 4: In the last motion estimation step, the camera pose and the structure
+(3D points) are optimized to minimize the reprojection error that has been
+established during the previous feature-alignment step.
+where
+¯
+Ristheimageregionforwhichthedepth d
+u
+isknown
+at time k?1 and for which the back-projected points are
+visible in the current image domain:
+¯
+R=
+
+u
+
+
+u?R
+k?1
+? π
+ 
+T·π
+?1
+(u,d
+u
+)
+
+?Ω
+k
+	
+. (6)
+For the sake of simplicity, we assume in the following
+that the intensity residuals are normally distributed with
+unit variance. The negative log likelihood minimizer then
+corresponds to the least squares problem: ?[.]ˆ =
+1
+2
+k .k
+2
+. In
+practice, the distribution has heavier tails due to occlusions
+and thus, a robust cost function must be applied [10].
+In contrast to previous works, where the depth is known
+for large regions in the image [8]–[10], [24], we only know
+the depth d
+u
+i
+at sparse feature locations u
+i
+. We denote small
+patches of 4?4 pixels around the feature point with the
+vector I(u
+i
+). We seek to ﬁnd the camera pose that minimizes
+17
+the photometric error of all patches (see Figure 2):
+T
+k,k?1
+=arg min
+T
+k,k?1
+1
+2
+∑
+i?
+¯
+R
+k?I(T
+k,k?1
+,u
+i
+)k
+2
+. (7)
+Since Equation (7) is nonlinear in T
+k,k?1
+, we solve it in an
+iterative Gauss-Newton procedure. Given an estimate of the
+relative transformation
+ˆ
+T
+k,k?1
+, an incremental update T(?)
+to the estimate can be parametrised with a twist ?? se(3).
+We use the inverse compositional formulation [27] of the
+intensity residual, which computes the update step T(?) for
+the reference image at time k?1:
+?I(?,u
+i
+)=I
+k
+
+π
+ 
+ˆ
+T
+k,k?1
+·p
+i
+
+
+?I
+k?1
+
+π
+ 
+T(?)·p
+i
+
+
+, (8)
+with p
+i
+=π
+?1
+(u
+i
+,d
+u
+i
+). The inverse of the update step is then
+applied to the current estimate using Equation (3):
+ˆ
+T
+k,k?1
+??
+ˆ
+T
+k,k?1
+·T(?)
+?1
+. (9)
+Note that we do not warp the patches for computing speed-
+reasons. This assumption is valid in case of small frame-to-
+frame motions and for small patch-sizes.
+To ﬁnd the optimal update step T(?), we compute the
+derivative of (7) and set it to zero:
+∑
+i?
+¯
+R
+??I(?,u
+i
+)
+?
+?I(?,u
+i
+)=0. (10)
+To solve this system, we linearize around the current state:
+?I(?,u
+i
+)≈?I(0,u
+i
+)+??I(0,u
+i
+)·? (11)
+The Jacobian J
+i
+:=??I(0,u
+i
+) has the dimension 16?6
+because of the 4?4 patch-size and is computed with the
+chain-rule:
+∂?I(?,u
+i
+)
+∂?
+=
+∂I
+k?1
+(a)
+∂a
+
+
+
+a=u
+i
+·
+∂π(b)
+∂b
+
+
+
+b=p
+i
+·
+∂T(?)
+∂?
+
+
+
+?=0
+·p
+i
+By inserting (11) into (10) and by stacking the Jacobians in
+a matrix J, we obtain the normal equations:
+J
+T
+J ? =?J
+T
+?I(0), (12)
+which can be solved for the update twist ?. Note that by
+using the inverse compositional approach, the Jacobian can
+be precomputed as it remains constant over all iterations (the
+reference patch I
+k?1
+(u
+i
+) and the point p
+i
+do not change),
+which results in a signiﬁcant speedup [27].
+B. Relaxation Through Feature Alignment
+The last step aligned the camera with respect to the
+previous frame. Through back-projection, the found relative
+pose T
+k,k?1
+implicitly deﬁnes an initial guess for the feature
+positions of all visible 3D points in the new image. Due to
+inaccuraciesinthe3Dpoints’positionsand,thus, thecamera
+pose, this initial guess can be improved. To reduce the drift,
+the camera pose should be aligned with respect to the map,
+rather than to the previous frame.
+All 3D points of the map that are visible from the
+estimated camera pose are projected into the image, resulting
+in an estimate of the corresponding 2D feature positions u
+?
+i
+(see Figure 3). For each reprojected point, the keyframe r
+that observes the point with the closest observation angle
+is identiﬁed. The feature alignment step then optimizes all
+2D feature-positions u
+i
+in the new image individually by
+minimizing the photometric error of the patch in the current
+image with respect to the reference patch in the keyframe r:
+u
+?
+i
+=argmin
+u
+?
+i
+1
+2
+kI
+k
+(u
+?
+i
+)?A
+i
+·I
+r
+(u
+i
+)k
+2
+, ? i. (13)
+This alignment is solved using the inverse compositional
+Lucas-Kanade algorithm [27]. Contrary to the previous step,
+we apply an afﬁne warping A
+i
+to the reference patch, since
+a larger patch size is used (8?8 pixels) and the closest
+keyframe is typically farther away than the previous image.
+This step can be understood as a relaxation step that vio-
+lates the epipolar constraints to achieve a higher correlation
+between the feature-patches.
+C. Pose and Structure Reﬁnement
+In the previous step, we have established feature corre-
+spondence with subpixel accuracy at the cost of violating
+the epipolar constraints. In particular, we have generated a
+reprojection residual||?u
+i
+||=||u
+i
+?π(T
+k,w w
+p
+i
+)||6=0, which
+on average is around 0.3 pixels (see Figure 11). In this ﬁnal
+step, we again optimize the camera pose T
+k,w
+to minimize
+the reprojection residuals (see Figure 4):
+T
+k,w
+=argmin
+T
+k,w
+1
+2
+∑
+i
+ku
+i
+?π(T
+k,w w
+p
+i
+)k
+2
+. (14)
+This is the well known problem of motion-only BA [17] and
+can efﬁciently be solved using an iterative non-linear least
+squares minimization algorithm such as Gauss Newton.
+Subsequently, we optimize the position of the observed
+3Dpointsthroughreprojectionerrorminimization(structure-
+only BA). Finally, it is possible to apply local BA, in which
+both the pose of all close keyframes as well as the observed
+3D points are jointly optimized. The BA step is ommitted in
+the fast parameter settings of the algorithm (Section VII).
+D. Discussion
+The ﬁrst (Section IV-A) and the last (Section IV-C)
+optimization of the algorithm seem to be redundant as both
+optimize the 6 DoF pose of the camera. Indeed, one could
+directly start with the second step and establish feature-
+correspondence through Lucas-Kanade tracking [27] of all
+feature-patches, followed by nonlinear pose reﬁnement (Sec-
+tion IV-C). While this would work, the processing time
+would be higher. Tracking all features over large distances
+(e.g., 30 pixels) requires a larger patch and a pyramidal im-
+plementation. Furthermore, some features might be tracked
+inaccurately, which would require outlier detection. In SVO
+however, feature alignment is efﬁciently initialized by only
+optimizing six parameters—the camera pose—in the sparse
+image alignment step. The sparse image alignment step
+satisﬁes implicitly the epipolar constraint and ensures that
+there are no outliers.
+One may also argue that the ﬁrst step (sparse image align-
+ment) would be sufﬁcient to estimate the camera motion. In
+18
+T
+r,k
+I
+r
+I
+k
+ˆ
+d
+i
+u
+i
+u
+?
+i
+˜
+d
+k
+i
+d
+min
+i
+d
+max
+i
+Fig. 5: Probabilistic depth estimate
+ˆ
+d
+i
+for feature i in the reference frame r.
+The point at the true depth projects to similar image regions in both images
+(blue squares). Thus, the depth estimate is updated with the triangulated
+depth
+˜
+d
+k
+i
+computedfromthepointu
+?
+i
+ofhighestcorrelationwiththereference
+patch. The point of highest correlation lies always on the epipolar line in
+the new image.
+fact, this is what recent algorithms developed for RGB-D
+cameras do [10], however, by aligning the full depth-map
+rather than sparse patches. We found empirically that using
+the ﬁrst step only results in signiﬁcantly more drift compared
+to using all three steps together. The improved accuracy is
+due to the alignment of the new image with respect to the
+keyframes and the map, whereas sparse image alignment
+alignsthenewframeonlywithrespecttothepreviousframe.
+V. MAPPING
+Given an image and its pose {I
+k
+,T
+k,w
+}, the mapping
+thread estimates the depth of 2D features for which the
+corresponding 3D point is not yet known. The depth estimate
+of a feature is modeled with a probability distribution.
+Every subsequent observation{I
+k
+,T
+k,w
+} is used to update
+the distribution in a Bayesian framework (see Figure 5) as
+in [28]. When the variance of the distribution becomes small
+enough, the depth-estimate is converted to a 3D point using
+(2), the point is inserted in the map and immediately used
+for motion estimation (see Figure 1). In the following we
+report the basic results and our modiﬁcations to the original
+implementation in [28].
+Every depth-ﬁlter is associated to a reference keyframe r.
+The ﬁlter is initialized with a high uncertainty in depth
+and the mean is set to the average scene depth in the
+referenceframe.For everysubsequentobservation{I
+k
+,T
+k,w
+},
+wesearchforapatchontheepipolarlineinthenewimage I
+k
+that has the highest correlation with the reference patch. The
+epipolarlinecanbecomputedfromtherelativeposebetween
+the frames T
+r,k
+and the optical ray that passes through u
+i
+.
+The point of highest correlation u
+?
+i
+corresponds to the depth
+˜
+d
+k
+i
+that can be found by triangulation (see Figure 5).
+The measurement
+˜
+d
+k
+i
+is modeled with a Gaussian + Uni-
+form mixture model distribution [28]: a good measurement
+is normally distributed around the true depth d
+i
+while an
+outlier measurement arises from a uniform distribution in
+the interval [d
+min
+i
+,d
+max
+i
+]:
+p(
+˜
+d
+k
+i
+|d
+i
+,?
+i
+)=?
+i
+N
+ 
+˜
+d
+k
+i
+
+
+d
+i
+,?
+2
+i
+
++(1??
+i
+)U
+ 
+˜
+d
+k
+i
+
+
+d
+min
+i
+,d
+max
+i
+
+,
+where ?
+i
+is the inlier probability and ?
+2
+i
+the variance of a
+good measurement that can be computed geometrically by
+assuming a photometric disparity variance of one pixel in
+the image plane [29].
+(a) (b) (c)
+Fig. 6: Very little motion is required by the MAV (seen from the side at
+the top) for the uncertainty of the depth-ﬁlters (shown as mangenta lines)
+to converge.
+The recursive Bayesian update step for this model is
+described in detail in [28]. In contrast to [28], we use inverse
+depth coordinates to deal with large scene depths.
+The proposed depth estimation is very efﬁcient when only
+a small range around the current depth estimate on the
+epipolar line is searched; in our case the range corresponds
+to twice the standard deviation of the current depth estimate.
+Figure 6 demonstrates how little motion is required to signif-
+icantly reduce the uncertainty in depth. The main advantage
+of the proposed methods over the standard approach of
+triangulating points from two views is that we observe far
+fewer outliers as every ﬁlter undergoes many measurements
+until convergence. Furthermore, erroneous measurements are
+explicitly modeled, which allows the depth to converge even
+in highly-similar environments. In [29] we demonstrate how
+the same approach can be used for dense mapping.
+VI. IMPLEMENTATION DETAILS
+The algorithm is bootstrapped to obtain the pose of the
+ﬁrst two keyframes and the initial map. Like in [16], we
+assume a locally planar scene and estimate a homography.
+The inital map is triangulated from the ﬁrst two views.
+In order to cope with large motions, we apply the sparse
+image alignment algorithm in a coarse-to-ﬁne scheme. The
+image is halfsampled to create an image pyramid of ﬁve
+levels. Theintensity residual is thenoptimized atthe coarsest
+level until convergence. Subsequently, the optimization is
+initialized at the next ﬁner level. To save processing time, we
+stop after convergence on the third level, at which stage the
+estimate is accurate enough to initialize feature alignment.
+The algorithm keeps for efﬁciency reasons a ﬁxed number
+of keyframes in the map, which are used as reference for
+feature-alignmentandforstructurereﬁnement.Akeyframeis
+selectediftheEuclideandistanceofthenewframerelativeto
+allkeyframesexceeds12%oftheaveragescenedepth.When
+a new keyframe is inserted in the map, the keyframe farthest
+apart from the current position of the camera is removed.
+Inthemappingthread,wedividetheimageincellsofﬁxed
+size (e.g., 30?30 pixels). A new depth-ﬁlter is initialized
+at the FAST corner [30] with highest Shi-Tomasi score in
+the cell unless there is already a 2D-to-3D correspondence
+present. This results in evenly distributed features in the
+image. The same grid is also used for reprojecting the map
+before feature alignment. Note that we extract FAST corners
+at every level of the image pyramid to ﬁnd the best corners
+independent of the scale.
+19
+?3 ?2 ?1 0 1 2 3 4
+x [m]
+?1.5
+?1.0
+?0.5
+0.0
+0.5
+1.0
+1.5
+2.0
+2.5
+y [m]
+Groundtruth Fast PTAM
+Fig. 7: Comparison against the ground-truth of SVO with the fast parameter
+setting (see Table I) and of PTAM. Zooming-in reveals that the proposed
+algorithm generates a smoother trajectory than PTAM.
+VII. EXPERIMENTAL RESULTS
+Experiments were performed on datasets recorded from
+a downward-looking camera
+1
+attached to a MAV and se-
+quences from a handheld camera. The video was processed
+on both a laptop
+2
+and on an embedded platform
+3
+that is
+mounted on the MAV (see Figure 17). Note that at maximum
+2 CPU cores are used for the algorithm. The experiments on
+the consumer laptop were run with two different parameters’
+settings, one optimised for speedand one for accuracy (Table
+I). On the embedded platform only the fast parameters’
+setting is used.
+Fast Accurate
+Max number of features per image 120 200
+Max number of keyframes 10 50
+Local Bundle Adjustment no yes
+TABLE I: Two different parameter settings of SVO.
+We compare the performance of SVO with the modiﬁed
+PTAM algorithm of [2]. The reason we do not compare with
+the original version of PTAM [16] is because it does not
+handle large environments and is not robust enough in scenes
+of high-frequency texture [2]. The version of [2] solves
+these problems and constitutes to our knowledge the best
+performing monocular SLAM algorithm for MAVs.
+A. Accuracy
+We evaluate the accuracy on a dataset that has also been
+usedin[2]andisillustratedinFigure7.Theground-truthfor
+the trajectory originates from a motion capture system. The
+trajectory is 84 meters long and the MAV ﬂew on average
+1.2 meters above the ﬂat ground.
+Figures 8 and 9 illustrate the position and attitude error
+over time. In order to generate the plots, we aligned the
+ﬁrst 10 frames with the ground-truth using [31]. The results
+of PTAM are in a similar range as reported in [2]. Since
+the plots are highly dependent on the accuracy of alignment
+of the ﬁrst 10 frames, we also report the drift in meters
+1
+Matrix Vision BlueFox, global shutter, 752?480 pixel resolution.
+2
+Intel i7, 8 cores, 2.8 GHz
+3
+Odroid-U2, ARM Cortex A-9, 4 cores, 1.6 GHz
+0 50 100 150 200 250
+?0.30
+?0.25
+?0.20
+?0.15
+?0.10
+?0.05
+0.00
+0.05
+x-error [m]
+Accurate Fast PTAM
+0 50 100 150 200 250
+?0.15
+?0.10
+?0.05
+0.00
+0.05
+y-error [m]
+0 50 100 150 200 250
+time [s]
+?0.10
+?0.05
+0.00
+0.05
+0.10
+0.15
+0.20
+0.25
+0.30
+z-error [m]
+Fig. 8: Position drift of SVO with fast and accurate parameter setting and
+comparison against PTAM.
+0 50 100 150 200 250
+?0.04
+?0.02
+0.00
+0.02
+0.04
+0.06
+0.08
+0.10
+roll-error [rad]
+Accurate Fast PTAM
+0 50 100 150 200 250
+?0.10
+?0.08
+?0.06
+?0.04
+?0.02
+0.00
+0.02
+0.04
+0.06
+pitch-error [rad]
+0 50 100 150 200 250
+time [s]
+?0.030
+?0.025
+?0.020
+?0.015
+?0.010
+?0.005
+0.000
+0.005
+0.010
+yaw-error [rad]
+Fig. 9: Attitutde drifts of SVO with fast and accurate parameter setting and
+comparison against PTAM.
+0 50 100 150 200 250
+time [s]
+?8
+?6
+?4
+?2
+0
+2
+4
+6
+8
+scale change [%]
+Accurate Fast PTAM
+Fig. 10: Scale-drift over time of the trajectory shown in Figure 7
+0 50 100 150 200 250
+time [s]
+0.0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+reprojection error [px]
+Initial error Final error
+Fig. 11: Average reprojection error over time of the trajectory shown in
+Figure 7. The initial error is after sparse image alignment (Section IV-A)
+and the ﬁnal error after pose reﬁnement (Section IV-C).
+0 50 100 150 200 250
+time [s]
+0
+50
+100
+150
+200
+no. features
+Accurate Fast
+Fig. 12: Number of tracked features over time for two different parameter
+settings.Fortheaccurateparametersetting,thenumberoffeaturesislimited
+to 200 and for the fast setting to 120.
+20
+Pos-RMSE Pos-Median Rot-RMSE Rot-Median
+[m/s] [m/s] [deg/s] [deg/s]
+fast 0.0059 0.0047 0.4295 0.3686
+accurate 0.0051 0.0038 0.4519 0.3858
+PTAM 0.0164 0.0142 0.4585 0.3808
+TABLE II: Relative pose and rotation error of the trajectory in Figure 7
+per second in Table II as proposed and motivated in [32].
+Overall,bothversionsofSVOaremoreaccuratethanPTAM.
+We suspect the main reason for this result to originate from
+the fact that the PTAM version of [2] does not extract
+features on the pyramid level of highest resolution and
+subpixel reﬁnement is not performed for all features in
+PTAM. Neglecting the highest resolution image inevitably
+results in less accuracy which is clearly visible in the close-
+up of Figure 7. In [2], the use of lower resolution images is
+motivated by the fact that high-frequency self-similar texture
+in the image results in too many outlier 3D points. SVO
+efﬁciently copes with this problem by using the depth-ﬁlters
+which results in very few outliers.
+Since a camera is only an angle-sensor, it is impossible to
+obtain the scale of the map through a Structure from Motion
+pipeline. Hence, in the above evaluation we also align the
+scale of the ﬁrst 10 measurements with the ground-truth. The
+proposed pipeline propagates the scale, however with some
+drift that is shown in Figure 10. The scale drift is computed
+by comparing the euclidean norm of the relative translation
+against the ground-truth. The unknown scale and the scale
+drift motivate the need for a camera-IMU state estimation
+system for MAV control, as described in [33].
+Figure 11 illustrates the average reprojection error. The
+sparse image alignment step brings the frame very close
+to the ﬁnal pose, as the reﬁnement step reduces the error
+only marginally. The reprojection error is “generated” in
+the feature-alignment step; hence, this plot also shows that
+patches move only a fraction of a pixel during this step.
+The difference in accuracy between the fast and accurate
+parameter setting is not signiﬁcant. Optimizing the pose
+and the observed 3D points separately at every iteration
+(fast parameter setting) is accurate enough for MAV motion
+estimation.
+B. Runtime Evaluation
+Figures 13 and 14 show a break-up of the time required
+to compute the camera motion on the speciﬁed laptop and
+embedded platform respectively with the fast-parameter set-
+ting. The laptop is capable to process the frames faster than
+300 frames per second (fps) while the embedded platform
+runs at 55 fps. The corresponding time for PTAM is 91 fps
+and27fpsrespectively.ThemaindifferenceisthatSVOdoes
+notrequirefeatureextractionduringmotionestimationwhich
+constitutes the bulk of time in PTAM (7 ms on the laptop, 16
+ms on the embedded computer). Additionally, PTAM tracks
+between 160 and 220 features while in the fast parameter
+setting, this value is limited to 120. The reason why we can
+reliably track the camera with less features is the use of
+depth-ﬁlters, which assures that the features being tracked
+0.0 0.5 1.0 1.5 2.0 2.5 3.0 3.5 4.0 4.5
+Processing time [ms]
+Total Motion Estimation: 3.04ms
+Reﬁnement: 0.16ms
+Feature Alignment: 1.73ms
+Sparse Image Alignment: 0.81ms
+Pyramid Creation: 0.06ms
+Fig. 13: Timing results on a laptop computer.
+0 5 10 15 20 25
+Processing time [ms]
+Total Motion Estimation: 18.17ms
+Reﬁnement: 0.85ms
+Feature Alignment: 9.37ms
+Sparse Image Alignment: 5.53ms
+Pyramid Creation: 0.85ms
+Fig. 14: Timing results on the embedded platform.
+Fig. 15: Successful tracking in scenes of high-frequency texture.
+(a) SVO
+outliers
+(b) PTAM
+Fig. 16: Sideview of a piecewise-planar map created by SVO and PTAM.
+The proposed method has fewer outliers due to the depth-ﬁlter.
+are reliable. Motion estimation for the accurate parameter
+setting takes on average 6ms on the laptop. The increase
+in time is mainly due to local BA, which is run at every
+keyframe and takes 14ms. The time required by the mapping
+thread to update all depth-ﬁlters with the new frame is highly
+dependent on the number of ﬁlters. The number of ﬁlters
+is high after a keyframe is selected and reduces quickly as
+ﬁlters converge. On average, the mapping thread is faster
+than the motion estimation thread, thus it is not a limiting
+factor.
+C. Robustness
+The speed and accuracy of SVO is partially due to the
+depth-ﬁlter, which produces only a minimal number of
+outlier 3D points. Also the robustness is due to the depth-
+21
+Processor
+Camera
+Fig. 17: “Nano+” by KMel Robotics, customized with embedded processor
+and downward-looking camera. SVO runs at 55 frames per second on the
+platform and is used for stabilization and control.
+ﬁlter: precise, high frame-rate tracking allows the ﬁlter to
+converge even in scenes of repetitive and high-frequency
+texture (e.g., asphalt, grass), as it is best demonstrated in
+the video accompanying this paper. Screenshots of the video
+are shown in Figure 15. Figure 16 shows a comparison of
+the map generated with PTAM and SVO in the same scene.
+While PTAM generates outlier 3D points, by contrast SVO
+has almost no outliers thanks to the use of the depth-ﬁlter.
+VIII. CONCLUSION
+In this paper, we proposed the semi-direct VO pipeline
+“SVO” that is precise and faster than the current state-of-the-
+art.Thegaininspeedisduetothefactthatfeature-extraction
+and matching is not required for motion estimation. Instead,
+a direct method is used, which is based directly on the image
+intensities. The algorithm is particularly useful for state-
+estimation onboard MAVs as it runs at more than 50 frames
+per second on current embedded computers. High frame-
+rate motion estimation, combined with an outlier resistant
+probabilistic mapping method, provides increased robustness
+in scenes of little, repetitive, and high frequency-texture.
+REFERENCES
+[1] M. Bl¨ osch, S. Weiss, D. Scaramuzza, and R. Siegwart, “Vision based
+MAV navigation in unknown and unstructured environments,” Proc.
+IEEE Int. Conf. on Robotics and Automation, 2010.
+[2] S. Weiss, M. W. Achtelik, S. Lynen, M. C. Achtelik, L. Kneip,
+M. Chli, and R. Siegwart, “Monocular Vision for Long-term Micro
+Aerial Vehicle State Estimation: A Compendium,” Journal of Field
+Robotics, vol. 30, no. 5, 2013.
+[3] D. Scaramuzza, M. Achtelik, L. Doitsidis, F. Fraundorfer, E. Kos-
+matopoulos, A. Martinelli, M. Achtelik, M. Chli, S. Chatzichristoﬁs,
+L. Kneip, D. Gurdan, L. Heng, G. Lee, S. Lynen, L. Meier, M. Polle-
+feys, A. Renzaglia, R. Siegwart, J. Stumpf, P. Tanskanen, C. Troiani,
+and S. Weiss, “Vision-Controlled Micro Flying Robots: from System
+Design to Autonomous Navigation and Mapping in GPS-denied En-
+vironments,” IEEE Robotics and Automation Magazine, 2014.
+[4] C. Forster, S. Lynen, L. Kneip, and D. Scaramuzza, “Collaborative
+Monocular SLAM with Multiple Micro Aerial Vehicles,” in Proc.
+IEEE/RSJ Int. Conf. on Intelligent Robots and Systems, 2013.
+[5] C. Forster, M. Pizzoli, and D. Scaramuzza, “Air-Ground Localization
+and Map Augmentation Using Monocular Dense Reconstruction,” in
+Proc. IEEE/RSJ Int. Conf. on Intelligent Robots and Systems, 2013.
+[6] L. Kneip, M. Chli, and R. Siegwart, “Robust Real-Time Visual
+Odometry with a Single Camera and an IMU,” Proc. British Machine
+Vision Conference, 2011.
+[7] J. Engel, J. Sturm, and D. Cremers, “Accurate Figure Flying with a
+Quadrocopter Using Onboard Visual and Inertial Sensing,” in Proc.
+ViCoMoR Workshop at IEEE/RJS IROS, 2012.
+[8] A. Comport, E. Malis, and P. Rives, “Real-time Quadrifocal Visual
+Odometry,” The International Journal of Robotics Research, vol. 29,
+no. 2-3, pp. 245–266, Jan. 2010.
+[9] T. Tykk¨ al¨ a, C. Audras, and A. I. Comport, “Direct Iterative Closest
+Point for Real-time Visual Odometry,” in Int. Conf. on Computer
+Vision, 2011.
+[10] C. Kerl, J. Sturm, and D. Cremers, “Robust Odometry Estimation
+for RGB-D Cameras,” in Proc. IEEE Int. Conf. on Robotics and
+Automation, 2013.
+[11] M. Meilland and A. I. Comport, “On unifying key-frame and voxel-
+based dense visual SLAM at large scales,” in Proc. IEEE/RSJ Int.
+Conf. on Intelligent Robots and Systems, 2013.
+[12] D. Scaramuzza and F. Fraundorfer, “Visual Odometry, Part I: The First
+30 Years and Fundamentals [Tutorial],” IEEE RAM, 2011.
+[13] M. Irani and P. Anandan, “All About Direct Methods,” in Proc.
+Workshop Vis. Algorithms: Theory Pract., 1999, pp. 267–277.
+[14] S. Lovegrove, A. J. Davison, and J. Ibanez-Guzman, “Accurate visual
+odometry from a rear parking camera,” in Intelligent Vehicle, IEEE
+Symposium, 2011.
+[15] R. a. Newcombe, S. J. Lovegrove, and A. J. Davison, “DTAM: Dense
+Tracking and Mapping in Real-Time,” IEEE Int. Conf. on Computer
+Vision, pp. 2320–2327, Nov. 2011.
+[16] G. Klein and D. Murray, “Parallel Tracking and Mapping for Small
+AR Workspaces,” IEEE and ACM International Symposium on Mixed
+and Augmented Reality, pp. 1–10, Nov. 2007.
+[17] H. Strasdat, J. M. M. Montiel, and A. J. Davison, “Real-time Monoc-
+ular SLAM: Why Filter?” Proc. IEEE Int. Conf. on Robotics and
+Automation, pp. 2657 – 2664, 2010.
+[18] H. Jin, P. Favaro, and S. Soatto, “A semi-direct approach to structure
+frommotion,” The Visual Computer,vol.19,no.6,pp.377–394,2003.
+[19] N. D. Molton, A. J. Davison, and I. Reid, “Locally Planar Patch
+Features for Real-Time Structure from Motion,” in Proc. British
+Machine Vision Conference, 2004.
+[20] G. Silveira, E. Malis, and P. Rives, “An Efﬁcient Direct Approach to
+Visual SLAM,” IEEE Transactions on Robotics, 2008.
+[21] C.Mei,S.Benhimane,E.Malis,and P.Rives,“EfﬁcientHomography-
+basedTrackingand3-DReconstructionforSingleViewpointSensors,”
+IEEE Transactions on Robotics, vol. 24, no. 6, pp. 1352 – 1364, 2008.
+[22] A. Pretto, E. Menegatti, and E. Pagello, “Omnidirectional Dense
+Large-Scale Mapping and Navigation Based on Meaningful Triangu-
+lation,” in Proc. IEEE Int. Conf. on Robotics and Automation, 2011.
+[23] J. Engel, J. Sturm, and D. Cremers, “Semi-Dense Visual Odometry for
+a Monocular Camera,” in Proc. IEEE Int. Conf. on Computer Vision.
+[24] S. Benhimane and E. Malis, “Integration of Euclidean constraints in
+template based visual tracking of piecewise-planar scenes,” in Proc.
+IEEE/RSJ Int. Conf. on Intelligent Robots and Systems, 2006.
+[25] R. K¨ ummerle, G. Grisetti, and K. Konolige, “g2o: A General Frame-
+work for Graph Optimization,” Proc. IEEE Int. Conf. on Robotics and
+Automation, 2011.
+[26] Y. Ma, S. Soatto, J. Kosecka, and S. S. Sastry, An Invitation to 3-D
+Vision: From Images to Geometric Models. Springer Verlag, 2005.
+[27] S. Baker and I. Matthews, “Lucas-Kanade 20 Years On: A Unifying
+Framework:Part1,”InternationalJournalofComputerVision,vol.56,
+no. 3, pp. 221–255, 2002.
+[28] G. Vogiatzis and C. Hern´ andez, “Video-based, Real-Time Multi View
+Stereo,” Image and Vision Computing, vol. 29, no. 7, 2011.
+[29] M. Pizzoli, C. Forster, and D. Scaramuzza, “REMODE: Probabilistic,
+Monocular Dense Reconstruction in Real Time,” in Proc. IEEE Int.
+Conf. on Robotics and Automation, 2014.
+[30] E. Rosten, R. Porter, and T. Drummond, “FASTER and better: A
+machine learning approach to corner detection,” IEEE Trans. Pattern
+Analysis and Machine Intelligence, vol. 32, pp. 105–119, 2010.
+[31] S.Umeyama,“Least-SquaresEstimationofTransformationParameters
+Between Two Point Patterns,” IEEE Trans. Pattern Anal. Mach. Intell.,
+vol. 13, no. 4, 1991.
+[32] J. Sturm, N. Engelhard, F. Endres, W. Burgard, and D. Cremers, “A
+Benchmark for the Evaluation of RGB-D SLAM Systems,” in Proc.
+IEEE/RSJ Int. Conf. on Intelligent Robots and Systems, 2012.
+[33] S. Lynen, M. W. Achtelik, S. Weiss, M. Chli, and R. Siegwart, “A
+Robust and Modular Multi-Sensor Fusion Approach Applied to MAV
+Navigation,” in Proc. IEEE/RSJ Int. Conf. on Intelligent Robots and
+Systems, 2013.
+22

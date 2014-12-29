@@ -1,0 +1,1293 @@
+Coalition Coordination for Tightly Coupled Multirobot Tasks
+with Sensor Constraints
+Yu Zhang and Lynne E. Parker and Subbarao Kambhampati
+Abstract— Although many approaches have been developed
+to form robot coalitions that can achieve a multirobot task,
+no general methods exist to execute these coalitions, especially
+when the coordination among the robots is tightly coupled. In
+this paper, we propose a coordination mechanism as the ﬁrst
+step to address coalition execution; it provides a ﬂexible method
+to reason about synergies with overlapping coalitions (thus
+enabling multi-tasking robots in multi-robot tasks), which not
+only improves efﬁciency, but also reduces resource requirements
+in task execution. This means that our approach enables tasks
+that cannot be easily handled before, especially when critical
+resources are rare but commonly required. Our approach is
+based on the concept of sensor constraint, which is introduced
+by the tight coupling (e.g., information sharing) between the
+robots. We show that our algorithm is sound and complete in
+ﬁnding a coordination solution given a few assumptions, and
+discuss a distributed implementation. Simulation results are
+provided to demonstrate the capabilities of this new approach.
+I. INTRODUCTION
+To accomplish a single multirobot task,
+1
+robots must
+execute the coalitions that are formed for the task. However,
+general methods for coalition execution do not yet exist,
+especially for tightly coupled multirobot tasks, in which close
+coordination with information sharing between the robots is
+required. This coordination must be determined dynamically
+in the current situation. For example, in a cooperative robot
+surveillance and monitoring task, various types of robots
+(including smart sensors) are distributed in the workspace.
+The goal is to monitor the environment and report the
+locations of any unusual objects. If only a handful of robots
+can localize, the team needs to coordinate tightly with each
+other via information sharing. In this scenario, a robot that
+can localize may potentially need to assist multiple robots (or
+coalitions) at the same time; to ensure coverage, the mobile
+robots also need to move around in the environment. We are
+immediately faced with a challenging coordination scenario.
+To address the coordination problem in a general manner,
+ﬁrst, a method is needed to model the interactions among
+robots in the coalitions and the environment; these interac-
+tions are dynamically determined in the current situation.
+With this modeling, we show that the coordination problem
+This research is supported in part by the ARO grant W911NF-13-1-0023,
+and the ONR grants N00014-13-1-0176 and N00014-13-1-0519.
+Yu Zhang and Subbarao Kambhampati are with the Yochan re-
+search group at the Arizona State University, Tempe, AZ 85281, USA,
+fyzhan442,raog@asu.edu
+Lynne E. Parker is with the Distributed Intelligence Labora-
+tory at the University of Tennessee, Knoxville, TN 37996, USA,
+fparkerg@eecs.utk.edu
+1
+In this paper, we consider coalition execution for an individual task; task
+allocation (e.g., [3]) and scheduling (e.g., [18]) are not considered.
+of coalition execution can be transformed to the maintenance
+of the required sensor constraints for the task, which specify
+conﬁguration constraints on the coalition members. As an
+example, consider a cooperative robot navigation task, in
+which one robot has a localization capability and one does
+not. Both robots have a ﬁducial sensor to detect teammates
+ahead. There exists a sensor constraint that is introduced by
+the ﬁducial information, which requires one robot to keep the
+other in its sensor ﬁeld of view (FOV). Another example is a
+robot swarming task that requires close proximity, in which
+the retrieval of the bumper information requires the adjacent
+robots to keep in contact with each other. Based on the set
+of sensor constraints, our approach allows robot resources to
+be shared among coalitions, thus enabling tasks that cannot
+be easily achieved before, when certain resources are rare.
+After a brief discussion of the related work in Section
+II, we present the new coordination mechanism in Section
+III with discussions of a distributed implementation. Finally,
+results are presented in Section IV following by conclusions.
+II. RELATED WORK
+While many approaches have been provided to form coali-
+tions [3], [4], [9], [13], [15], [16], coalition execution is often
+assumed to be handled by the preprogrammed behaviors on
+individual robots. Although this may be true for multirobot
+tasks that are loosely coupled, in which the task can be
+divided into subtasks that can be accomplished by individual
+robots, it is not so much for tightly coupled tasks. These tasks
+require robots to interact in a closely coordinated manner,
+which must often be dynamically determined. Although
+application-speciﬁc methods [7], [14] can be applied, they
+do not generalize or scale.
+To create a general solution, ﬁrst, interactions among
+robots and the environment must be speciﬁcally modeled.
+Techniques to form coalitions are introduced to reason about
+the groups of robots necessary to accomplish the given task.
+The formation process of coalitions, in turn, determines the
+required interactions. However, due to the dynamism of these
+interactions in tightly coupled multirobot tasks, approaches
+[3], [4], [15] that only address loosely coupled tasks or
+reason about forming coalitions based statically on robot
+capabilities do not sufﬁce. Among the approaches that are
+capable of dynamic modeling, the approaches that are built
+on the concept of information [13], [16] have been shown
+to provide more ﬂexibility with autonomous information
+sharing. Hence, we adopt this formulation in this work.
+In order to execute coalitions to accomplish the task,
+the robots must coordinate their behaviors based on the set
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 1090
+of sensor constraints introduced by the interactions. One
+coordination approach is to employ planning techniques [1],
+[12] to plan execution paths that satisfy the requirements of
+these constraints. The planned paths can then be used to feed
+back commands to control the robots. However, this approach
+is computationally expensive and hence not scalable. A
+more suitable approach is to use distributed control methods
+[2], [5], [10] to maintain the robot conﬁgurations required
+for the constraints locally. Although the coordinated robot
+behaviors in this work may appear similar to these control
+methods, there is a fundamental difference. While the set of
+conﬁguration (sensor) constraints are given in these control
+methods, in this paper, it is determined automatically and
+dynamically based on the information requirement. This
+automatic process also provides a ﬂexible method to reason
+about synergies with overlapping coalitions. For example, if
+two robots without a localization capability share the goal
+paths (i.e., one path aligns with the other), they may rely
+on the same robot and navigate together. While task synergy
+[8], [11] for single task robots [6] has been studied before,
+to the best of our knowledge, this is the ﬁrst work that
+investigates synergies of coalitions in a single multirobot
+task, thus enabling multi-tasking robots in multi-robot tasks.
+III. COALITION COORDINATION
+In this section, we ﬁrst provide a brief introduction of the
+approach to model the interactions based on the concept of
+information. Based on this modeling, coalitions are formed
+and sensor constraints are introduced. We implement our
+approach on one of the recent architectures that use this
+approach [17], which extends [16] and provides an essential
+capability to execute coalitions: forming executable coali-
+tions. While using a speciﬁc architecture, our discussion
+emphasizes its general components that need to be present
+in formulating multirobot tasks to enable a similar modeling
+capability. Then, we discuss the new coordination mecha-
+nism with a single coalition in Section III-C and extend it
+to multiple coalitions in Section III-D.
+A. IQ-ASyMTRe
+Sections III-A and III-B serve primarily as background
+knowledge for the IQ-ASyMTRe architecture [17], which
+is used in this paper to model the interactions and form
+coalitions. Based on schema theory, in IQ-ASyMTRe, a
+robot is composed of sensors (ESs), communication schemas
+(CSs), computation or perceptual schemas (PSs), and motor
+schemas (MSs). Schemas accept input information and can
+optionally output information; schemas can be activated
+when their input information is provided. The goal of form-
+ing a coalition is to connect these schemas to activate a
+desired MS for the task (referred to as a task MS henceforth).
+Figure 1 provides an example of the potential local schema
+connections for robot R
+1
+to activate a navigation MS, with
+each schema being represented as a rectangle box except for
+the tOR. In Figure 1, EPS and RPS are special types of PS.
+An RPS is introduced to perform information conversions.
+For a few commonly used examples, see Table I; an EPS is
+Fig. 1. IQ-ASyMTRe [17]: solution space (as an and-or tree) for a robot
+to obtain its global position for a navigation MS with only a camera sensor.
+The referent local refers to the robot itself. The solution space encodes
+two potential solutions. One solution is to have another robot send over
+its global position (CS: F
+G
+(X)) F
+G
+(X)) and use the camera to sense
+the relative position of that robot (EPS: Camera) F
+R
+(X;local)). An
+RPS (RPS: F
+R
+(Y;X)) F
+R
+(X;Y)) is used to convert F
+R
+(X;R
+1
+) to
+F
+R
+(R
+1
+;X). The other solution (tOR) is to have both information instances
+(CS: F
+G
+(X)) F
+G
+(X) and CS: F
+R
+(R
+1
+;X)) F
+R
+(R
+1
+;X)) sent over
+by another robot.
+TABLE I
+IQ-ASYMTRE [17]: EXAMPLES OF RPS’S
+RPS Description
+F
+G
+(X)+F
+R
+(Y;X))F
+G
+(Y) global + relative) global
+F
+R
+(Y;X))F
+R
+(X;Y) relative) relative
+F
+R
+(X;Z)+F
+R
+(Y;Z))F
+R
+(X;Y) relative + relative) relative
+always associated with an ES to process raw sensor data. We
+will refer back to this example.
+To form a coalition for a robot that is assigned an MS (re-
+ferred to as a task robot henceforth), IQ-ASyMTRe reasons
+based on these local connections, which allow information
+to ﬂow between different schemas within the robot itself
+or from other robots through CSs, in order to satisfy the
+input of the MS. All robots necessary to activate the MS are
+considered to be in the coalition.
+To ensure valid schema connections, the output schema
+that provides information must be able to produce the in-
+formation that the input schema accepts. Furthermore, when
+forming a coalition, the actual information must be validated
+to ensure a match. To reason about this, IQ-ASyMTRe uses
+the concepts of information type and information instance
+to label the input and output of schemas, which are used to
+specify the semantic meaning of information. For example,
+while robot’s position conveys the semantic meaning, phys-
+ical coordinates is the value associated with the meaning.
+The semantic meaning of information speciﬁes what the
+information describes (e.g., position), and the referents to
+which it applies (e.g., the robot).
+Deﬁnition 3.1 (Information Type): Given an application
+domain, an information type (denoted byF) is a unit to
+specify non-referent related information semantics. 2
+Information types for different domains are often different.
+In general, one should minimize the number of information
+1091
+types in a given domain in order to reduce the search space.
+Deﬁnition 3.2 (Information Instance): An information in-
+stance, orF(E) (F for short), is an information type with the
+associated referent setE (E is an ordered set). The number
+of referents orjEj is determined by the type. 2
+For example, in Figure 1, F
+G
+and F
+R
+refer to the global
+and relative position information, respectively. F
+G
+(X) is as-
+sociated with one referentX. Each referent may be statically
+instantiated to an entity, which can be any identiﬁable object
+in the environment, or remain uninstantiated for future or
+dynamic instantiations. Single uppercase letters are used in
+this paper to denote uninstantiated referents. IQ-ASyMTRe
+also requires the uninstantiated referents of the same label
+within the same context (e.g., in a schema) to be instantiated
+to the same entity (referred to as referent instantiation
+constraint), and that the referents of the same information
+instance be instantiated to different entities.
+We return now to the validation of schema connections.
+While this validation must be performed based on informa-
+tion instances that are not fully instantiated, the process to
+form a coalition must ensure that the information instances,
+after full instantiations according to the actual information,
+satisfy the referent instantiation constraints. Note that dy-
+namic instantiations must be performed via sensing.
+B. Coalition Solution
+A coalition includes all the robots in the coalition solution.
+To create the coalition solution, IQ-ASyMTRe ﬁrst connects
+local schemas to create the solution space as shown in Figure
+1. This process always starts with the input of the MS (i.e.,
+the information sink node), which is then connected to the
+outputs of schema nodes that can provide the required infor-
+mation instances. These upstream nodes are then connected
+in a recursive manner (for more details, see [17]), until
+reaching the information sources, which are CSs or ESs. Note
+that information sources can be dummy ES nodes, which are
+created for information that remains constant and is known
+a priori. For example, an environment map.
+After the solution space is created, the next step is to
+search for coalition solutions. Note that while the solution
+space encodes potential solutions to activate the MS using
+local schema connections, the coalition solution is an in-
+stantiation of one of the potential solutions (i.e., making
+a choice at each tOR node) with a complete speciﬁcation
+of external interactions. Figure 2 provides an example of a
+coalition solution for one of the potential solutions in Figure
+1. Comparing Figure 1 with Figure 2, more speciﬁcally,
+information instances in solution spaces may not be fully
+instantiated (e.g., F
+G
+(X) in Figure 1) but they are in
+coalition solutions; a solution space can include multiple
+potential solutions when there are tOR nodes to provide
+schema connection options; a solution space pertains only
+to one robot while a coalition solution can span multiple
+robots; the leaf nodes, or information sources, in coalition
+solutions are always ESs.
+With the solution space, IQ-ASyMTRe selects a coalition
+solution and sets up the initial coalition as follows:
+Fig. 2. IQ-ASyMTRe [17]: A possible coalition solution for one of the
+potential solutions in Figure 1.
+ Check each potential solution with potential coalition
+members to instantiate the solution in order to validate
+the coalition solution;
+ Select a valid coalition solution and set up the coalition.
+C. Coalition Coordination
+We can now start the discussion of coalition coordination.
+In this section, we start with a single coalition. One observa-
+tion is that the only precondition for the associated task MS
+to keep in activation is the constant provision of the input
+information during execution, which can be satisﬁed as long
+as the coalition solution is in effect. This directly translates
+to the maintenance of the coalition solution.
+Similar to [17], assuming that the robots are always within
+each other’s communication range
+2
+, the only factors that can
+inﬂuence the coalition solution are the leaf nodes (i.e., ESs).
+In order to provide the information to the downstream nodes,
+each ES may introduce a conﬁguration constraint on the
+related entities. We refer to this conﬁguration as information
+conﬁguration and the constraint as sensor constraint.
+Deﬁnition 3.3 (Information Conﬁguration): The conﬁgu-
+ration of an information instance F(E), denoted by
+cf(F(E)), represents the set of all semantic conﬁgurations
+(forE) that are included in the speciﬁcation of F(E). 2
+Semantic conﬁguration is a general term here, which can
+specify, for example, physical conﬁguration and state. Con-
+sider F
+R
+(X;Y) as an example. cf(F
+R
+(X;Y)) speciﬁes a
+relationship of relative physical placement betweenX andY .
+cf(F
+R
+(X;Y)) includes, for example, the same relationship
+between X and Y along each coordinate axis, and that X
+and Y are physically located in the workspace. Information
+conﬁguration encodes the semantic meaning expressed by
+the information without the value; it is a general concept
+for information since it is associated with all information
+representations (e.g., information instance in this paper).
+Deﬁnition 3.4 (Sensor Constraint): A sensor constraint is
+a special type of information conﬁguration constraint (i.e.,
+a restriction imposed on cf(F(E))), in which F(E) is
+produced by the sensor. A sensor constraint has the form
+of e!
+F(E)
+E, in which e2E and E =E e. 2
+2
+Although neither [17] or the approach in this paper relies on this
+assumption to work, it simpliﬁes the discussions. In most cases, communi-
+cation divides the team into disjoint groups, which can then be separately
+considered.
+1092
+Note that e always refers to the robot equipped with
+the sensor (or the local robot). For example, the relative
+position information from the camera sensor in Figure 1
+introduces a sensor constraint local !
+F
+R
+(X;local)
+fXg,
+which is instantiated to R
+1
+!
+F
+R
+(R2;R1)
+fR
+2
+g in Figure 2.
+To execute a coalition, the coalition members need to
+maintain the set of sensor constraints in a coordinated manner
+while the task robot of the coalition executes the task MS.
+Using IQ-ASyMTRe to form individual coalitions ensures
+that the coalition is initially executable. Hence, all the
+sensor constraints are initially satisﬁed as well. However,
+to accomplish the task, we also need to determine whether
+these sensor constraints can be maintained during execution.
+For example, in the navigation task, a task robot without a
+localization capability needs to identify that a coalition with
+a robot that is immobile is not a solution, even though this
+other robot can localize; neither is the case when the other
+robot is mobile but executing a path to move in the opposite
+direction. Next, we discuss how robots can reason about this
+in various situations and maintain the constraints whenever
+possible. To achieve this, we need to ﬁrst understand the
+relationship between sensor constraint and individual robot
+conﬁgurations.
+Given the related information types of the domain, the
+conﬁguration of individual robots can also be speciﬁed using
+information conﬁgurations. The multi-referent conﬁguration
+that is associated with the sensor constraint is encoded in
+the conﬁgurations of individual referents. For example, in
+the navigation task, cf(F
+R
+(R
+2
+;R
+1
+)) can be encoded jointly
+by cf(F
+G
+(R
+1
+)) and cf(F
+G
+(R
+2
+)). This reasoning is directly
+related to RPSs. Since it involves multiple information in-
+stances, we ﬁrst introduce the following deﬁnition:
+Deﬁnition 3.5 (Information Instance Set): An
+information instance set (IIS) is an unordered set of
+information instances. 2
+We then associate RPSs with the notion of information
+inference.
+Deﬁnition 3.6 (Information Inference): Given an IIS s
+and an information instance F , s can infer F if F 2 s,
+or F can be converted by RPSs using information instances
+that are in s or that are inferred from s. 2
+For example, F
+R
+(X;local) can be inferred from
+fF
+G
+(X);F
+G
+(local)g using the second RPS in Table I. Also,
+note the recursive deﬁnition. We further introduce power set.
+Deﬁnition 3.7 (Power Set): The power set of an IIS s,
+denoted by P(s), is deﬁned as
+P(s) =fF :s infers Fg
+2
+To collectively specify the conﬁguration of multiple ref-
+erents, we deﬁne Joint Information Conﬁguration.
+Deﬁnition 3.8 (Joint Information Conﬁguration): Given
+an IIS s, its joint information conﬁguration, denoted by
+cf(s), is deﬁned as:
+cf(s) =
+[
+fcf(F) :F2P(s)g
+2
+r
+1
+m
+1
+r
+2
+r
+4
+r
+5
+r
+6
+F
+1
+(r
+1
+;r
+2
+)
+F
+1
+(r
+2
+;r
+4
+)
+F
+2
+(r
+4
+;r
+6
+)
+F
+2
+(r
+1
+;r
+5
+)
+Fig. 3. Example of a constraint graph for a single coalition.
+Given the above discussions, we can conclude that
+cf(fF
+G
+(R
+1
+);F
+G
+(R
+2
+)g)cf(F
+R
+(R
+2
+;R
+1
+)). Given a sensor
+constraint on cf(F
+R
+(R
+2
+;R
+1
+)), this proposition implies that
+we can maintain it by giving freedom to all but one of the
+individual conﬁgurations on its left hand side,
+3
+which is use-
+ful for coalition execution since the task robot must execute
+the task MS while others can change their individual conﬁg-
+urations to maintain the constraint. Given a sensor constraint
+e!
+F(E)
+E, the idea is to ﬁnd a set of individual conﬁgura-
+tionsfcf(F(e))g
+e2E
+such thatcf(fF(e)g
+e2E
+)cf(F(E)).
+When there are multiple options to break cf(F(E)) in such
+a way, each option can be considered independently.
+During execution, if an robote has an MS that can update
+its conﬁguration cf(F(e)) according to cf(F(E)), we refer
+to the robot as being compatible with the sensor constraint
+and the MS is referred to as a constraint MS for F(E). In
+the simplest case, if e is not the task robot and no other MS
+is assigned to it, this MS can be activated on e to maintain
+the sensor constraint. If all referents except one inE are
+compatible, the constraint becomes satisﬁable; one way to
+satisfy it then is to activate the constraint MSs on these
+referents. This reasoning requires the following deﬁnition:
+Deﬁnition 3.9 (MS Type): Given the input IIS s, the type
+of MS, denoted byT (MS(s)), is an information instance F
+such that its value is updated by the MS when activated.
+4
+2
+For example, given the MS in Figure 2, denoted here by
+MS
+nav
+, since we know that navigation updates the robot
+position, we haveT (MS
+nav
+(fF
+G
+(local)g)) = F
+G
+(local).
+Note the referent instantiation constraint here; by execut-
+ing the MS, a robot also instantiates the MS type, e.g.,
+T (MS
+nav
+(fF
+G
+(R
+1
+)g)) =F
+G
+(R
+1
+). Even when an entitye is
+not a robot, we may still be able to specify its motion type.
+In this case, we use a similar notation and directly write,
+e.g.,T (e) =F
+G
+(e). When a robot is r is executing no more
+than one MS,T (r) can also be conveniently used to refer to
+the type of the currently active MS on r.
+Now, we are ready to discuss coalition coordination with
+3
+One underlying assumption is that the RPS must remain valid when
+exchanging the information instance on the right hand side with any instance
+on the left. This is true for all the RPSs that we use.
+4
+To simplify the discussion, if an MS can inﬂuence the conﬁgurations of
+more than one information instance, it is considered as multiple MSs.
+1093
+TABLE II
+RPS’S FOR FIGURES 3 AND 4
+RPS
+F
+4
+(X)+F
+4
+(Y))F
+1
+(X;Y)
+F
+4
+(X)+F
+4
+(Y))F
+2
+(X;Y)
+F
+4
+(X)+F
+4
+(Y)+F
+4
+(Z))F
+3
+(X;Y;Z)
+a single coalition. First, we deﬁne constraint graph.
+Deﬁnition 3.10 (Constraint Graph): The constraint graph
+is an undirected graph, in which each node represents an
+entity; two nodes are connected if both are present in
+the same sensor constraint. Each edge is labeled by the
+information instance associated with the constraint. 2
+When two nodes are present together in more than one
+constraint, they are connected by multiple edges, thus form-
+ing loops. Discussion of this situation is delayed until Section
+III-D. Figure 3 provides an example of a constraint graph
+with a single coalition (i.e., with a single task MS m
+1
+),
+in which r
+1
+is the robot that is assigned m
+1
+. Other robots
+provide information to help r
+1
+activate m
+1
+. While a sensor
+constraint is directed, the associated edges in the graph
+are often not, since they specify conﬁguration constraints.
+(Directed edges only introduce asymmetry on the process to
+check coordination solutions when present.)
+Proposition 3.1: Given a constraint graph for a single
+coalition that has only robot entities (controllable), if all en-
+tities are compatible with their respective sensor constraints,
+the coalition can satisfy the set of constraints if the graph
+has a tree or forest structure. 2
+Proof: (Sketch) Starting from the node with the task
+MS, for each node v that connects to it, we can activate
+the constraint MS on v to maintain the respective sensor
+constraint. Note that there is no need to check the node that
+we have already checked. Continue this process recursively.
+Since the tree structure ensures that we do not come back
+to the previous nodes (which already have an assigned MS),
+this process would assign no more than one MS to any robot.
+This conclusion clearly holds for other trees in a forest.
+For the scenario in Figure 3, suppose that we have the
+RPSs in Table II and the RPSs to switch the referent
+ordering for F
+1
+, F
+2
+and F
+3
+(similar to the second RPS
+in Table I), T (m
+1
+fF
+4
+(local)g) = F
+4
+(local), and that
+all robots can activate the constraint MS m
+1
+c
+and m
+2
+c
+,
+which satisfy T (m
+1
+c
+(fF
+1
+(X;local)g)) = F
+4
+(local) and
+T (m
+2
+c
+(fF
+2
+(X;local)g)) =F
+4
+(local). Based on Proposition
+3.1, we can conclude that a coordination solution exists.
+D. Coordination with Multiple Coalitions
+When there are loops, multiple task MSs or non-robot
+entities (uncontrollable) in the constraint graph, coalition
+coordination becomes more complex. In this section, we
+show how these situations can be incorporated. Our approach
+also allows different coalitions to share robots.
+A more complex scenario is presented in Figure 4. First,
+we realize that certain domain knowledge is unavoidable
+and desirable. For example, in a box pushing task, although
+o
+r
+1
+m
+3
+r
+2
+r
+4
+m
+2
+r
+3
+r
+5
+r
+6
+F
+2
+(o;r1)
+F
+3
+(r
+1
+;r
+4
+;r
+2
+)
+F
+3
+(r
+1
+;r
+4
+;r
+2
+)
+F
+3
+(r
+1
+;r
+4
+;r
+2
+)
+F
+2
+(r
+2
+;r
+6
+)
+F
+2
+(r
+1
+;r
+5
+)
+F
+2
+(r
+5
+;r
+3
+)
+Fig. 4. Example of constraint graph for a multirobot task that includes
+two task MSs (m
+2
+and m
+3
+), a loop and a non-robot entity o.
+there is a sensor constraint introduced by the requirement of
+F
+R
+(box;local), it does not inﬂuence the execution since the
+box always moves along with the robot. The domain knowl-
+edge is captured by the concepts of domain compatibility
+and disjoint conﬁguration, which are assumed to be speciﬁed
+either a priori in the task speciﬁcation or dynamically by a
+higher level planner.
+Deﬁnition 3.11 (Domain Compatibility): Given two task
+MSs, domain compatibility speciﬁes the conﬁguration con-
+straint (in terms of an information instance) that is satisﬁed
+by the task robots when executing these MSs. 2
+In the box pushing task, the domain compatibility can be
+speciﬁed asDOM(m(box); MS
+push
+(fF
+R
+(box;local);:::g))
+= F
+R
+(box;local), in which m(box) represents the motion
+(a virtual MS) of the box and MS
+push
+(fF
+R
+(box;local);:::g)
+represents the box pushing MS (the input is only partially
+speciﬁed for brevity). Domain compatibility is useful when
+both entities are already assigned an MS and there is a sensor
+constraint between them. In this case, if these two MSs are
+domain compatible with respect to the constraint, we do not
+need to activate a constraint MS.
+Deﬁnition 3.12 (Disjoint Conﬁguration): Given two in-
+formation instances F
+1
+and F
+2
+, they are of disjoint conﬁgu-
+ration if cf(F
+1
+)\cf(F
+2
+);. 2
+Given a robote that is involved in a constraint, even ife is
+already assigned an MS m
+0
+, if cf(T (m
+0
+))\cf(T (m));,
+in which m is the constraint MS, we can activate m on
+e. In this case, m
+0
+and m can be considered as orthogonal
+components of a single MS. For example, if r
+1
+and r
+2
+are
+both assigned an MS to explore the workspace and there is
+a constraint that requires them to keep their ﬁducial sensors
+at the same height (in order to detect each other), it is most
+likely that the MS to change the sensor’s height and the
+exploratory MS do not inﬂuence each other. However, note
+that cf(F
+1
+)\cf(F
+2
+); is a strong condition. In practice,
+domain compatibility often provides more ﬂexibility.
+Deﬁnition 3.13 (Propagated Conﬁguration Constraint):
+Given an IIS s that is associated with the currently satisﬁed
+conﬁguration constraints (as a result of domain knowledge
+or the activations of constraint MSs), a propagated
+conﬁguration constraint is deﬁned as a constraint that is
+1094
+associated with any instance in P(s). 2
+Conﬁguration propagation is used to automatically infer
+implied constraints given the currently satisﬁed constraints.
+For example, given that the constraints associated with
+both F
+R
+(r
+1
+;r
+2
+) and F
+R
+(r
+1
+;r
+3
+) are initially satisﬁed and
+maintained, from the third RPS in Table I, we know that
+a constraint on cf(F
+R
+(r
+2
+;r
+3
+)) is also maintained. Hence, in
+such a case, even if both r
+2
+and r
+3
+are already assigned an
+MS, we can ignore the inﬂuence of this sensor constraint if
+it is initially satisﬁed. Note that in this case, conﬁguration
+propagation speciﬁes a transitive relationship.
+Again, assuming that the robots have the necessary con-
+straint MSs and the RPSs in Table II, Table III presents a
+set of conditions for Figure 4; adding the constraint MS for
+F
+3
+to the robots then ensures a solution. The coordination
+algorithm for multiple coalitions is presented in Algorithm
+1. The algorithm ﬁrst pushes all nodes (i.e., robots) onto
+a queue and invokes Coordinate recursively, which checks
+each edge to determine a coordination solution.
+Algorithm 1 Algorithm for Coalition Coordination
+1: INPUT: a constraint graph G = (V;E); domain com-
+patibilities D; disjoint conﬁgurations C.
+2: Create a queue Q and push in all nodes (i.e., robots).
+3: Create a set s for currently satisﬁed constraints.
+4: Create a set c for checked nodes and edges.
+5: Add domain compatibilities to s.
+6: node = POP(Q); Coordinate(node;G;C;D;Q;s;c).
+7:
+8: PROCEDURE: Coordinate(v;G;C;D;Q;s;c):
+9: while (U =fu : (u;v)
+F
+2E & (u;v)
+F
+62cg); do
+10: If Q;, return true; else c =c[v, v = POP(Q).
+11: end while
+12: Add (u;v)
+F
+2U to c.
+13: if c
+1
+: cf(F)6cf(s) then
+14: for all x2fu;vg do
+15: for all constraint MS m for F on x do
+16: ifc
+2
+:cf(T (x))\cf(T (m)); orcf(T (x));
+then
+17: G
+m
+x
+= Duplicate(G); assign m to x in G
+m
+x
+.
+18: s
+m
+x
+= Duplicate(s); add F to s
+m
+x
+if the con-
+straint is satisﬁed.
+19: Add domain compatibilities to s
+m
+x
+.
+20: r
+m
+x
+= Coordinate(v;G
+m
+x
+;C;D;Q;s
+m
+x
+;c).
+21: else
+22: r
+m
+x
+=false (no solution for currentx andm).
+23: end if
+24: end for
+25: end for
+26: return _
+x;m
+r
+m
+x
+.
+27: end if
+28: return Coordinate(v;G;C;D;Q;s;c).
+Lemma 3.2: Algorithm 1 is sound: the constructed coor-
+dination solution is correct. 2
+Proof: (Sketch) For any node, Algorithm 1 only assigns
+it an MS m if one of the following conditions holds: 1) If
+TABLE III
+ADDITIONAL CONDITIONS FOR FIGURE 4
+1. T (m
+2
+fF
+4
+(local)g) =F
+4
+(local)
+2. T (m
+3
+fF
+2
+(o;local)g) =F
+4
+(local)
+3. DOM(m(o);m
+3
+(fF
+2
+(o;local)g)) =F
+2
+(o;local)
+4. cf(F
+4
+)\cf(F
+3
+);
+the node can execute m and that it is not already assigned
+an MS; 2) m is orthogonal to the assigned MS (line 16).
+Given that a constraint between any two nodes u and v
+(every edge is checked once) is initially satisﬁed, the set
+of constraints is maintained as a result of either domain
+capability, conﬁguration propagation or the activations of
+constraint MSs; otherwise, the algorithm returns no solution.
+Lemma 3.3: Given a constraint graph, Algorithm 1 is
+complete in ﬁnding a coordination solution, when given only
+the RPSs, domain compatibilities and disjoint conﬁgurations
+of the domain. 2
+Proof: (Sketch) To satisfy a sensor constraint, either we
+need to activate a constraint MS, or the constraint is already
+satisﬁed as a result of domain compatibilities or conﬁguration
+propagation. Since Algorithm 1 checks all such possibilities
+for a coordination solution (i.e., returns _
+x;m
+r
+m
+x
+), and it
+ensures that no MSs are introduced unnecessarily (through
+c
+1
+and c
+2
+), the search is complete.
+The complexity is dominated by the computation of P(s)
+for cf(s), and is expensive in general (i.e., exponential
+in the numbers of information types and RPSs). However,
+depending on the problem domain, this complexity can be
+reduced. For example, when the conﬁguration propagation is
+transitive, the complexity becomes linear.
+E. Distributed Implementation
+In a distributed implementation, each task robot starts with
+a constraint graph with only itself and no edges. After a
+task robot ﬁnds a set of coalition solutions, it ranks these
+solutions based on their costs (see [17] for details). For the
+current solution being considered, this task robot updates its
+local graph accordingly and runs Algorithm 1 to compute
+a coordination solution for the local coalition. If a solution
+is found, this task robot shares the set of newly assigned
+MSs along with the set of associated sensor constraints
+with the other task robots, in order for them to update the
+graph accordingly. At any time, only one robot is allowed to
+perform such an update. In case that no solution is found,
+the robot can backtrack these updates and request the robot
+with the most recent update to change its coalition solution.
+The combined coordination solution of all local coalition
+solutions becomes the ﬁnal coordination solution. Although
+this process can be expensive, the fact that the local coalition
+solutions are ranked often implies that the combination that
+is most likely to produce a ﬁnal solution is considered ﬁrst.
+RPSs, domain compatibilities and disjoint conﬁgurations are
+assumed to be common knowledge in the process.
+1095
+Fig. 5. Scenario 1 in the robot navigation task. The left ﬁgure shows the
+initial robot conﬁgurations with goal markers and the right ﬁgure shows
+the ﬁnal robot conﬁgurations with execution traces. The ranges of the laser
+(ﬁducial) sensors are also shown.
+IV. SIMULATION RESULTS
+Due to many constraints, in this section, we concentrate on
+only one task domain: cooperative robot navigation; we show
+that even with very simple scenarios in this simple domain,
+solutions are not always obvious. Our approach is applied
+to these scenarios to demonstrate how they are handled in
+a ﬂexible way, such that it can potentially enable tasks that
+cannot be easily achieved before, especially when certain
+resources are limited. The application to more complex tasks
+will be future work. Simulations are run on a 2.4GHz laptop
+with 2GB memory, using Player and Stage. For all scenarios,
+the task includes two navigation MSs, which are to be
+activated on robot 1 and 2 (without a localization capability),
+respectively. All robots are equipped with a ﬁducial sensor
+to detect nearby teammates. RPSs used are in Table I.
+1) Scenario 1: Figure 5 shows the most common scenario
+in which robots are assigned different goal locations. Both
+robot 1 and 2 try to set up a coalition with the only robot
+(labeled 3) that can localize. In this case, each introduces a
+sensor constraint in the form of local!
+F
+R
+(3;local)
+flocalg,
+in which local represents either robot 1 or 2. Robot 1
+ﬁrst sets up the coalition, and informs 2 that it requires a
+constraint MS to be activated on 3 in order to maintain its
+constraint. When robot 2 receives this information, since it
+also requires a constraint MS to be activated, it realizes that
+this MS would conﬂict with the MS already assigned to 3,
+based on the RPSs in Table I. As a result, no coordination
+solution exists since robot 1 has only one local solution.
+Hence, the task speciﬁcation must be updated. In this case,
+we manually divide (for now) the original task into three
+tasks. Robot 1 sets up a coalition to execute the ﬁrst task
+and the conﬁguration constraint (i.e., relative positioning)
+is maintained by the constraint MS on robot 3, given the
+information F
+R
+(3;1). Once the ﬁrst task is accomplished,
+robot 3 returns to 2 (the second task) and, through a similar
+process, helps robot 2 reach the goal (the third task).
+2) Scenario 2: The only difference in the second scenario
+(Figure 6) from scenario 1 is that the robots share the
+same goal location. Given this scenario, we can add a new
+condition, DOM(m(1);m(2)) = F
+2
+(2;1), based on the
+planned paths. Everything remains the same as in scenario 1,
+Fig. 6. Scenario 2 in which robots share the same goal location.
+before robot 2 receives robot 1’s update. In this case, ﬁrst,
+robot 2 knows that the constraint on F
+R
+(3;1) is satisﬁed
+from robot 1’s update. Based on the domain compatibility
+and the third RPS in Table I, it realizes that the constraint
+on F
+R
+(2;3) is also satisﬁed from conﬁguration propagation.
+Hence, it does not need to activate the constraint MS nor
+does it require robot 3 to do so. In this case, we have a
+coordination solution and hence the task can be executed.
+The conﬁguration constraint associated with F
+R
+(3;1) is
+maintained by the constraint MS on 3, while the constraint
+associated with F
+R
+(2;1) is implicitly satisﬁed, given that
+robot 2 moves along with 1.
+Depending on the scenario, the coordination solution can
+be very different. For example, even though the two robots
+share the same goal location, the planned paths may be vastly
+different due to the environment settings or the path planning
+algorithm; on the other hand, two robots can still satisfy
+DOM(m(1);m(2)) =F
+2
+(2;1) even when they do not share
+the same goal location, e.g., one robot’s goal location lies on
+the path of the other. All these cases can be captured similarly
+in our approach, thus enabling robot resources to be easily
+shared whenever possible.
+3) Scenario 3: One may argue that when domain com-
+patibility and disjoint conﬁguration information are provided,
+the proposed reasoning process is unnecessary. Our reply is:
+Domain compatibility and disjoint conﬁguration only capture
+domain dependent information and thus are not sufﬁcient to
+determine a coordination strategy. For example, the domain
+compatibility in scenario 2 only indicates the closeness of
+the planned paths for the task robots; it does not specify
+how other helper robots should behave and whether or not
+they incur conﬂicts in the task execution.
+Another argument is that why not simply hardcode in
+the coordination solutions. For example, given the domain
+compatibility in Scenario 2, one can state that robot 1 and
+2 can share a helper robot. Unfortunately, such an approach
+becomes impractical when the problem becomes more com-
+plex. In fact, we show here that the coordination solutions
+may not be obvious even in simple scenarios, such that it is
+prone to miss valid solutions or introduce invalid solutions.
+In this scenario (Figure 7), the robots start in different initial
+conﬁgurations. The coordination solution is created similarly
+in two phases: Robot 2 ﬁrst sets up a coalition with 3 and
+1096
+Fig. 7. Scenario 3 with different robot initial conﬁgurations.
+Fig. 8. Scenarios 4 and 5 with robots that are immobile.
+updates with 1; Robot 1 then realizes that 2 can localize with
+the help from 3 so it sets up a coalition with 2, except in
+this case that 3 is the hidden helper and hence also included
+in the coalition. Robot 1 then requires two sensor constraints
+to be satisﬁed for F
+R
+(3;2) and F
+R
+(2;1). Since F
+R
+(3;2) is
+already satisﬁed by robot 2’s coalition, it can be ignored;
+F
+R
+(2;1) is directly supplied by the domain compatibility.
+Note that in this case, the two robots do not share the same
+helper robot but a coordination solution still exists.
+4) Scenarios 4 and 5: One may then state that the two
+robots can share a helper robot or help each other. In scenario
+4 (the left ﬁgure in Figure 8), we let robots 1 and 2 face each
+other and remove the mobility from 3. In this case, although
+both robots can localize with the help from 3, which means
+that they can ‘help’ each other, no coordination solution
+exists. How about further enforcing the helper robots to be
+mobile? In the last scenario, we have a mobile robot 3 that
+cannot localize but a immobile robot 4 that can. Again, no
+solution exists. One may ultimately state that the helpers, and
+hidden helpers, or essentially, all coalitions members must
+be mobile. This may be a sufﬁcient solution, but unnecessary
+in some cases, e.g., with an overhead camera (we can add a
+domain compatibility for F
+R
+(X;camera) in our approach).
+V. CONCLUSIONS
+This paper presents a coalition coordination mechanism
+for tightly coupled multirobot tasks, which represents the
+ﬁrst step toward a general approach for coalition execution.
+We use an existing approach for forming coalitions to model
+the interactions among the robots and the environment.
+These interactions introduce a set of sensor constraints
+that must be maintained. Our approach can automatically
+search for a coordination solution given this information.
+We show that this approach is sound and complete given
+a few assumptions, and provide discussions on a distributed
+implementation. Moreover, this new coordination mechanism
+provides a ﬂexible method to reason about synergies with
+overlapping coalitions, thus enabling multi-tasking robots in
+multi-robot tasks. To the best of our knowledge, this is the
+ﬁrst work in the above aspects.
+REFERENCES
+[1] N. Ayanian and V . Kumar. Decentralized feedback controllers for
+multiagent teams in environments with obstacles. IEEE Transactions
+on Robotics, 26(5):878–887, Oct. 2010.
+[2] L.E. Barnes, M.A. Fields, and K.P. Valavanis. Swarm formation
+control utilizing elliptical surfaces and limiting functions. IEEE
+Transactions on Systems, Man, and Cybernetics, Part B: Cybernetics,
+39(6):1434–1445, Dec. 2009.
+[3] S.C. Botelho and R. Alami. M+: a scheme for multi-robot cooperation
+through negotiated task allocation and achievement. Proceedings of the
+IEEE International Conference on Robotics and Automation, 2:1234–
+1239, 1999.
+[4] M.B. Dias and A Stentz. A free market architecture for distributed
+control of a multirobot system. In Proceedings of the 6th International
+Conference on Intelligent Autonomous Systems, pages 115–122, 2000.
+[5] J. Fredslund and M.J. Mataric. A general algorithm for robot
+formations using local sensing and minimal communication. IEEE
+Transactions on Robotics and Automation, 18(5):837–846, Oct. 2002.
+[6] B.P. Gerkey and M.J. Mataric. A formal analysis and taxonomy of task
+allocation in multi-robot systems. International Journal of Robotics
+Research, 23(9):939–954, Sep. 2004.
+[7] A. Howard, Parker, L.E., and G. Sukhatme. Experiments with a large
+heterogeneous mobile robot team: Exploration, mapping, deployment
+and detection. International Journal of Robotics Research, 25:431–
+447, 2006.
+[8] E.G. Jones, M.B. Dias, and A. Stentz. Time-extended multi-robot
+coordination for domains withintra-path constraints. Autonomous
+Robots, 30(1):41–56, 2011.
+[9] N. Kalra, D. Ferguson, and A. Stentz. Hoplites: A market-based
+framework for planned tight coordination in multirobot teams. In
+Proceedings of the IEEE International Conference on Robotics and
+Automation, 2005.
+[10] M. Lemay, F. Michaud, D. Letourneau, and J.M. Valin. Autonomous
+initialization of robot formations. In Proceedings of the IEEE Inter-
+national Conference on Robotics and Automation, volume 3, pages
+3018–3023, Apr. 2004.
+[11] S. Liemhetcharat and M. Veloso. Weighted synergy graphs for role
+assignment in ad hoc heterogeneous robot teams. In IEEE/RSJ
+International Conference on Intelligent Robots and Systems, pages
+5247–5254, 2012.
+[12] P. Ogren and N.E. Leonard. Obstacle avoidance in formation. In
+Proceedings of the IEEE International Conference on Robotics and
+Automation, volume 2, pages 2492–2497, Sep. 2003.
+[13] Parker, L.E. and F. Tang. Building multirobot coalitions through auto-
+mated task solution synthesis. Proceedings of the IEEE, 94(7):1289–
+1305, Jul. 2006.
+[14] V . Sujan and S. Dubowsky. Visually guided cooperative robot actions
+based on information quality. Autonomous Robots, 19(1):89–110, Jul.
+2005.
+[15] L. Vig and J.A. Adams. Multi-robot coalition formation. IEEE
+Transactions on Robotics, 22(4):637–649, 2006.
+[16] Y . Zhang and Parker, L.E. IQ-ASyMTRe: Synthesizing coalition
+formation and execution for tightly-coupled multirobot tasks. In
+Proceedings of the IEEE/RSJ International Conference on Intelligent
+Robots and Systems, 2010.
+[17] Y . Zhang and Parker, L.E. IQ-ASyMTRe: Forming executable coali-
+tions for tightly coupled multirobot tasks. IEEE Transactions on
+Robotics, 29(2):400–416, 2013.
+[18] Y . Zhang and Parker, L.E. Multi-robot task scheduling. In Proceedings
+of the IEEE International Conference on Robotics and Automation,
+pages 2992–2998, May 2013.
+1097

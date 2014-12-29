@@ -1,0 +1,1145 @@
+Learning Dexterous Grasps That Generalise To Novel Objects By
+Combining Hand And Contact Models
+Marek Kopicki, Renaud Detry, Florian Schmidt, Christoph Borst, Rustam Stolkin, and Jeremy L. Wyatt
+Abstract—Generalising dexterous grasps to novel objects is
+an open problem. We show how to learn grasps for high
+DoF hands that generalise to novel objects, given as little as
+one demonstrated grasp. During grasp learning two types of
+probability density are learned that model the demonstrated
+grasp. The ﬁrst density type (the contact model) models the
+relationshipofanindividualﬁngerparttolocalsurfacefeatures
+at its contact point. The second density type (the hand conﬁgu-
+ration model) models the whole hand conﬁguration during the
+approach to grasp. When presented with a new object, many
+candidate grasps are generated, and a kinematically feasible
+grasp is selected that maximises the product of these densities.
+We demonstrate 31 successful grasps on novel objects (an 86%
+success rate), transferred from 16 training grasps. The method
+enables: transfer of dexterous grasps within object categories;
+across object categories; to and from objects where there is no
+complete model of the object available; and using two different
+dexterous hands.
+I. INTRODUCTION
+Transferring dexterous grasps to novel objects is an open
+problem. We present a method that infers grasps for novel
+objects from as little as one training example. It generalises
+a human chosen grasp type (e.g. rim, pinch) trained from
+one or two examples, to a novel object of potentially quite
+different shape. We demonstrate learning and transfer of six
+grasps types to 31 different grasps of 18 objects, and for
+two different dexterous hands. The results show the ability
+to generalise a grasp within and across object categories, and
+with full or partial shape information. The method requires
+no knowledge of the human deﬁned object category (e.g.
+cup, box) when learning or performing transfer.
+There has been progress in learning generalisable grasps.
+One class of approaches utilises the shape of common
+object parts to generalise grasps across object categories [8],
+[11], [15]. This works well for low DoF hands. Another
+class of approaches captures the global properties of the
+hand shape either at the point of grasping, or during the
+approach [2]. This global hand shape can additionally be
+associated with global object shape, allowing generalisation
+by warping grasps to match warps of global object shape
+[12]. This second class works well for high DoF hands, but
+Marek Kopicki, Rustam Stolkin and Jeremy L. Wyatt
+are with the University of Birmingham, England. Email:
+{msk,stolkinr,jlw}@cs.bham.ac.uk. Renaud Detry is
+with the EECS department, University of Liege, Belgium. Email:
+renaud.detry@ulg.ac.be. Florian Schmidt and Christoph Borst are
+with the German Aerospace Center (DLR), Wessling, Germany, Email:
+{florian.schmidt,christoph.borst}@dlr.de. The work
+described here is protected by Patent Application (UKIPO 1309156.6).
+We gratefully acknowledge support by the FP7-IST-600918 (PaCMan),
+FP7-IST-248273 (GeRT), the Swedish Research Council (VR), the Belgian
+National Fund for Scientiﬁc Research (FNRS).
+Fig. 1. Objects used: the four objects on the left were used solely as
+example grasps, the ten objects on the right were solely used as novel test
+objects. The four at the back were used as either training or test, but not
+for both at the same time, e.g. we transferred a pinch grasp from the coke
+bottle to the vitamin tube, and a pinch support grasp vice versa.
+generalisation is more limited. We achieve the advantages
+of both classes, generalising grasps across object categories
+with high DoF hands.
+Our main technical innovation to achieve this is to learn
+two types of models from the example grasp, and then
+recombinethemwheninferringanewgrasp.Bothmodelsare
+probability density functions. The ﬁrst is a contact model of
+therelationbetweenaﬁngerpartandthelocalobjectshapeat
+itscontact.Welearnonesuchmodelforeachrigidlinkinthe
+hand. Each model can generate many possible independent
+placements for its link on a new “query” object. Given these
+models the next problem is to ﬁnd a hand conﬁguration that
+combines a good subset of placements in a kinematically
+feasible grasp. To address this we learn a second type of
+model, a hand conﬁguration model from the example grasp.
+We then use this hand conﬁguration model to constrain the
+combined search space for the link placements.
+Given these two learned models we can infer grasps for
+novel objects. When presented with a novel query object
+we use a Monte Carlo procedure to construct a third type
+of density function (called the query density) over possible
+contact points on the new object. We again construct a query
+densityforeverylinkofthehand.Wethenusethesedensities
+in two ways to select the new grasp. First we pick a link,
+and draw a contact point for it on the object from the query
+density. Then we sample a hand conﬁguration to obtain the
+completesetoflinkposes.Thewholesolutionisthenreﬁned
+using simulated annealing on the product of all the query
+densities and the hand conﬁguration density. The paper starts
+with a survey of related work (Sec II); continues with the
+representations employed and the learning process (Sec III);
+followed by a description of the process for ﬁnding a grasp
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 5358
+for a novel object. We ﬁnish with an experimental study
+(Sec VI) and a discussion.
+II. RELATED WORK
+In robotics, mainstream grasp planning has traditionally
+relied on force analysis [3]. Unfortunately, the strengths
+of force analysis become mitigated in scenarios where the
+object models that the robot can recover (from memory or
+sensing) are incomplete or erroneous. Some authors have
+explored ways of directly linking perceptions to action pa-
+rameters. Symmetry principles have been used to reconstruct
+theoccludedsideofunknownobjects[23],andtherebyallow
+the deﬁnition of grasp contact points on occluded surfaces
+[4]. Others have parameterised grasps by looking for shapes
+that are likely to ﬁt into the robot’s gripper [9], [17]. Popovic
+et al. [17] computed grasps applied to object edges detected
+in2Dimages.Anotherclassofmethodssearch3Drangedata
+for shapes closely matching the geometry of the gripper [9].
+Instead of hard-coding the function that computes grasp
+parameters from vision, a growing number of researchers
+have focused on methods that learn the perception-action
+mapping from experimental data [7], [16]. A subclass of
+these focused on learning a mapping from incomplete object
+views to grasp parameters [1], [8], [11], [15], [14], [19],
+while another subclass has aimed at transferring grasps
+across objects whose complete 3D shape is known [2],
+[12]. When addressing the problem of grasping a partially-
+perceived object, authors have developed means of learning
+how to place the wrist of the gripper with respect to the part
+of the object that is perceived by the robot’s vision system
+[8], [11], [15], [14]. When working with two-ﬁnger grippers,
+the wrist completely parametrises the gripper pose [11]. In
+order to plan grasps for a three-ﬁnger hand, Kroemer et al.
+[15] and Detry et al. [8] let the robot learn a hand preshape,
+and relied on compliance or force sensing to close the hand.
+Alternately,Kroemeretal.[14]alsoreliedoncontrolpolicies
+to adapt the ﬁngers to the visual input. Saxena et al. [19]
+learned a three-ﬁnger grasp success classiﬁer from a bank of
+photometric and volumetric object features.
+Hillenbrand et al. [12] addressed the problem of transfer-
+ring a multi-ﬁnger grasp between two objects of known 3D
+shape. A known object’s geometry is warped until it matches
+that of a novel object, thereby also warping grasp points on
+the surface of the known object onto candidate grasp points
+on the novel object. Ben Amor et al. [2] exploit this warping
+method to transfer grasps taught by a human hand (using a
+data glove) to contact points for a robot hand on a novel
+object. Our work is, in spirit, most similar to the work of
+Ben Amor et al. [2] and Hillenbrand et al. [12], and to the
+work of Saxena et al. [19]. We compute a full hand grasping
+conﬁguration for a novel object, using a grasp model that is
+learned from a single or a few example grasps. Our method
+performs best when a full shape model of the target object
+is available, but it is also applicable to partially-modelled
+objects. One difference with [12] is that they transfer grasps
+within the same object shape category, whereas we are able
+to transfer grasps to different object categories.
+III. REPRESENTATIONS
+This paper addresses the problem of transferring grasps
+across objects. Given one or more grasp examples, we aim
+to capture the conﬁguration of the hand and its ﬁngers with
+respecttoneighbouringobjectsurfaces,andtoadaptthehand
+and ﬁngers to the shape of a novel object.
+We assume that the robot’s hand is formed of a palm,
+and a number of ﬁnger phalanges. We refer to the palm
+and phalanges as parts of the hand, denoted by H
+i
+(i =
+1,...,N).Ourapproachreliesonapairofmodelsthatcapture
+two complementary aspects of the grasping process. The
+ﬁrst model, referred to as the contact model, captures the
+conﬁguration of one hand part H
+i
+relative to local features
+from the object’s surface. Given the 3D model of an object
+that the robot has not grasped yet, contact model M
+i
+allows
+the robot to compute a set of poses for the hand part H
+i
+.
+When a robot is equipped with a N-part hand, up to N
+contact models can be instantiated.
+The second model, referred to as the hand conﬁguration
+model, captures a set of whole hand shapes close to the
+whole hand shape in the example grasp. The role of the
+hand conﬁguration model in inferring a grasp for a novel
+object will be to rapidly constrain the search space for the
+hand part positions. The hand conﬁguration model is learned
+from the same grasp data as the contact models.
+A. Kernel Density Estimation
+Much of our work relies on the joint probabilistic mod-
+eling of SE(3) poses and surface descriptors. As a result,
+this paper makes extensive use of probability density func-
+tions (PDFs) deﬁned on R
+3
+? SO(3)? R
+2
+, where SO(3)
+is the group of 3D rotations, and surface descriptors are
+parametrizedby tworealnumbers. Thissection explainshow
+we deﬁne these density functions.
+We represent PDFs non-parametrically with a set of pose-
+descriptor pairs (or particles) x
+`
+ 
+x
+`
+:x
+`
+2 R
+3
+? SO(3)? R
+2
+ 
+`2 [1,L]
+. (1)
+The probability density in a region of space is determined
+by the local density of the particles in that region. The
+underlying PDF is created through kernel density estimation
+[20], by assigning a kernel function K to each particle
+supporting the density, as
+pdf(x)'
+L
+X
+`=1
+w
+`
+K(x|µ
+`
+,  `
+), (2)
+whereµ
+`
+isthekernelmeanpoint,  `
+isthekernelbandwidth
+andw
+`
+is a weight associated tox
+`
+such that
+P
+`
+w
+`
+=1.We
+use a kernel that factorises into three functions deﬁned on
+the three components of our domain, namelyR
+3
+,SO(3), and
+R
+2
+. Denoting the separation ofx into a position, orientation,
+and feature by (p,q,r), we deﬁne our kernel with
+K(x|µ,  )= N
+3
+(p|µ
+p
+,  p
+)?( q|µ
+q
+,  q
+)N
+2
+(r|µ
+r
+,  r
+) (3)
+with kernel mean point µ=(µ
+p
+,µ
+q
+,µ
+r
+) and kernel band-
+width   =(  p
+,  q
+,  r
+), and where N
+k
+is k-variate isotropic
+5359
+Fig. 2. An example object point cloud (black dots) with a selected point, its
+surfacenormal(blueaxis),1-sthighestprincipalcurvature(redaxis),second
+lowest principal curvature (green axis), composing a complete frame shown
+in the right panel.
+Gaussian kernel, ? corresponds to a pair of antipodal von-
+Mises Fisher distributions which forms a Gaussian-like dis-
+tribution on SO(3) (for details see [10], [22]). The value of
+? is given by
+?( q|µ
+q
+,  q
+)=C
+4
+(  q
+)
+e
+  q µ
+T
+q
+q
++e
+    q µ
+T
+q
+q
+2
+(4)
+where C
+4
+(  q
+) is a normalising constant.
+B. Surface Features
+All objects considered in the paper are represented by
+point clouds. Each point x is characterised by a feature,
+comprising a 3D positionp, a 3D orientationq, and a surface
+descriptor r:
+x=(v,r),v=(p,q) (5)
+The surface descriptor corresponds to the local principal
+curvatures [21]. Curvatures at pointp are recorded along two
+directions that both lie in the plane tangential to the object’s
+surface, i.e. perpendicular to the surface normal at p. The
+ﬁrst direction, k
+1
+, is the direction of highest curvature. The
+second direction, k
+2
+, is perpendicular to k
+1
+. The curvatures
+along k
+1
+and k
+2
+are denoted by r
+1
+and r
+2
+respectively,
+forming a 2-dimensional feature vector r =(r
+1
+,r
+2
+). The
+surface normals and curvatures are computed using the PCL
+library [18].
+The surface normals and curvatures allow us to deﬁne a
+reference frame v at each object point p, with the exception
+ofr
+1
+? 0,whentheprincipaldirectionsarechosenrandomly,
+as it is in the case of planar surfaces. Fig. 2 illustrates surface
+normals and curvatures.
+The procedure described above allows the computation of
+a set of features (pose-descriptor pairs) {(v
+`
+,r
+`
+)} from a
+given object point cloud. In turn, the set of features deﬁnes a
+joint probability distribution, further referred to as the object
+model:
+O(v,r)? pdf
+O
+(v,r)'
+L
+X
+`=1
+w
+`
+K(v,r|µ
+x
+`
+,  x
+) (6)
+where O is short for pdf
+O
+, x
+`
+=(v
+`
+,r
+`
+), kernels K are
+deﬁned in Eq. (3), and all weights are equal w
+`
+=1/L.
+C. Contact Model
+A contact modelM
+i
+encodes the joint probability distribu-
+tion of surface features and the 3D pose of the i
+th
+hand part
+H
+i
+. Let us consider the hand grasping some given object.
+The (object) contact model of hand part H
+i
+is denoted by
+M
+i
+(U,R)? pdf
+M
+i
+(U,R) (7)
+whereM
+i
+is short forpdf
+M
+i
+,R is the random variable mod-
+eling surface features, and U models the pose of H
+i
+relative
+to a surface feature. In other words, denoting realisations
+of R and U by r and u, M
+i
+(u,r) is proportional to the
+probability of ﬁnding H
+i
+at pose u relatively to the frame of
+a nearby object surface feature that exhibits feature vector
+equal to r.
+Given a set of surface features {(v
+`
+,r
+`
+)}, a contact model
+M
+i
+is constructed by selecting a set of features from the
+neighbourhoodofthehandpartH
+i
+(Fig.3).Weproceedwith
+asoftselectionwhichassociates,toeachsurfacefeaturex
+`
+=
+((p
+`
+,q
+`
+),r
+`
+), a weight that exponentially decreases with a
+squared distance to H
+i
+(Fig. 4). The weight is given by
+w
+i`
+=exp(    ||p
+`
+  a
+i`
+||
+2
+), (8)
+where   2 R
++
+and a
+i`
+is a point on the surface of H
+i
+, the
+closest to p
+`
+.
+The contact model is approximated as
+M
+i
+(u,r)'
+X
+`
+w
+i`
+N
+3
+(p|µ
+p
+i`
+,  pi
+)?( q|µ
+q
+i`
+,  qi
+)N
+2
+(r|µ
+r
+`
+,  r
+)
+(9)
+where all weights are normalised
+P
+`
+w
+i`
+=1, u=(p,q),
+and where (µ
+p
+i`
+,µ
+q
+i`
+)= u
+i`
+is the centre of a kernel
+computed from `-th feature pose v
+`
+and the i-th hand part
+pose s
+i
+from their mutual geometric relation (see Fig. 3)
+s
+i
+=v
+`
+  u
+i`
+(10)
+or equivalentlyu
+i`
+=v
+  1
+`
+  s
+i
+, multiplying both sides of (10)
+by v
+  1
+`
+. u
+i`
+represents frame s
+i
+of hand part H
+i
+relatively
+to feature frame v
+`
+and independently on the world frame
+encoded by s
+i
+itself.
+Sum 9 involves only terms for which x
+`
+=((p
+`
+,q
+`
+),r
+`
+)
+belong to the neighbourhood ofH
+i
+,{x
+`
+: ||p
+`
+  a
+i`
+||  ,  2 R
++
+}. If the neighbourhood of a particular hand part H
+i
+is
+empty, the corresponding contact model is not instantiated
+and it is excluded from any further computation.
+v
+l
+ 
+a
+il
+ 
+s
+i
+ 
+W 
+??
+Fig. 3. Contact model: i-th hand part (solid rectangle) with frame s
+i
+, its
+neighbourhood (rounded dashed contour at distance   from the hand part),
+point cloud (dots), world frame W, `-th feature with frame v
+`
+and the
+corresponding closest point on the part surface a
+i`
+.
+5360
+Fig. 4. Example top grasp of a mug represented by a point cloud (left). The
+colorful regions at contacts between ﬁngers and the object are rays between
+features and the closest hand part surfaces (middle). The black curves with
+framesattheﬁngertipsrepresenttherangeofhandconﬁgurationsinEq.(12)
+(right).
+  in (8) and the bandwidths   pi
+,   qi
+,   r
+in (9) were
+hand tuned and kept ﬁxed in all the experiments. The time
+complexity for learning each contact model from an example
+grasp is?( |r||O||Tr|) where |Tr| is the number of triangles
+in the tri-mesh describing the hand part, |O| is the number
+of points in the object model.
+D. Hand Conﬁguration Model
+The hand conﬁguration model, denoted by C, encodes a
+set of conﬁgurations of the hand joints h 2 R
+D
+(i.e. joint
+angles), that are particular to example grasps. The purpose
+of this model is to allow us to restrict the grasp search space
+(during grasp transfer) to hand conﬁgurations that resemble
+those observed while training the grasp.
+In order to boost the generalisation capability of the
+grasping algorithm the hand conﬁguration model encodes
+the hand conﬁguration that was observed when grasping the
+training object, but also a set of conﬁgurations recorded
+during the approach towards the object. Let us denote by
+h
+t
+the joint angles at some small distance before the hand
+reachedthetrainingobject,andbyh
+g
+thehandjointanglesat
+thetimewhenthehandmadecontactwiththetrainingobject.
+We consider a set of conﬁgurations interpolated between h
+t
+and h
+g
+, and extrapolated beyond h
+g
+, as
+h(  )=(1    )h
+g
++ h
+t
+(11)
+where   2 R. For all  < 0, conﬁgurations h(  ) are
+beyond h
+g
+(see Fig. 4). The hand conﬁguration model C is
+constructed by applying kernel density estimation to {h(  ):
+  2 [   ,  ],  2 R
++
+}:
+C(h)? X
+  2 [   ,  ]
+w(h(  ))N
+D
+(h|h(  ),  h
+) (12)
+wherew(h(  )) = exp(  ? kh(  )  h
+g
+k
+2
+) and? 2 R
++
+.? and
+  were hand tuned and kept ﬁxed in all the experiments. The
+hand conﬁguration model computation has time complexity
+?( |  |) where  is the size of the set of values of of   used
+in Eq. 12.
+IV. INFERRING GRASPS FOR NOVEL OBJECTS
+After acquiring the contact model and the hand conﬁgu-
+ration model the robot is now presented with a new query
+object to grasp. The aim is that the robot ﬁnds a grasp such
+that its parts H
+i
+are well-placed with respect to the object
+surface, while preserving similarity to the example grasps.
+First of all we combine the contact models with the
+observed point cloud for the object to obtain a set of query
+densities, one for each hand part. The i
+th
+query density Q
+i
+is a density over where the i-th hand part H
+i
+can be on the
+surface of new object (see Fig. 5). From the query densities,
+a hand pose is generated as follows. We randomly pick a
+hand part j. We randomly sample, from the corresponding
+query density, a pose for part j. We sample poses for all
+other hand parts, from the hand conﬁguration model aligned
+to match the pose of part i, yielding a kinematically feasible
+hand conﬁguration that is compatible with the pose selected
+for part i. We reﬁne the grasp by performing a simulated
+annealing search in the hand conﬁguration space, to locally
+maximisethegrasplikelihoodmeasuredastheproductofthe
+hand conﬁguration density and the query densities for all the
+hand parts, thereby ensuring adjustments of the remaining
+hand parts to make contacts with surface patches of similar
+local curvature to their contact models. We repeat the entire
+process a ﬁxed number of times, and select the most likely
+kinematically feasible grasp.
+The optimisation procedure generates several possible
+grasps, each with its likelihood. Each grasp has a set of
+hand part poses that independently comply with the contact
+models, while jointly complying to the hand conﬁguration
+model. The following subsections explain in detail how to
+create approximate query densities for a given query object,
+and how grasp optimisation is carried out using simulated
+annealing.
+A. Query Density
+This section explains how query densities are constructed.
+A query density emerges from the combination of a contact
+model with an object point cloud O. The i
+th
+query density
+Q
+i
+models where the i-th hand part H
+i
+can be placed to
+grasp the object, given the features observed on the object’s
+surface. Speciﬁcally, Q
+i
+models the pose distribution of H
+i
+in the world frame.
+The contact model M
+i
+models viable poses for H
+i
+rel-
+atively to surface features. Intuitively, a contact model is
+constructed by ﬁnding pairs of matches between the features
+that belong to M
+i
+and the features of O, and representing
+the distribution of poses for H
+i
+that are suggested by all
+matching pairs of features.
+The above procedure can be described in probabilistic
+terms as an integration over (v,r) 2 O and (u,r) 2 M
+i
+,
+yielding query density Q
+i
+:
+Q
+i
+(s)? Z
+i
+Z
+P
+i
+(s|v,u)O(v,r)M
+i
+(u,r)dvdudr (13)
+whereZ
+i
+isanormalisationconstant,whileO andM
+i
+satisfy
+Z
+O(v,r)dvdr=1,
+Z
+M
+i
+(u,r)dudr=1 (14)
+5361
+Fig. 5. Visualisation of two query densities (right) for two contact models
+(left) of a handle grasp. Each contact model is created for a single hand
+part (blue) for an example mug (left). A query density is a distribution over
+poses of the corresponding hand part (red cloud) for a new “query” mug.
+Furthermore, the conditional densityP
+i
+represents pose mul-
+tiplication s =v  u, O and M
+i
+contribute to the weight of
+pose s through the common feature variable r.
+Using Bayes rule the integral (13) can be rewritten as
+follows:
+Q
+i
+(s)=Z
+i
+Z
+P
+i
+(s|v,u)O(r|v)O(v)M
+i
+(u|r)M
+i
+(r)dvdudr
+(15)
+If the involved objects are represented simply as a collection
+ofsurfacefeatures(5)withoutuncertainties,O(r|v)becomes
+a mapping r(v): v ! r which for any choice of v
+uniquely determines r, effectively removing integration over
+r. Eq. (15) can be approximated as
+Q
+i
+(s)'
+Z
+P
+i
+(s|v,u)O(v)M
+i
+(u|r(v))M
+i
+(r(v))dvdu (16)
+Eq. (16) can be computed directly via Monte Carlo in-
+tegration [5], [6], which generates a number of weighted
+kernels, by repeating the following steps:
+1) Sample (ˆ v
+`
+,ˆ r
+`
+)? O, i.e. just pick up random surface
+feature from the point cloud
+2) Sample from conditional density (ˆ u
+i`
+)? M
+i
+(u|ˆ r)
+3) Compute kernel centre ˆ s
+i`
+=ˆ v
+`
+  ˆ u
+i`
+4) Compute kernel weight w
+i`
+=M
+i
+(ˆ r
+`
+)
+Query density (13) can be ﬁnally approximated as
+Q
+i
+(s)'
+X
+`
+w
+i`
+N
+3
+(p|µ
+ˆ p
+i`
+,  pi
+)?( q|µ
+ˆ q
+i`
+,  qi
+) (17)
+with `-th kernel centre (µ
+ˆ p
+i`
+,µ
+ˆ q
+i`
+)= ˆ s
+i`
+, and where all
+weights were normalised
+P
+`
+w
+i`
+=1.
+The bandwidths   pi
+and   qi
+in (17) were hand tuned and
+kept ﬁxed in all the experiments.
+Fig. 5 visualises two example query densities created for
+two contact models of a handle grasp (see also Fig. 10).
+B. Grasp Optimisation
+We now describe how to compute the most desirable
+grasp conﬁguration for a new object. Let us denote by
+s=(s
+1
+,...,s
+N
+) the conﬁguration of the hand in terms of
+a set of hand part poses s
+i
+2 SE(3). Let us also denote
+by h =(h
+w
+,h
+j
+) the hand pose in term of a wrist pose
+h
+w
+2 SE(3) and joint conﬁguration h
+j
+2 R
+D
+. Finally, let
+k
+for
+(·) denote the forward kinematic function of the hand,
+with
+s =k
+for
+(h),s
+i
+=k
+for
+i
+(h) (18)
+We infer a desirable set of grasp parameters by maximising
+a product
+h = argmax
+(hw,hj)
+C(h
+j
+)
+Y
+i
+Q
+i
+ 
+k
+for
+i
+(h
+w
+,h
+j
+)
+ 
+. (19)
+where C(h
+j
+) is the hand conﬁguration model (12) and Q
+i
+are query densities (17).
+In other words, we search for the hand poseh which max-
+imises the pose probability of hand parts H
+i
+given surface
+features observed on the object, while limiting the search to
+hand conﬁgurations that resemble those from training.
+Product 19 is maximised using a simulated annealing
+procedure which is initialised as follows:
+1) pick up random hand part i
+2) ﬁnd the corresponding part pose s
+i
+by sampling from
+Q
+i
+3) pickuprandomhandconﬁgurationh
+j
+bysamplingfrom
+C(h
+j
+)
+4) compute remaining parts posess and hand poseh using
+forward kinematics
+5) evaluate Eq. 19, retain best scoring h.
+In the next iterations, the simulated annealing procedure
+skips steps 1) and 2) directly generating wrist pose h
+w
+in
+some neighbourhood of the previous best scoring one.
+The entire procedure is then repeated 1000 times, gener-
+ating a large number of solutions (grasps) which are then
+clustered and ranked, yielding a variety of candidate hand
+poses (“grasp clusters”) which are then checked against arm
+reachability and workspace constraints. The remaining best
+scoring hand pose is then used to generate an approach
+trajectory. The computation of the query distribution has
+time complexity ?( |r||O||L|) where L is the number of
+kernels in the query density. The query density is calculated
+once for each new object for each hand part prior to grasp
+optimisation.
+V. EXPERIMENTAL METHOD
+We tested our method with 18 real objects and two robot
+platforms. We performed three experiments. In these we use
+two types of point cloud models of objects. Type 1 (a full
+object model) is a precise high density point cloud created
+by sampling from a CAD model of the object. Type 2 (a
+partial object model) is a point cloud gathered from two
+views of the object on the ﬂy, using a depth camera, and is
+thusmoresparse,andmorenoisy.InExperiment1wetrained
+and tested grasps on objects with full models. In Experiment
+2 we trained on objects with full models, but transferred to
+objects with partial models. In Experiment 3 we trained and
+tested on objects with partial models.
+The method adapts a known grasp type to a novel object,
+and so the training set was organised by grasp type. Six
+5362
+Grasps on #Succ. #Fail Success rate
+Training objects 14 2 88%
+Novel objects 31 5 86%
+TABLE I
+ALL EXPERIMENTS: GRASP SUCCESS RATES.
+grasptypeswereused:rim,pinch,pinchwithsupport,power,
+handle grasp with support, and a top grasp. A training object
+was placed in front of the robot, and a partial point cloud
+constructed from two views. In Experiments 1 and 2 pose
+estimation for the full object model was then performed with
+a model ﬁtting procedure [13]. In Experiment 3 only the par-
+tial point cloud gathered on the ﬂy was used for training. The
+training grasp was then taught on the localised object model
+(Experiment 1,2) or the partial point cloud (Experiment 3),
+andthecontactmodel,andhandconﬁgurationmodellearned.
+The training grasp was then executed on the real object. This
+real execution was not used for the learning, but to test the
+residual failure rate due to localisation errors. After training,
+test objects were presented in sequence, a grasp type selected
+for each by hand. For each test object the grasp adaptation
+procedure ran 1000 times to generate 1000 candidate grasps,
+takingatotalof 5secstocompute.Thesegraspswereranked
+by the score h (Eq. 19) and working down the list each was
+tested for kinematic feasibility using collision checking and
+reachability analysis for the ﬁnal hand pose. The highest
+scoring feasible grasp was then selected to be performed.
+Two robot platforms were used. The ﬁrst was the DLR Justin
+mobile robot (Fig. 11), equipped with a 15-DoF DLR II hand
+with 4 ﬁngers. The second robot platform (Fig. 6) had a 20-
+DoF DLR-HIT II hand with 5 ﬁngers.
+VI. RESULTS
+Success rates aggregated over all three experiments are
+shown in Table I, 88% of the grasps executed on training
+objects succeeded, while 86% succeeded on novel objects.
+Success here corresponds to the ability to lift up an object at
+least 20cm above the table. The training case failures are due
+to localisation error. Table II shows the training and test sets
+for Experiment 1. For Experiment 2 we trained two grasps:
+power and pinch on the bottle and dumpling box respec-
+tively, and transfered those successfully the moisturiser and
+anti-perspirant (pinch), and spray tin (power) (Fig. 12). In
+Experiment3wetrainedonthestapler(rim)andsuccessfully
+tested on the bowl and the cutlery holder (Fig. 13). Pictures
+of results for Experiment 1 are shown in (Figs. 8-10).
+VII. CONCLUSIONS AND DISCUSSION
+In this paper we have presented a method that generalises
+a single grasp (contacts and trajectories) of an object to
+several grasps of other objects with different global shapes.
+One essential element of our approach is learning a separate
+contact model for each ﬁnger phalange how of its pose
+relative to the surface is related to local surface feature.
+Another is that we learn a hand conﬁguration model based
+Platform Training Test
+DLR-HIT 2 glass (r), mug2 (r), bottle (ps),
+bottle (p), tube (ps) toothpaste (p,ps), cup (r)
+dumpling box (w) herring tin (w,ps),
+chocsticks box (w),
+drops box (ps), tube (p),
+Justin mug1 (t,h) mug2 (t,h), glass (t)
+bottle (ps) cup (t), tube (ps)
+TABLE II
+EXPERIMENT 1 SETUP.MUG1 AND 2 WERE ALSO SWAPPED.PINCH=P,
+RIM=R, PINCH SUPPORT=PS, POWER=W, TOP=T, HANDLE=H.
+on sampling poses near to those on the approach trajectory
+in the training example.
+The empirical studies we have performed show that: i)
+our method can learn from one or two example grasps of
+a particular type (e.g. power, pinch, pinch with support);
+ii) the system creates grasps for objects we tested with
+globally different shapes from the training objects, but which
+share some local shapes; iii) for a new object many new
+grasps can be generated, ordered by likelihood, and these
+form grasp clusters, allowing the selection of grasps that
+satisfy workspace constraints; iv) successful new grasps can
+also be generated even where shape recovery is incomplete
+for the new object; v) this model works for a total of 31
+transferred grasps of novel objects made with two different
+multi-ﬁngered robot systems.
+Future planned work includes automating selection be-
+tween types of trained grasps. At the moment we only show
+that a trained grasp type can generalise to new objects, and
+not that we can automatically choose a grasp type.
+REFERENCES
+[1] C. Bard and J. Troccaz. Automatic preshaping for a dextrous hand
+from a simple description of objects. In IEEE IROS, 1990.
+[2] H.BenAmor,O.Kroemer,U.Hillenbrand,G.Neumann,andJ.Peters.
+Generalization of human grasping for multi-ﬁngered robot hands. In
+IROS, pages 2043–2050. IEEE, 2012.
+[3] A. Bicchi and V. Kumar. Robotic grasping and contact: a review. In
+IEEE International Conference on Robotics and Automation, 2000.
+[4] J. Bohg, M. Johnson-Roberson, B. Le´ on, J. Felip, X. Gratal,
+N. Bergstrom, D. Kragic, and A. Morales. Mind the gap – robotic
+grasping under incomplete observation. In IEEE ICRA, 2011.
+[5] R.E. Caﬂisch. Monte carlo and quasi-monte carlo methods. Acta
+Numerica, 7:1–49, 1998.
+[6] A. Chiuso and S. Soatto. Monte carlo ﬁltering on lie groups. In Proc.
+of IEEE CDC, volume 1, pages 304–309, December 2000.
+[7] J. Coelho, J. Piater, and R. Grupen. Developing haptic and visual
+perceptualcategoriesforreachingandgraspingwithahumanoidrobot.
+In Robotics and Autonomous Systems, volume 37, pages 7–8, 2000.
+[8] R. Detry, C. Henrik Ek, M. Madry, and D. Kragic. Learning a dictio-
+nary of prototypical grasp-predicting parts from grasping experience.
+In IEEE ICRA, 2013.
+[9] D. Fischinger and M. Vincze. Empty the basket – a shape based
+learning approach for grasping piles of unknown objects. In IEEE
+IROS, 2012.
+[10] R. A. Fisher. Dispersion on a sphere. In Proc. Roy. Soc. London Ser.
+A., 1953.
+[11] A. Herzog, P. Pastor, M. Kalakrishnan, L. Righetti, T. Asfour, and
+S. Schaal. Template-based learning of grasp selection. In IEEE ICRA,
+2012.
+[12] U. Hillenbrand and M.A. Roa. Transferring functional grasps through
+contact warping and local replanning. In IROS, pages 2963–2970.
+IEEE, 2012.
+5363
+Fig. 6. Pinch with support grasp. The ﬁrst column shows the demonstrated grasp and resulting learned contact models for a tablet tube. Remaining ﬁgures
+in middle and bottom rows show grasps subsequently generated by the agent for - coke bottle, orange-drops box and herring tin objects (executed grasps
+plus 2 alternative grasp clusters for each object), and a toothpaste tube object (executed grasp plus one alternative grasp cluster - both shown as simulator
+images due to poor camera viewing angle during execution).
+Fig. 7. Pinch grasp. Left to right: demonstrated grasp on coke bottle and resulting learned contact models; transferred grasp to tablet tube plus one
+additional grasp cluster; transferred grasp to toothpaste tube plus two additional grasp clusters.
+Fig. 8. Power grasp. Left to right: demonstrated grasp on instant dumpligs box and learned contact models; transfer to herring tin (executed grasp plus
+additional grasp cluster); transfer to chocsticks box (executed grasp plus three additional grasp clusters).
+Fig. 9. Rim grasp. Left to right: demonstrated grasp on water glass and learned contact models; transferred grasps to two different tea-cups.
+Fig. 10. Mug handle grasp. Left to right: demonstrated grasp mug 1 (fails!) and learned contact models; transfer to mug 2 (executed plus additional
+cluster); demonstrated grasp mug 2; transfer to mug 1 (executed plus additional cluster).
+5364
+Fig. 11. Mug top grasp. Top row - demonstration and learned contact model for mug 1; transferred grasp plus one additional grasp cluster for water
+glass. Bottom row - transferred grasps plus two additional grasp clusters for mugs 2 and 3.
+Fig. 12. Grasp transfers from complete point cloud models to objects represented by incomplete point clouds. Left to right: power grasp of lubricant
+spray (executed grasp plus one additional grasp cluster); pinch grasp on moisturiser; pinch grasp on antiperspirant (executed grasp plus two additional
+grasp clusters).
+Fig. 13. Pinch grasp transfer from a stapler incomplete point cloud model (top and bottom left images) into two objects also represented by incomplete
+point clouds: a cutlery holder (top) and a wooden bowl (bottom).
+[13] Ulrich Hillenbrand. Non-parametric 3d shape warping. In Pattern
+Recognition (ICPR), pages 2656–2659. IEEE, 2010.
+[14] O. Kroemer, R. Detry, J. Piater, and J. Peters. Combining active
+learning and reactive control for robot grasping. RAS, 58, 2010.
+[15] O.Kroemer,E.Ugur,E.Oztop,andJ.Peters. Akernel-basedapproach
+to direct action perception. In IEEE ICRA, 2012.
+[16] A. Morales, E. Chinellato, A. H. Fagg, and A. P. del Pobil. Using
+experience for assessing grasp reliability. Int. Journ. of Humanoid
+Robotics, 1(4):671–691, 2004.
+[17] M. Popovi´ c, D. Kraft, L. Bodenhagen, E. Bas ¸eski, N. Pugeault,
+D. Kragic, T. Asfour, and N. Kr¨ uger. A strategy for grasping unknown
+objects based on co-planarity and colour information. RAS, 2010.
+[18] R. Rusu and S. Cousins. 3D is here: Point Cloud Library (PCL). In
+ICRA 2011, Shanghai, China, May 9-13 2011.
+[19] A. Saxena, L. Wong, and A.Y. Ng. Learning grasp strategies with
+partial shape information. In AAAI, 2008.
+[20] B. W. Silverman. Density Estimation for Statistics and Data Analysis.
+Chapman & Hall/CRC, 1986.
+[21] M. Spivak. A comprehensive introduction to differential geometry,
+volume 1. Publish or Perish Berkeley, 1999.
+[22] Erik B. Sudderth. Graphical models for visual object recognition and
+tracking. PhD thesis, MIT, Cambridge, MA, 2006.
+[23] S. Thrun and B. Wegbreit. Shape from symmetry. In IEEE ICCV,
+volume 2, pages 1824–1831, 2005.
+5365

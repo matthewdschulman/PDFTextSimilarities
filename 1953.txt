@@ -1,0 +1,1560 @@
+A Robust and Easy to Implement Method for IMU Calibration without
+External Equipments
+David Tedaldi, Alberto Pretto and Emanuele Menegatti
+Abstract— Motion sensors as inertial measurement units
+(IMU) are widely used in robotics, for instance in the navigation
+and mapping tasks. Nowadays, many low cost micro electro
+mechanical systems (MEMS) based IMU are available off the
+shelf, while smartphones and similar devices are almost always
+equipped with low-cost embedded IMU sensors. Nevertheless,
+low cost IMUs are affected by systematic error given by
+imprecise scaling factors and axes misalignments that decrease
+accuracy in the position and attitudes estimation.
+In this paper, we propose a robust and easy to implement
+method to calibrate an IMU without any external equipment.
+The procedure is based on a multi-position scheme, providing
+scale and misalignments factors for both the accelerometers
+and gyroscopes triads, while estimating the sensor biases. Our
+method only requires the sensor to be moved by hand and
+placed in a set of different, static positions (attitudes). We
+describe a robust and quick calibration protocol that exploits
+an effective parameterless static ﬁlter to reliably detect the static
+intervals in the sensor measurements, where we assume local
+stability of the gravity’s magnitude and stable temperature.
+We ﬁrst calibrate the accelerometers triad taking measurement
+samples in the static intervals. We then exploit these results
+to calibrate the gyroscopes, employing a robust numerical
+integration technique.
+The performances of the proposed calibration technique has
+been successfully evaluated via extensive simulations and real
+experiments with a commercial IMU provided with a calibra-
+tion certiﬁcate as reference data.
+I. INTRODUCTION
+IMUs (Inertial Measurement Units) are very popular
+sensors in robotics: among others, they have been exploited
+for inertial-only navigation [1], attitude estimation [2], and
+visual-inertial navigation [3], [4], also using a smartphone
+device [5]. IMUs used in robotics are usually based on
+MEMS (micro electro mechanical systems) technology.
+They are composed by a set of tri-axial clusters: an
+accelerometers, a gyros and often a magnetometer cluster.
+In an ideal IMU, the tri-axial clusters should share the same
+3D orthogonal sensitivity axes that span a three dimensional
+space, while the scale factor should convert the digital
+quantity measured by each sensor into the real physical
+quantity (e.g, accelerations and gyro rates). Unfortunately,
+low cost MEMS based IMU are usually affected by non
+accurate scaling, sensor axis misalignments, cross-axis
+This research has been partially supported by Consorzio Ethics with
+the grant ”Rehabilitation Robotics”, by Univ. of Padova with the grant
+“TIDY-UP: Enhanced Visual Exploration for Robot Navigation and Ob-
+ject Recognition”, and by the European Commission under FP7-600890-
+ROVINA. The authors are with the Department of Information Engineering,
+University of Padova, Italy. Email: david.tedaldi@gmail.com,
+emg@dei.unipd.it. Pretto is also with the Department of Computer,
+Control, and Management Engineering “Antonio Ruberti“, Sapienza Univer-
+sity of Rome, Italy. Email: pretto@dis.uniroma1.it
+Fig. 1. Calibration protocol: (top) Some examples of the Xsens MTi IMU
+disposed in different attitudes as required by our method; (down) Diagram
+of our calibration protocol
+sensitivities, and non zero biases. The IMU calibration
+refers to the process of identifying these quantities.
+Many commercial IMU in the cost range form 1000 $
+to 2000 $, such as the Xsens MTi [6] exploited in the
+experiments (Sec. V), are factory calibrated
+1
+. Each sensor
+is sold with its own calibration parameter set stored into the
+ﬁrmware or inside a non-volatile memory, providing accurate
+measurements off the shelf. Unfortunately, the overhead
+cost for the factory calibration is predominant: usually the
+sensor hardware (sensors, chips, embodiment, . . . ) is likely
+to be only a fraction of the ﬁnal device cost. Actually, the
+factory calibration is usually performed using standard but
+effective methods, where the device outputs are compared
+with known references: this process requires time for each
+1
+Often they are also compensated over temperature
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 3042
+sensor and a high cost equipment. On the other hand, low-
+cost IMUs (20-100 $) and the IMU sensors that equip current
+smartphones are usually poorly calibrated, resulting in mea-
+surements coupled with not negligible systematic errors. For
+instance, state-of-the-art visual-inertial navigation systems
+such the one presented in [5], that exploits a smartphone as
+experimental platform, while performing so well in forward,
+almost regular, motion
+2
+, shows lower performances in more
+“exciting” motions, i.e. in motions that quickly change linear
+acceleration and rotational axes.
+In this paper, we propose an effective and easy to imple-
+ment calibration scheme, that only requires to collect IMU
+data with the simple procedure described in the ﬂow chart
+reported in Fig. 1. After an initial initialization period with
+no motion, the operator should move the IMU in different
+positions, in order to generate a set of distinct, temporarily
+stable, rotations. The collected dataset is used to calibrate the
+scale and misalignments factors for both the accelerometers
+and gyroscopes triads, while estimating the sensor biases.
+As other calibration technique, we neglect the effect of the
+cross-axis sensitivities, since for minor misalignments and
+minor cross-axis sensitivities errors it is usually difﬁcult to
+distinguish between them.
+Our procedure exploits the basic idea of the multi-position
+method, ﬁrstly presented in [7] for accelerometers calibra-
+tion: in a static position, the norms of the measured acceler-
+ations is equal to the magnitudes of the gravity plus a multi-
+source error factor (i.e., it includes biases, misalignment,
+noise,...). All these quantities can be estimated via minimiza-
+tion over a set of static attitudes. After the calibration of the
+accelerometer triad, we can use the gravity vector positions
+measured by the accelerometers as a reference to calibrate the
+gyroscope triad. Integrating the angular velocities between
+two consecutive static positions, we can estimate the gravity
+positions in the new orientation. The gyroscopes calibration
+is ﬁnally obtained minimizing the errors between these
+estimates and the gravity references given by the calibrated
+accelerometers.
+In this procedure the gyroscopes calibration accuracy
+strongly depends on the accuracy of the accelerometers cali-
+bration, being used as a reference. Moreover, signal noise and
+biases should negatively affect both the calibration accuracy
+and the reliability of the algorithms used to detect the actual
+static intervals used in the calibration. Finally, a consistent
+numerical integration process is essential to mitigate the
+effect of the signal discretization, usually sampled at 100
+Hz. In our approach, we face these problems introducing
+the following modiﬁcations to the standard multi-position
+method:
+ The proposed calibration protocol exploits a larger
+number of static states with reduced periods, in order to
+increase the cardinality of the dataset while preserving
+the assumption of local stability of the sensors biases
+ As proposed in [8], we characterize the gyroscope bias
+2
+Actually, during an almost regular motion miscalibration errors may
+easily be assimilated by the biases included in the system state
+drifts in a period estimated using the Allan variance
+ We introduce a simple but effective static detector
+that exploits the sensor noise magnitude, a ﬁxed-time
+sampling window and a cutting threshold, automatically
+estimated inside the optimization framework
+ We employ the Runge-Kutta numerical integration
+method to improve the accuracy of the gyroscope cali-
+bration.
+We have extensively tested our system using synthetic data
+affected by variable biases, misalignments, scale factor er-
+rors, and noise. In all of the cases, we have obtained
+stable and accurate results. Moreover, we have performed
+the calibration of a commercial, factory calibrated Xsens
+MTi IMU, using its raw, uncalibrated data as input. Our
+calibration results are comparable to the factory parameters
+reported by the device’s calibration certiﬁcate.
+A. Related Works
+Traditionally the calibration of an IMU has been done by
+using special mechanical platforms such as a robotic ma-
+nipulator, moving the IMU with known rotational velocities
+in a set of precisely controlled orientations [9], [10], [11].
+At each orientation, the output of the accelerometers are
+compared with the precomputed gravity vector while during
+the rotations the output of gyroscopes are compared with the
+precomputed rotational velocity. However, the mechanical
+platforms used for calibration are usually very expensive,
+resulting in a calibration cost that often exceeds the cost of
+the IMU’s hardware.
+In [12] a calibration procedure that exploits a marker-
+based optical tracking system has been presented, while in
+[13], the GPS readings are used to calibrate initial biases
+and misalignments. Clearly, the accuracy of these methods
+strongly depends on the accuracy of the employed kinematic
+reference (i.e., the motion capture system or the GPS). The
+multi-position method was ﬁrstly introduced by Lotters et al.
+[7]: they proposed to calibrate the biases and the scale factor
+of the accelerometers using the fact that the magnitude of
+the static acceleration must equal to the gravity’s magnitude.
+This technique has been extended in [14] and [15] to include
+the accelerometer axis misalignment. The error model they
+proposed for the gyroscopes is similar to the one used for
+the accelerometers, but the calibration procedure in this
+case requires a single axis turntable to provide a strong
+rotation rate signal, providing high calibration accuracy. Un-
+fortunately, these approaches not only require a mechanical
+equipment, but the two triads are independently calibrated,
+and the misalignment between them can’t be detected. In
+[8] and [16] authors presented two calibration schemes that
+do not require any external mechanical equipment. Similarly
+to our approach, in the ﬁrst work the authors calibrate
+the accelerometers exploiting the high local stability of the
+gravity vector’s magnitude, and then gyroscopes calibration
+is obtained comparing the gravity vector sensed by the
+calibrated accelerometer with the gravity vector obtained by
+integrating the angular velocities. In the second work the
+authors also exploit the local stability of the magnetic ﬁeld.
+3043
+Hwangbo et al. [17] recently proposed a self-calibration
+technique based on an iterative matrix factorization. They
+use gravity as accelerometers reference, and a camera as
+gyroscopes reference.
+II. SENSOR ERROR MODEL
+For an ideal IMU, the 3 axes of the accelerometers
+triad and the 3 axes of the gyroscopes triad deﬁne a
+single, shared, orthogonal 3D frame. Each accelerometer
+senses the acceleration along of one distinct axis, while
+each gyroscope measures the angular velocity around the
+same axis. Unfortunately in real IMUs, due to assembly
+inaccuracy, the two triads form two distinct (i.e., misaligned),
+non-orthogonal, frames. Also the single sensors are not
+perfect: typically the scaling factors used to convert the
+digital outputs of the sensors in real physical quantity
+are different for different instances of the same sensors,
+while only a default, nominal scaling factor is provided
+by manufacturers. Moreover, the output signals are almost
+always affected by non zero, variable biases.
+As introduced above, both the accelerometers frame (AF)
+and the gyroscopes frame (GF) are usually non-orthogonal.
+We can deﬁne two associated orthogonal, ideal frames (AOF
+and GOF, respectively) in the following way:
+ The x-axis of the AOF and the one of the AF coincide
+ The y-axis of the AOF lies in the plan spanned by the
+x and y axes of the AF.
+For the gyroscopes case, it is sufﬁcient to substitute the AF
+and AOF acronyms with GF and GOF, respectively. Finally,
+we deﬁne a body frame (BF), which is an orthogonal frame
+that represents, for example, the coordinate frame of the
+IMU’s chassis. The body frame usually differs from the
+AF and GF frames by small angles but, in general, there
+is no direct relation between them. For small angles, a
+measurement s
+S
+in a non-orthogonal frame (AF or GF) can
+be transformed in the orthogonal body frame as (for details
+of the derivation, see [18]):
+s
+B
+= Ts
+S
+; T =
+2
+4
+1  
+yz
+
+zy
+
+xz
+1  
+zx
+ 
+xy
+
+yx
+1
+3
+5
+(1)
+where s
+B
+and s
+S
+denote the speciﬁc force (acceleration),
+or equivalently the rotational velocity, in the body frame
+coordinates and accelerometers (or gyroscopes) coordinates,
+respectively. Here
+ij
+is the rotation of thei-th accelerometer
+or gyroscope axis around the j-th BF axis, see Fig. 2.
+On the other hand, the two orthogonal frames BF and
+AOF (and, equivalently, BF and GOF) are relate by a pure
+rotation.
+In the presented calibration method, we assume that the
+body frame BF coincides with the accelerometers orthogonal
+frame AOF: in such case, the angles 
+xz
+;
+xy
+;
+yx
+become
+zero, so in the accelerometers case Eq. 1 becomes:
+a
+O
+= T
+a
+a
+S
+; T
+a
+=
+2
+4
+1  
+yz
+
+zy
+0 1  
+zx
+0 0 1
+3
+5
+(2)
+Fig. 2. Non-orthogonal sensor (accelerometers or gyroscopes) axes (x
+S
+,
+y
+S
+, z
+S
+), and body frame axes (x
+B
+, y
+B
+, z
+B
+).
+where we have changed letter , referring to the general
+case, with the letter , referring to the accelerometer case,
+while a
+O
+and a
+S
+denote the speciﬁc acceleration in AOF
+and AF, respectively
+3
+.
+As mentioned before, gyroscope and accelerometer mea-
+surements should refer to the same reference frame, in our
+case AOF. Then, using Eq. 1, for the gyroscopes, we have:
+!
+O
+= T
+g
+!
+S
+; T
+g
+=
+2
+4
+1  
+yz
+
+zy
+
+xz
+1  
+zx
+ 
+xy
+
+yx
+1
+3
+5
+(3)
+where!
+O
+and!
+S
+denote the speciﬁc angular velocities in
+AOF and in GF , respectively.
+Both the accelerometers and the gyroscopes are affected
+by biases and scale errors. Two scaling matrix are introduced
+K
+a
+=
+2
+4
+s
+a
+x
+0 0
+0 s
+a
+y
+0
+0 0 s
+a
+z
+3
+5
+; K
+g
+=
+2
+4
+s
+g
+x
+0 0
+0 s
+g
+y
+0
+0 0 s
+g
+z
+3
+5
+(4)
+We introduce also two bias vector
+b
+a
+=
+2
+4
+b
+a
+x
+b
+a
+y
+b
+a
+z
+3
+5
+; b
+g
+=
+2
+4
+b
+g
+x
+b
+g
+y
+b
+g
+z
+3
+5
+(5)
+The complete sensor error model is
+a
+O
+= T
+a
+K
+a
+(a
+S
++ b
+a
++
+a
+) (6)
+for the accelerometers, and
+!
+O
+= T
+g
+K
+g
+(!
+S
++ b
+g
++
+g
+) (7)
+for the gyroscope, where 
+g
+and 
+g
+are the accelerometer
+measurement noise and the gyroscope measurement noise,
+respectively.
+3
+To relate the obtained calibration with a different body frame (e.g.
+BF’), it is sufﬁcient to estimate the rotation matrix that relate AOF to BF’,
+for instance using the accelerometers outputs in three different orthogonal
+orientations.
+3044
+III. BASIC CALIBRATION FRAMEWORK
+In order to calibrate the accelerometers triad, we need to
+estimate the following unknown parameter vector:
+
+acc
+=
+
+
+yz
+;
+zy
+;
+zx
+;s
+a
+x
+;s
+a
+y
+;s
+a
+z
+;b
+a
+x
+;b
+a
+y
+;b
+a
+z
+
+(8)
+We deﬁne the following function:
+a
+O
+=h(a
+S
+;
+acc
+) = T
+a
+K
+a
+(a
+S
++ b
+a
+) (9)
+Here we can neglect the measurements noise thanks to
+the fact that in our calibration procedure we apply signal
+averaging in each static interval.
+As in the conventional multi-position scheme, we move the
+IMU in a set of M distinct, temporarily stable, rotations.
+We can extract M acceleration vectors a
+S
+k
+(measured in the
+non-orthogonal AF), averaging the accelerometers readings
+in a temporal window inside each static interval. The cost
+function we use to estimate accelerometers’ parameters is:
+L(
+acc
+) =
+M
+X
+k=1
+(jjgjj
+2
+ jjh(a
+S
+k
+;
+acc
+)jj
+2
+)
+2
+(10)
+where jjgjj is the actual magnitude of the local gravity
+vector that can easily recovered from speciﬁc public tables
+(e.g., knowing latitude, longitude and altitude of the location
+where we are performing the calibration). In order to
+minimize Eq. 10, we employ the Levenberg-Marquardt
+(LM) algorithm.
+In order to calibrate the gyroscope triad, we can assume
+the system as bias-free simply averaging the static gyroscope
+signals over a suitable initial period of no motion. This
+is justiﬁed by the following discussion about the Allan
+variance (see Sec. IV-C). Moreover, since we need to use the
+accelerometers as known references, we use the calibration
+parameters
+acc
+computed above, correcting the accelerom-
+eters readings with Eq. 9.
+We deﬁne the operator 	, that takes as input a sequence ofn
+gyroscopes readings!
+S
+i
+and an initial gravity versor u
+a;k 1
+(i.e., a unit vector representing the gravity direction) given
+by the calibrated accelerometers, and return the ﬁnal gravity
+versor u
+g;k
+, computed using the gyroscopes measurements
+between the k  1-th and the k-th static intervals:
+u
+g;k
+= 	
+
+!
+S
+i
+; u
+a;k 1
+
+(11)
+	 can be any integration algorithm that computes the ﬁnal
+orientation through integrating the input angular velocities.
+The unknown parameter vector we need to estimate to
+calibrate the gyroscope is:
+
+gyro
+=
+
+
+yz
+;
+zy
+;
+xz
+;
+zx
+;
+xy
+;
+yx
+;s
+g
+x
+;s
+g
+y
+;s
+g
+z
+
+(12)
+In this case, we can deﬁne the cost function as:
+L(
+gyro
+) =
+M
+X
+k=2
+jju
+a;k
+  u
+g;k
+jj
+2
+(13)
+whereM is the number of static intervals, u
+a;k
+is the accel-
+eration versor measured averaging in a temporal window the
+calibrated accelerometer readings in the k-th static interval,
+and u
+g;k
+is the acceleration versor computed using Eq. 11
+(i.e., integrating the angular velocities between the k  1-th
+and the k-th static intervals). We obtain 
+gyro
+minimizing
+Eq. 13 with LM.
+IV. CALIBRATION PROCEDURE
+As introduced in Sec. I, the proposed calibration frame-
+work requires to collect a dataset with the stream of the
+raw accelerometers and gyroscopes readings, taken while the
+operator moves the IMU in different static positions, in order
+to generate a set of distinct, temporarily stable, rotations.
+A simple diagram of our calibration protocol is reported in
+Fig. 1. As mentioned in Sec. III, to mitigate the noise effect
+in the minimization of Eq. 10 and Eq. 13, we need to average
+the signals over a suitable time interval. This imposes a lower
+bound in the length of the static interval (t
+wait
+in Fig. 1).
+A initialization period (T
+init
+in Fig. 1) with no motion is
+essential as well: this will be exploited to characterize the
+gyroscopes biases (Sec. IV-C) and the static detector operator
+(Sec. IV-A).
+A. Static Detector
+Fig. 3. An example of the static detector applied to the accelerometers
+data: the static detector is represented by the black square wave, its high
+level classify an interval as static.
+The accuracy of the calibration strongly depends on the
+reliability in the classiﬁcation between static and motion
+intervals: to calibrate the accelerometers we use static inter-
+vals, while for gyroscopes calibration we also include the
+motion intervals between two consecutive static intervals.
+In our experience, band-pass ﬁlter based operators, like the
+quasi-static detector used in [8], perform poorly with real
+datasets: detected static intervals frequently includes some
+small portion of motion. Moreover, they require a ﬁne tuning,
+since they depend on three parameters.
+We propose instead to use a variance based static detector
+operator, that exploits the lower bound in the lengths of the
+static interval introduced above. We base our detector on
+the accelerometer signals: given a time interval of length
+t
+wait
+seconds (see Fig. 1), for each accelerometers sample
+(a
+t
+x
+; a
+t
+y
+; a
+t
+z
+) at time t, we compute the variance magnitude,
+i.e. the magnitude of the variance, as:
+&(t) =
+q
+[var
+tw
+(a
+t
+x
+)]
+2
++ [var
+tw
+(a
+t
+y
+)]
+2
++ [var
+tw
+(a
+t
+z
+)]
+2
+(14)
+3045
+wherevar
+tw
+(a
+t
+) is an operator that compute the variance of
+a general signal a
+t
+in a time interval of length t
+w
+seconds
+centered int. We classify between static and motion intervals
+simply checking if the square of&(t) is lower or greater then
+a threshold. As a threshold, we consider an integer multiple
+of the square of the variance magnitude&
+init
+, computed over
+all the initialization period T
+init
+. In all the experiments, we
+use t
+w
+= 2 sec, while T
+init
+is estimated using the Allan
+variance (see Sec. IV-C). It is important to note that our
+static detector does not require any parameter tuning: the
+integer multiplier used in the classiﬁcation is automatically
+estimated by our calibration algorithm (see Sec. IV-D). Fig. 3
+reports an example of how our static ﬁlter works on real data:
+in this case the estimated integer multiplier is 6.
+B. Runge-Kutta Integration
+As reported in Eq. 11, in the gyroscopes calibration we
+need to perform a discrete time angular velocity integration:
+a robust and stable numerical integration method is desir-
+able since it can improve the calibration accuracy. Given
+a common instruments rate of 100 Hz (like the Xsens
+MTi IMU used in the experiments) and since we represent
+rotations using quaternion arithmetic, with this setup a proper
+integration algorithm choice [19] is the Runge-Kutta 4
+th
+order normalized method (RK4n). In our experience (experi-
+ments not reported for space constraints) RK4n outperforms
+the standard linear integration procedure providing higher
+accuracy results. Let Eq. 15 be the differential equation
+describing the quaternion kinematics:
+f(q;t) = _ q =
+1
+2
+
+(!(t))q; (15)
+where
+(!) is the operator which turns the considered tri-
+dimensional angular velocity into the real skew symmetric
+matrix representation, that is:
+
+(!) =
+2
+6
+6
+4
+0  !
+x
+ !
+y
+ !
+z
+!
+x
+0 !
+z
+ !
+y
+!
+y
+ !
+z
+0 !
+x
+!
+z
+!
+y
+ !
+x
+0
+3
+7
+7
+5
+: (16)
+The RK4n integration algorithm is:
+q
+k+1
+= q
+k
++ t
+1
+6
+(k
+1
++ 2k
+2
++ 2k
+3
++ k
+4
+); (17)
+k
+i
+= f(q
+(i)
+;t
+k
++c
+i
+t); (18)
+q
+(i)
+= q
+k
+; for i = 1; (19)
+q
+(i)
+= q
+k
++ t
+i 1
+X
+j=1
+a
+ij
+k
+j
+; for i> 1: (20)
+where all the coefﬁcients needed, c
+i
+and a
+ij
+, are
+c
+1
+= 0; c
+2
+=
+1
+2
+; c
+3
+=
+1
+2
+; c
+4
+= 1;
+a
+21
+=
+1
+2
+; a
+31
+= 0; a
+41
+= 0;
+a
+32
+=
+1
+2
+; a
+42
+= 0; a
+43
+= 1:
+Finally, for each step, we also need to normalize the (k +1)-
+th quaternion:
+q
+k+1
+!
+q
+k+1
+jjq
+k+1
+jj
+: (21)
+C. Allan Variance
+Fig. 4. Allan Variance computed for the Xsens MTi gyroscopes triad.
+We characterize the random gyroscope bias drifts using
+the Allan variance ([20], [8]), which measures the variance
+of the difference between consecutive interval averages. The
+Allan variance 
+2
+a
+is deﬁned as:
+
+2
+a
+=
+1
+2
+
+
+(x(
+~
+t;k) x(
+~
+t;k  1))
+2
+
+=
+=
+1
+2K
+K
+X
+k=1
+(x(
+~
+t;k) x(
+~
+t;k  1))
+2
+(22)
+where x(t;k) is the k-th interval average which spans
+~
+t
+seconds, and K is the number of interval which the total
+considered time is segmented in. We compute the Allan
+variance for each gyroscope axis, witht
+0
+
+~
+tt
+n
+. We ﬁxt
+0
+= 1s,t
+n
+= 225s. The time in which the Allan variances of the
+three axis converge to a small value represents a good choice
+for initialization period T
+init
+(Fig. 1). In this initialization
+period, we compute the average of the static gyroscope
+signals to correctly determine the gyroscopes biases used in
+the calibration. In the case of the Xsens MTi IMU, a good
+value for T
+init
+is 50 seconds (see Fig. 4).
+D. Complete Procedure
+To avoid unobservability in the calibration parameters
+estimation, a minimum of nine different attitudes [15] has to
+be collected (e.g., Fig. 1). In our experience, a higher number
+N of distinct attitudes are required to get better calibration
+results, while keeping reduced the duration of each static
+interval in order to preserve the assumption of temporal
+stability of the gyroscopes biases. With 36 N 50 and
+1 sect
+wait
+ 4 sec, we obtain a good trade-off between
+calibration accuracy, biases stability, and noise reduction.
+The duration of the initialization period T
+init
+is given by
+the Allan variance analysis (see Sec. IV-C). The calibration
+protocol is summarized in Fig. 1, while in Algorithm 1 the
+pseudo-code of the calibration algorithm is reported.
+V. EXPERIMENTS
+We have tested our method with both synthetic and
+real data. In the simulations, we can compare the results
+with a perfect ground truth, i.e., a noise-free, undistorted
+3046
+Algorithm 1 IMU Calibration
+Require: T
+init
+, t
+wait
+; a
+S
+and !
+S
+(accelerometer’s and
+gyroscope’s dataset collected according to Fig. 1).
+b
+g
+ average gyroscope signals over T
+init
+;
+!
+S
+biasfree
+ !
+S
+- b
+g
+;
+M
+inf
+ empty matrix;
+&
+init
+ Eq. 14, with t
+w
+=T
+init
+;
+for i = 1 : k
+threshold i&
+2
+init
+;
+s intervals static detector computed
+using t
+wait
+and threshold;
+[Residual, Params
+acc
+] optimize Eq. 10 using
+s intervals and a
+S
+, averaging with t
+wait
+;
+M
+inf
+(i) [Residual, Params
+acc
+, threshold,
+s intervals];
+end
+index
+opt
+ index of the minimum residual in M
+inf
+;
+Params
+acc
+ from M
+inf
+using index
+opt
+;
+s intervals
+opt
+ from M
+inf
+using index
+opt
+;
+a
+O
+ calibrate a
+S
+using Params
+acc
+;
+Params
+gyro
+ optimize Eq. 13 using s intervals
+opt
+,
+!
+S
+biasfree
+and a
+O
+, averaging with t
+wait
+.
+signal, while the calibration matrices are known. With the
+real dataset, we compare the estimated calibration param-
+eters with the calibration parameters reported in the IMU
+datasheet.
+A. Synthetic Data
+We ﬁrst generate a set of ideal, noise-free signals. The
+accelerometers readings are generated starting from a three-
+dimensional signal based on three different-pulsation sinu-
+soids randomly modulated. At the beginning we add 5000
+zero samples (the initialization period) and every time the
+three signals are simultaneously zero we introduce 400 zero
+samples (the static intervals). The three dimensional gravity
+vector projected onto the three axis has been added as well.
+For the angular velocities sensed by the gyroscope, the idea
+is to consider a tri-dimensional angular velocity vector !,
+which describes the perceived rotation of the aforementioned
+gravity vector, and then project! onto the three axis of the
+gyroscope. In this way we correlate the measurement of the
+two different clusters of sensors. For each motion interval
+different zenith and azimuth velocities are randomly chosen,
+while for the rest of the time these velocities are considered
+to be equal to zero. The sampling frequency of the whole
+synthetic data has been ﬁxed to 100 Hz.
+For each ideal signal, we add a white gaussian noise and
+ﬁnally we distort the data with random generated distortion
+parameters, i.e.:
+a
+S
+synth
+= (T
+a
+K
+a
+)
+ 1
+a
+O
+synth
+  b
+a
+(23)
+for the accelerations, and:
+!
+S
+synth
+= (T
+g
+K
+g
+)
+ 1
+!
+O
+synth
+  b
+g
+(24)
+for the angular velocities. a
+S
+synth
+and a
+O
+synth
+are the
+synthetic acceleration in the non-orthogonal sensor frame
+and in the associated orthogonal frame, respectively.!
+S
+synth
+and !
+O
+synth
+are the synthetic angular velocities in the non-
+orthogonal sensor frame and in the associated orthogonal
+frame, respectively. Eq. 23 and Eq. 24 are obtained from
+models proposed in Eq. 6 and in Eq. 7. The metrics we use
+to evaluate the quality of the results are:
+1) Comparing the estimated values to the real ones;
+2) Comparing the average difference between the perfect,
+noise-free and undistorted signal with the noisy signal
+before and after calibration;
+3) For the accelerometers only: we consider the magni-
+tude and the angular error between the sensed acceler-
+ation and the applied one during each static intervals.
+Since the magnitude of the gravity vector is assumed
+to be the only quantity known, the angular error
+here is calculated for the worst case, where the full
+error appears on a single accelerometer axis which is
+perfectly horizontal, i:e: perpendicular to the gravity
+vector. An error of gsin(
+acc
+div
+) will result in the pitch
+or roll angle being measured as 
+acc
+div
+radiants instead
+of zero;
+4) For the gyroscopes only: we consider the magnitude
+and the angular error between the acceleration sensed
+by the calibrated accelerometer and the acceleration
+computed integrating the angular velocities given by
+the gyroscope.
+We have generated 1200 different signals, combining 40
+different distortion parameter sets with a set of 30, randomly
+generated, ideal signals. Due to reduced space, we report
+average and worst case results for one distortion parameter
+set, applied to the whole set of ideal signals. Results for the
+other distortion parameter sets are very similar
+4
+.
+TABLE I
+First metric: ACCELEROMETERS PARAMETERS
+Real Mean RMS Mean Error RMS
+Value value x10
+ 3
+x10
+ 3
+x10
+ 3
+yz 0.0049 0.0049 0.0481 0.0398 0.0275
+zy -0.0055 -0.0055 0.0401 0.0334 0.0214
+zx 0.0079 0.0079 0.0296 0.0248 0.0190
+s
+a
+x
+0.9908 0.9908 0.0327 0.0265 0.0191
+s
+a
+y
+1.0068 1.0068 0.0304 0.0258 0.0199
+s
+a
+z
+1.0066 1.0066 0.0215 0.0178 0.0151
+b
+a
+x
+0.0793 0.0793 0.1369 0.1163 0.0819
+b
+a
+y
+-0.0024 -0.0024 0.2138 0.1760 0.1178
+b
+a
+z
+0.0636 0.0636 0.1332 0.0953 0.0919
+From Tab. I and Tab. II, we report a negligible average
+error, with an order of magnitude always equal or less
+than 10
+ 4
+. From Tab. IV and Tab. V, we report signiﬁcant
+4
+All synthetic results, the software for real calibration and a real
+dataset are available following the link: robotics.dei.unipd.it/
+˜
+pretto/software/tpm_icra2014.zip
+3047
+TABLE II
+First metric: GYROSCOPES PARAMETERS
+Real Mean RMS Mean Error RMS
+value value x10
+ 3
+x10
+ 3
+x10
+ 3
+yz 0.0112 0.0110 0.8547 0.6392 0.5920
+zy -0.0211 -0.0210 0.4419 0.3468 0.2669
+xz 0.0040 0.0039 1.0630 0.9080 0.5266
+zx -0.0010 -0.0011 0.4102 0.3386 0.2302
+xy 0.0270 0.0270 0.8154 0.6375 0.4944
+yx 0.0151 0.0155 0.7250 0.7315 0.3958
+s
+g
+x
+0.8786 0.8785 0.4121 0.3366 0.2299
+s
+g
+y
+0.9703 0.9704 0.4059 0.3353 0.2237
+s
+g
+z
+1.0460 1.0460 0.4216 0.3410 0.2397
+TABLE III
+First metric: WORST CASE - PARAMETERS
+Real value Est value Real value Est Value
+yz 0.0049 0.0049 yz 0.0112 0.0099
+zy -0.0055 -0.0055 zy -0.0211 -0.0207
+zx 0.0079 0.0079 xz 0.0040 0.0030
+s
+a
+x
+0.9908 0.9908 zx -0.0010 -0.0011
+s
+a
+y
+1.0068 1.0068 xy 0.0270 0.0252
+s
+a
+z
+1.0066 1.0066 yx 0.0151 0.0166
+b
+a
+x
+0.0793 0.0792 s
+g
+x
+0.8786 0.8790
+b
+a
+y
+-0.0024 -0.0026 s
+g
+y
+0.9703 0.9701
+b
+a
+z
+0.0636 0.0636 s
+g
+z
+1.0460 1.0460
+TABLE IV
+Second metric: ABSOLUTE ERRORS ALONG THE AXIS -
+ACCELEROMETERS
+x-axis y-axis z-axis
+m=s
+2
+m=s
+2
+m=s
+2
+Uncalib 0.0842 0.0564 0.0635
+Calib 0.0055 0.0056 0.0056
+TABLE V
+Second metric: ABSOLUTE ERRORS ALONG THE AXIS - GYROSCOPES
+x-axis y-axis z-axis
+(rad=s) (rad=s) (rad=s)
+Uncalib 0.1043 0.1097 0.0345
+Calib 0.0035 0.0039 0.0042
+TABLE VI
+Third metric: ACCELEROMETERS DIVERGENCE ERROR
+Average Max obser- Worst case Worst case
+error ved error average error max error
+m=s
+2
+(rad) m=s
+2
+(rad) m=s
+2
+(rad) m=s
+2
+(rad)
+Uncalib 0.0665 0.2133 0.0623 0.2098
+( 0.0114) ( 0.0226) ( 0.0115) ( 0.0240)
+Calib 0.0056 0.0299 0.0056 0.0298
+( 0.0009) ( 0.0035) ( 0.0009) ( 0.0038)
+TABLE VII
+Fourth metric: GYROSCOPES DIVERGENCE ERROR
+Average Max obser- Worst case Worst case
+error ved error average error max error
+m=s
+2
+(rad) m=s
+2
+(rad) m=s
+2
+(rad) m=s
+2
+(rad)
+Uncalib 4.7125 9.2930 5.2859 8.5822
+( 0.5494) ( 0.5494) ( 0.6029) ( 0.6029)
+Calib 0.2208 0.4469 0.5102 0.8597
+( 0.0256) ( 0.0256) ( 0.0569) ( 0.0569)
+reductions in the absolute errors. Finally, from Tab. VI we
+report that the divergence’s magnitude is reduced by a factor
+of 11:9 and the angular error by a factor of 12:7, while
+in Tab. VII the magnitude of the considered divergence is
+reduced by a factor of 21:4 and the angular error by a factor
+of 21:9. In Fig. 5, we show some examples of the calibrated
+signal compared with the ideal one.
+B. Real Data
+As introduced, we have exploited an Xsens MTi IMU
+(Fig. 1) as experimental platform. The device datasheet
+provides the factory calibrated misalignment matrices that
+align the accelerometers (AF) and gyroscopes (GF) frames
+to the body frame BF, while we estimate the matrices that
+align that AF and GF to AOF. In order to compare our
+results with the results of the factory calibration, we need to
+know the matrix R
+b
+that relates AOF to BF. Given R
+b
+, we
+can express our calibration vectors in BF. Given the factory
+calibration, R
+b
+can be easily estimated using data contained
+in misalignment matrix (see discussion about Eq. 1) and
+following a simple method proposed in [14]
+5
+.
+We acquired a dataset as described in Fig. 1, with an initial
+static period of about 50 seconds, followed by a set of 37
+rotations separated by static intervals of 2-4 seconds. We
+uses as initial guess for the optimization the ideal values for
+the accelerometer, that are (see Eq. 8):
+
+1 0 0 0 1 0 0 0 1
+
+: (25)
+While for the gyroscope we used (see Eq. 12):
+
+1
+r
+0 0 0
+1
+r
+0 0 0
+1
+r
+
+; r =
+(2
+n
+  1)
+2y
+(26)
+where n is the numbers of bit of the A/D converter, and the
+gyroscope full-scale from datasheet is [-y, +y] rad=s.
+The achieved calibration is comparable to the factory cali-
+bration parameters given by the datasheet, see tables starting
+from VIII. For each table, we report the factory calibration
+parameters (on the left), and our calibration parameters (on
+the right). It is important to point out that in our results we
+are implicitly including an error that can’t be attributed to
+our calibration method. This is the propagated error caused
+by the IMU’s datasheet rounded values (see table) when we
+compute R
+p
+. In spite of this problem, the results we obtain
+are very close to the parameters reported in the datasheet
+4
+.
+TABLE VIII
+SCALING - ACCELEROMETER
+415 0.00 0.00
+0.00 413 0.00
+0.00 0.00 415
+414.41 0 0
+0 412.05 0
+0 0 414.61
+5
+Due to reduced space, we can’t report here other details.
+3048
+(a) (b)
+Fig. 5. Calibration Improvement: (a) accelerometers, (b) gyroscopes (the small box is zoomed in the larger box).
+TABLE IX
+SCALING - GYROSCOPE
+4778 0.00 0.00
+0.00 4758 0.00
+0.00 0.00 4766
+4778.0 0 0
+0 4764.8 0
+0 0 4772.6
+TABLE X
+MISALIGNMENT - ACCELEROMETER
+1.00 0.00 -0.01
+0.01 1.00 0.01
+0.02 0.01 1.00
+1.0000 -0.0066 -0.0110
+0.0102 1.0001 0.0114
+0.0201 0.0098 0.9998
+VI. CONCLUSIONS AND FUTURE WORKS
+In this paper, we have presented an effective and semi
+automatic IMU calibration method. The calibration protocol
+is quick, reliable and it does not need any external equipment.
+The proposed algorithms are easy to implement and they
+do not require any parameters tuning. Results achieved with
+both synthetic and real data show the real possibility to
+improve at no cost the performances of low cost, poor
+calibrated, IMUs, such the ones that equip the current smart-
+phones. Actually, we are currently testing our approach on
+smartphone-grade IMU sensors. We also plan to integrate the
+proposed procedure in a calibration framework for camera-
+IMU systems, that includes IMU, camera-IMU frame and
+temporal calibrations.
+REFERENCES
+[1] V . Kubelka and M. Reinstein, “Complementary ﬁltering approach to
+orientation estimation using inertial sensors only.” in Proc. of. IEEE
+International Conference on Robotics and Automation (ICRA), 2012,
+pp. 599–605.
+[2] T. Hamel and R. E. Mahony, “Attitude estimation on so[3] based
+on direct inertial measurements.” in Proc. of. IEEE International
+Conference on Robotics and Automation (ICRA), 2006, pp. 2170–
+2175.
+[3] K. Tsotsos, A. Pretto, and S. Soatto, “Visual-inertial ego-motion esti-
+mation for humanoid platforms,” in Proc. of: IEEE-RAS International
+Conference on Humanoid Robots, 2012, pp. 704–711.
+[4] K. Konolige and M. Agrawal, “Frameslam: From bundle adjustment
+to real-time visual mapping,” IEEE Transactions on Robotics, vol. 24,
+no. 5, pp. 1066–1077, Oct. 2008.
+[5] M. Li, B. Kim, and A. I. Mourikis, “Real-time motion estimation on
+a cellphone using inertial sensing and a rolling-shutter camera,” in
+Proceedings of the IEEE International Conference on Robotics and
+Automation, Karlsruhe, Germany, May 2013, pp. 4697–4704.
+[6] XSens, http://www.xsens.com.
+TABLE XI
+MISALIGNMENT - GYROSCOPE
+1.00 -0.01 -0.02
+0.00 1.00 0.04
+-0.01 0.01 1.00
+0.9998 -0.0149 -0.0218
+0.0003 1.0007 0.0433
+-0.0048 0.0121 1.0004
+TABLE XII
+OFFSET - ACCELEROMETER
+33123 33276 32360 32768 32466 32485
+[7] J. Lotters, J. Schipper, P. Veltink, W. Olthuis, and P. Bergveld,
+“Procedure for in-use calibration of triaxial accelerometers in medical
+applications,” Sensors and Actuators A: Physical, vol. 68, no. 1-3, pp.
+221–228, 1998.
+[8] W. Fong, S. Ong, and A. Nee, “Methods for in-ﬁeld user calibration of
+an inertial measurement unit without external equipment,” Measure-
+ment Science and Technology, vol. 19, pp. 1–11, 2008.
+[9] R. Rogers, Applied Mathematics in Integrated Navigation Systems,
+ser. AIAA education series. American Institute of Aeronautics and
+Astronautics, 2003.
+[10] A. B. Chatﬁeld, Fundamentals of high accuracy inertial navigation,
+ser. Progress in astronautics and aeronautics. Reston, V A. American
+Institute of Aeronautics and Astronautics, Inc., 1997.
+[11] J. J. Hall and R. L. Williams II, “Inertial measurement unit calibration
+platform,” Journal of Robotic Systems, vol. 17, no. 11, pp. 623–632,
+1998.
+[12] A. Kim and M. Golnaraghi, “Initial calibration of an inertial mea-
+surement unit using an optical position tracking system,” in Position
+Location and Navigation Symposium, 2004. PLANS 2004, 2004, pp.
+96–101.
+[13] E. M. Nebot and H. F. Durrant-Whyte, “Initial calibration and align-
+ment of low-cost inertial navigation units for land vehicle applica-
+tions.” Journal of Robotic Systems, vol. 16, no. 2, pp. 81–92, 1999.
+[14] I. Skog and P. Hndel, “Calibration of a mems inertial measurement
+unit,” in Proc. of XVII IMEKO WORLD CONGRESS, 2006.
+[15] Z. F. Syed, P. Aggarwal, C. Goodall, X. Niu, and N. El-Sheimy, “A
+new multi-position calibration method for mems inertial navigation
+systems,” Measurement Science and Technology, vol. 18, pp. 1897–
+1907, 2007.
+[16] C. M. Cheuk, T. K. Lau, K. W. Lin, and Y . Liu, “Automatic calibration
+for inertial measurement unit,” in in Proc. of International Conference
+on Control, Automation, Robotics and Vision, 2012.
+[17] M. Hwangbo, J.-S. Kim, and T. Kanade, “Imu self-calibration using
+factorization,” IEEE Transactions on Robotics, vol. 29, no. 2, pp. 493–
+507, 2013.
+[18] C. Jekeli, Inertial Navigation Systems with Geodetic Applications. De
+Gruyter, 2001.
+[19] M. Andrle and J. Crassidis, “Geometric integration of quaternions,” in
+in Proc. of AIAA/AAS Astrodynamics Specialist Conference, 2012.
+[20] A. M. Sabatini, “A wavelet-based bootstrap method applied to inertial
+sensor stochastic error modelling using the allan variance,” Measure-
+ment Science and Technology, vol. 17, no. 11, pp. 2980–2988, 2006.
+3049

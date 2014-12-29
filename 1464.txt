@@ -1,0 +1,671 @@
+Towards an Accurate Tracking of Liver Tumors for Augmented Reality
+in Robotic Assisted Surgery
+Nazim Haouchine
+1
+, Jeremie Dequidt
+1
+, Igor Peterlik
+2
+, Erwan Kerrien
+3
+Marie-Odile Berger
+3
+and Stephane Cotin
+1
+Abstract—This article introduces a method for tracking the
+internalstructuresoftheliverduringrobot-assistedprocedures.
+Vascular network, tumors and cut planes, computed from pre-
+operative data, can be overlaid onto the laparoscopic view for
+image-guidance,eveninthecaseoflargemotionordeformation
+of the organ. Compared to current methods, our method is
+able to precisely propagate surface motion to the internal
+structures. This is made possible by relying on a fast yet
+accurate biomechanical model of the liver combined with a
+robust visual tracking approach designed to properly constrain
+the model. Augmentation results are demonstrated on in-vivo
+sequences of a human liver during robotic surgery, while
+quantitative validation is performed on an ex-vivo porcine liver
+experimentation. Validation results show that our approach
+gives an accurate surface registration with an error of less
+than 6mm on the position of the tumor.
+I. INTRODUCTION
+Considerable recent advances in medicine have made
+Minimally Invasive Surgery (MIS) a well-established proce-
+dure for hepatic surgery, with strong beneﬁts for patients.
+However, the reduced endoscopic ﬁeld of view, the lack
+of depth and tactile perception make hepatic resection and
+tumor removal a major challenge that requires advanced
+surgical skills. Augmented Reality (AR) techniques have
+the potential to counteract these regressions and provide an
+enriched visual feedback by the seamless integration of intra-
+operative images and any targets or risk structures, such as
+tumors or vessels, visible in 3D pre-operative imaging (cf
+Figure 1).
+Developing a full AR system for MIS implies solving
+a number of difﬁcult problems, ranging from instrument
+tracking to intuitive augmented visualization [1]. Among the
+most difﬁcult and still unsolved issues is the capacity to
+tackle, in real time, large elastic deformations on the targeted
+organ. Though the problem of elastic registration or track-
+ing has been largely addressed in the medical community,
+elastic deformation in AR systems is only addressed, to our
+knowledge, in a very limited number of papers, and mainly
+applied to 3 organs: kidney, heart and liver.
+Kidneys do not actually undergo elastic deformations
+during surgery but rather move independently from their
+1
+Nazim Haouchine, Jeremie Dequidt and Stephane Cotin are with INRIA
+and Lille University, France nazim.haouchine@inria.fr,
+jeremie.dequidt@inria.fr,stephane.cotin@inria.fr
+2
+Igor Peterlik is with Image-guided Minimally Invasive Surgery Institute,
+IHU Strasbourg, France peterlik@gmail.com
+3
+Erwan Kerrien and Marie-Odile Berger are with INRIA and
+Lorraine University, Nancy, France erwan.kerrien@inria.fr,
+marie-odile.berger@inria.fr
+Fig. 1. Augmented Liver Tumor during Minimally Invasive Surgery. Top:
+The registration of the liver mesh including the tumor onto endoscopic
+images. Bottom: Computational ﬂow of the method.
+surrounding tissues. As such, related works resort to a rigid
+3D-3D registration e.g. based on implanted markers [2] or
+an Iterative Closest Point (ICP) surface matching [3]. Re-
+cently Puerto-Souza et al. [4] proposed a Hierarchical Multi-
+Afﬁne matching algorithm capable of long-term tracking
+for augmentation during partial nephrectomy. This approach
+estimates a set of afﬁne transformations from clusters of
+features in order to relocate occluded or missing features
+to obtain a coherent spatio-temporal mesh registration. Figl
+et al. [5] also express the non-rigid registration problem as a
+rigidregistrationbetweenstereoscopicviewsanda4Dmodel
+of the heart built from 4D scan data, thus leveraging the
+cyclicity of the organ motion. A 4D scan of the heart is also
+used in [6], but is coupled with a biomechanical model to
+relate the surface motion to internal forces. A local tuning
+of the deformation is therefore possible and the surface
+deformation is correctly propagated to in-depth invisible
+structures. No periodic or rigid pattern can be relied upon
+in the liver case. Unpredictable, possibly large, deformations
+can be observed. Furthermore, volume tracking is required
+since we are interested in in-depth augmentation whereas
+many approaches are dedicated to the tracking of surfaces.
+In a similar context, Kim et al. [7] propose a solution that is
+bothapplicableinamonoscopicsetupandintegratesarobust
+imagefeaturereconstructionapproach.Buttheirmethodonly
+retrieves surface deformation and cannot ensure an accurate
+augmentation of inner structures.
+Mechanical-based deformable models have proven to be
+relevant for volume deformation since they allow to deﬁne
+elastic properties of the shape and thus to infer in-depth
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 4121
+structure motion [8], [9], [10]. Registration is done either
+by solving mechanical equations given image constraints
+provided by reconstructed 3D points [8] or using the concept
+of active models where an energy is minimized which takes
+into account the internal behavior of the model -through the
+biomechanical constraints- and external image constraints
+that measure the adequation between the model and the
+recovered 3D data [9], [10].
+The work presented here is an improvement of the former
+work on AR for deformable organs [13], [12]. In these
+works, a method employing a biomechanical model guided
+by a stereo-based tracking algorithm which is able to in-
+terpolate in the volume surface deformations was proposed.
+The physical model used, provably adapted to the liver
+[11], is superimposed in real-time onto the laparoscopic
+images within tumors. In this paper we mainly focus on
+the reconstruction and the selection of 3D points which are
+used to guide the physical model. In particular, techniques
+based on moving least-squares are used to improve the set of
+recovered 3D points. We also restrict the set of points which
+are used to guide the mechanical model using clustering
+techniques with signiﬁcant impact on the accuracy and the
+robustness of the method. With respect to existing works,
+we improve upon [8] by proposing a method that does not
+demand a computationally expensive stereo surface recovery
+and upon [4] by performing a robust and long-term tracking
+whichisabletohandleelasticdeformationsoftheorgan.The
+validation of our approach is presented on both in vivo and
+ex vivo data where we report visually accurate registration
+on images of an actual laparoscopic procedure and show that
+the error between the estimated and actual positions of an
+artiﬁcial tumor implanted in a porcine liver is less than 6mm.
+II. STEREOSCOPIC FLOW ESTIMATION
+Theuseofabiomechanicalmodeltopropagatethesurface
+motion to the internal structures not visible on the endo-
+scopic images, , such as tumors, requires a stable tracking
+sufﬁciently robust with respect to the image noise. For
+that purpose, we propose a new tracking method designed
+to guide the physically-based model. Our tracking method
+follows these steps:
+• Sparse three-dimensional recovery from stereoscopic
+images.
+• Moving Least-Squares-based outliers ﬁltering and sur-
+face approximation.
+• Control point selection with clustering and temporal
+ﬂow estimation.
+A. Sparse three-dimensional recovery
+Intra-abdominal surface reconstruction has been under
+investigation in several research groups (for a complete
+survey, please refer to [17]). The methods range from pas-
+sive techniques [19], [21] based only on endoscopic image
+informations, to active techniques [20], [22] that involve
+hardware modiﬁcations. Our method relies on a passive
+approach using a stereo endoscope, calibrated according to
+Zhang’s [18] approach. Features are detected in each image
+Fig. 2. MLS-based surface recovery. Left: Three-dimensional sparse
+point cloud recovery. Right: outliers ﬁltering and surface reconstruction
+using MLS, the control points selected after clustering are registered to the
+biomechanical model of the liver
+pair (rectiﬁed for distortion) using the Speeded-Up Robust
+Features (SURF) descriptor and are tracked over time thanks
+to the Lucas-Kanade optical ﬂow method, this coupling has
+proven to be optimal for laparoscopic surgery [14]. Feature
+correspondences between stereo images are obtained with
+a nearest neighbour criterion on feature descriptors coupled
+with the epipolar constraint. A sparse set of m 3D points,
+denoted by 3?m coordinate vector z, is reconstructed by
+triangulation.
+Examples of 2D matched features and reconstructed 3D
+points from laparoscopic images are shown in Figure 3.
+B. Moving Least-Squares-based surface reconstruction
+The sparse set z of recovered 3D points may contain
+erroneous points. In order to remove these points and to
+obtain a smoother point set z
+?
+we take beneﬁts of the MLS
+surface to approximate a surface and to detect the noisy
+points.
+Moving Least-Squares surface (MLS) is a mesh-free, non-
+parametric method to approximate a surface from a set of
+unstructured scattered point introduced by [16].
+To determine the MLS surface given a point set
+P= {p
+i
+?R
+3
+}, a projection procedure which projects any
+points near the point set onto the surface using a local
+approximation is conducted. Given a point r ? R
+3
+, the
+process follows two steps. First the computation of a local
+patch, then the projection of the query point r onto the
+surface using a polynomial function :
+• Compute a local reference plane in the neighborhood of
+r : Find a plane H with normal vector a?R
+3
+passing
+through some point q= r+ta (for some t ?R) such
+that kak=1 and H minimizes the least-squares error:
+∑
+p
+i
+?P
+<a,p
+i
+?q>
+2
+?(kp
+i
+?qk) (1)
+Here, <a,p
+i
+?q>
+2
+is the squared distance from each
+point {p
+i
+} to the plane H, and ?(kp
+i
+?qk) is the
+weighting function, usually a Gaussian.
+• Project r on the surface : We consider the points x
+i
+to be
+the orthogonal projections of the points p
+i
+on the plane
+H with projected distance f
+i
+=< a,p
+i
+?q > oriented
+with normal a and origin q. Thus, we apply the MLS
+4122
+Fig. 3. Stereoscopic ﬂow estimation on laparoscopic images of the abdominal cavity showing a part of the liver in two different cases with (top) high
+textured liver and (bottom) low textured liver: (a) Original input images, (b) the resulting sparse 3D point set z from stereo matching, (c) the resulting
+sparse 3D point set z
+?
+from MLS outliers ﬁltering, (d) the projected image on the reconstructed surface.
+function approximation which consists of construction
+of a bivariate polynomial ˜ g?R
+3
+of degree m (here we
+take m=3) which locally minimizes the least-squares
+error around q:
+∑
+p
+i
+(g(x
+i
+)? f
+i
+)
+2
+?(||p
+i
+?q||) (2)
+That amounts to project r along the normal with
+distance ˜ g(0) (local approximation of the surface at q).
+C. Clustering-based Filtering
+The clustering-based ﬁlter (CbF) permits to create a set
+of n 3D control points, denoted by 3?n coordinate vector y
+that guides the biomechanical model. Instead of constraining
+the model directly using the forces generated from feature
+displacements, the clustering calculates a displacement ﬁeld
+more suitable to handle large deformations (see section IV
+for more details).
+First a set of control point is built by downsampling a set
+z
+?
+of 3D points resulting from MLS step. Each control point
+deﬁnes a region of interest to group the surrounded features.
+The nearest features to the control point are assigned to
+the cluster by combining the Hessian responses of the
+SURFdetectorandtheShepard’sInverseDistanceWeighting
+(IDW) following the formula D(p)=q
+p∑
+k
+i=1
+W
+i
+d
+i
+where D is
+the weighted displacement of the control point p, k the total
+number of neighbors and d
+i
+the displacement of the feature i.
+Assuming the quality is isotropic at each feature, we deﬁne
+a normalized measure of quality q
+p
+for each control point as
+the average of the SURF Hessian responses of its neighbors.
+W
+i
+is the weight assigned to each feature and is as follows:
+W
+i
+=
+(
+R
+c
+?h
+i
+R
+c
+h
+i
+)
+2
+∑
+k
+j=1
+(
+R
+c
+?h
+j
+R
+c
+h
+j
+)
+2
+(3)
+R
+c
+is the radius of the cluster in 3D space, h
+i
+the distance
+of the feature from the control point and k the total number
+of neighbors.
+The Shepard’s IDW allows the nearby feature to the
+control point to have the largest weight while the Hessian
+response allows to prevent from poor measurement during
+the tracking.
+III. BIOMECHANICAL MODEL AND NON-RIGID
+REGISTRATION
+A. Biomechanical model
+We employ a biomechanical model of liver composed of
+parenchyma and vascular network which is an important
+source of heterogeneity and anisotropy. From a mechanical
+standpoint, the parenchyma model relies on a linear tetrahe-
+dral ﬁnite element modeling using a co-rotational approach
+[15]. This model is very well suited to handle large displace-
+ments and has been proven to be relevant in the context of
+real-time laparoscopic surgery [11]. The vascular system is
+modeled with serially linked beam elements previously used
+in modeling catheters and guide wires model proposed by
+Duriez et al. [24]. Both models share very similar properties
+which permit to build the composite model. A more detailed
+description of both models and the coupling can be found in
+[13]. Elastic forces are then deﬁned as in [15]:
+f
+i
+(x)=R
+e
+K(R
+?
+e
+x?x
+0
+) (4)
+where K represents the stiffness matrix, R
+e
+the co-
+rotational matrix and x,x
+0
+are vectors of size 3n representing
+the position of the n degrees of freedom of the mechanical
+model, respectively at any time t and time t=0. It is worth
+mentioning that our framework was built using ﬂexible and
+modular software design principles allowing to easily replace
+the physics-based model.
+B. Initial registration
+The initial registration is an important step for AR sys-
+tems. In this work this step is done manually through a
+3D interface as in similar systems [4], [8], [5], [6], [12].
+First, the biomechanical model is aligned on the ﬁrst pair
+4123
+Fig. 4. Selected frames of a superimposition of the biomechanical model onto the human liver during Minimally Invasive Surgery. Top: Heterogeneous
+model including the parenchyma (white), the portal vein (red), the hepatic vein (blue) and a tumor (sphere). Bottom: A different visualisation of the
+superimposition.
+of laparoscopic stereo images. Then, only the reconstructed
+points that reproject onto the model in the images are kept
+to ﬁlter in points belonging to the liver.
+C. Temporal non-rigid registration
+We propose to handle the non-rigid registration by adding
+external stretching forces introduced via tracking of 3D
+control points. The tracked 3D control point set y represents
+how visible parts of the liver are moving.
+External forces are deﬁned by pairing the m 3D control
+points y to the n degrees of freedom x of the bio-mechanical
+model. At initialization (t = 0), the tracked points y
+0
+are
+expressed in barycentric coordinates of the adjacent degrees
+of freedom leading to the linear relation: y
+0
+=Jx
+0
+, where J is
+a rectangular (3m,3n) matrix. We assume this linear relation
+remains valid during the deformation.
+At any later time t, the stretching forces induced by the
+tracking are deﬁned as f
+t
+(y)=k(y?y
+0
+) where k can be seen
+as the stiffness.
+Finally, the stretching forces can be expressed with respect
+of the degrees of freedom as
+f
+t
+(x)=J
+?
+f
+t
+(y)= f
+t
+(x)=J
+?
+k·J(x?x
+0
+) (5)
+the parameter k is set to be close to the Young’s modulus in
+order to provide an equilibrium between the stretching forces
+and the elastic forces (a higher value of k favors stretching
+forces).
+IV. EXPERIMENTATIONS AND RESULTS
+In this section, we present the experimentations conducted
+to validate our approach. The validation in context of MIS
+is usually a challenging task. In our case, we propose
+two validation protocols. The ﬁrst one is performed in the
+context of in-vivo human liver surgery, the other involves
+experimentsonex-vivoporcineliver.Inlattercase,theresults
+are evaluated within a known ground truth. We also compare
+our method CbF (tracking with Clusters-based Filtering)
+with the related work DT (a direct tracking used in [13]).
+A. Results on in vivo Human Liver
+The purpose of conducting an in vivo experimentation
+is to employ our technique in a real-life situation during
+an abdominal hepatic surgery. Several important disturbing
+factors are present: the illumination produced by the laparo-
+scopic light, motion of instruments during the intervention
+and motion of the organ induced by respiration and cardiac
+cycle.
+Fig. 5. Comparison between (right) our CbF tracking and (left) a the
+DT method. Top: A top view showing the registration error that may occur
+using a direct method. The biomechanical model (in white wireframe) is
+locally constrained by a 3D feature in the case of a direct tracking while
+it is constrained by set of features grouped around a control point. Middle
+and Bottom: A front view showing the visual accuracy of our method. The
+correct shape is well recovered even if the boundary (manually segmented
+and represented here in yellow) is not correct everywhere.
+For this study we used a heterogeneous biomechani-
+cal model, that takes into account the hepatic and portal
+vein to describe the liver soft-tissue behaviour, with the
+following elastic parameters (according to [11]): Young’s
+modulus of parenchyma E
+p
+= 7 kPa and Poisson’s ratio
+? =0.45, Young’s modulus of vessel wall: E
+v
+=0.62 MPa
+4124
+and Poisson’s ratio ? = 0.45, thickness of the vessel wall:
+t
+V
+=200 ?m. The parenchyma model was composed of 3391
+linear tetrahedral elements and the vascular model of 120
+beam elements. The augmentation is achieved in real-time
+at around 25 fps. It’s worth mentioning that the real-time
+achievement is directly related to the number of elements
+(a larger number of elements will increase the computation
+time).
+Following [14], the parameters of the optical ﬂow consist
+of 51?51 window and an interframe motion threshold of 20
+pixels. The camera used is the Da Vinci Robot Endoscopic
+Camera (Intuitive Surgical) with a baseline of about 6 mm,
+acquiring image of 960?540 at 29.97 fps. On the set of 264
+extracted features 26 control points are built when using a
+radius R
+c
+=0.5mm.
+Projection error (px)
+Frame #60 #120 #180 #240
+Clusters-based Filter 54.72 110.57 145.33 75.55
+Tracking of [13] 809.95 659.04 304.78 766.01
+TABLE I
+A COMPARISON BETWEEN THE CLUSTERS-BASED APPROACH AND THE
+DIRECT TRACKING.
+The Figure 4 illustrates four selected frames of the aug-
+mentation performed on a sequence of 812 frames showing
+the long-term robustness of the tracking.
+We can notice in the comparison illustrated in Figure 5
+that the DT approach may fail to accurately register the
+model onto the image, mainly because of noisy 3D features
+that locally constraints the model. The table I summarizes
+the projection errors of the mesh on the endoscopic images
+(manually extracted contour) and shows that the CbF track-
+ing permits to reduce considerably the error w.r.t the DT
+approach.
+B. Ex vivo quantitative validation on a porcine liver
+The purpose of our tracking method is to estimate the
+location of tumors that are not visible in the endoscopic
+images. To validate such an approach we propose to perform
+CT scans of the liver before and after a deformation while
+acquiring the motion with a stereoscopic camera illustrated
+in Figure 7. Using a wire attached to one lobe of a porcine
+liver, we move the tissue in order to induce a deformation
+which is captured with an endoscopic camera ensuring a CT-
+scanning without producing artefact.
+We introduce two artiﬁcial tumors in two different loca-
+tions (cf Figure 6), near from the tension zone (tumor (a)
+with an average size of 8mm) and far from the tension zone
+(tumor (b) with an average size of 5mm).
+In Figure 8 our CbF tracking is compared with the DT
+approach using the data acquired during the manipulation
+of ex-vivo liver. We measure the following quantities: The
+tumor displacement due to the deformation for the Tumor
+(a) is 88.6mm and Tumor (b) is 26.9mm. The measured
+distance between the centers of mass of the ground truth
+Fig. 6. Computed meshes form scanned porcine liver with the tumors (left)
+and the corresponding endoscopic images (right).
+and the tracked tumors is 5.13mm for the tumor (a) and
+2.20mm for the tumor (b) when using the CbF tracking
+and 39.04mm for the tumor (a) and 4.55mm for the tumor
+(b) when using the DT approach.
+It represents a signiﬁcant improvement over the DT
+method and over current laparoscopic procedures where a
+safety margin of 10mm to 25mm is usually considered
+around the location of the tumor (planned on pre-operative
+data) [23].
+(a) (b)
+(c) (d)
+Fig. 7. Experimental setup for the quantitative validation: (a) insertion of
+an artiﬁcial tumor into one lobe of the liver, (b) a view of the the Da Vinci
+Robot Camera capturing liver motion, (c) the wire hooked to the lobe is
+pulled and maintained to perform a CT scan, (d) front view of the CT-scan
+and the liver.
+V. CONCLUSION
+One of the current deadlocks to break before AR systems
+can ﬁnd their place in the clinical routine of MIS procedures
+is the ability to capture organs deformations during surgery.
+Large and unpredictable liver deformation that occur during
+surgeryhighlyimpactsthelocationofinternalstructuressuch
+as tumors and vessels. We have presented in this paper, an
+accurate tracking algorithm designed to constrain properly
+a biomechanical model that is able to capture such defor-
+mations. The model deformation is guided by both internal
+4125
+Fig. 8. A comparison study between the CbF, the DT approach and a
+computer-generated force, on the tumor (a) and tumor (b). The clustering
+reduces considerably the error between the predicted tumor and the ground
+truth.
+forces, generated by a biomechanically grounded model of
+the liver, and external forces, that emanate from 3D control
+points. These 3D control points are built form stereo images
+through a clusters-based ﬁltering that restrict the noisy image
+measurement. Such characteristics make our approach able
+to accurately register the organ surface and inner the defor-
+mation motion to the internal structures. Promising results
+were obtained through in-vivo experimentation on a human
+liver and ex-vivo validation on a porcine liver where errors
+well below the current surgical margins and current methods
+were measured. Future work will address the issue of initial-
+isation that is currently done manually, and the robustness of
+our approach against actual surgical events such as smoke,
+bleeding, or sudden instrument occlusions that may hinder
+the tracking. More validation is obviously required though it
+is worth mentioning that validation implying actual organs
+are seldom reported in previous works.
+ACKNOWLEDGEMENT
+The authors highly acknowledge the help provided by
+Mario Sanz Lopez during the experimentations and advisory
+provided by Dr. Patrick Pessaux.
+REFERENCES
+[1] Nicolau S., Soler L., Mutter D., Marescaux J.: Augmented reality
+in laparoscopic surgical oncology. Journal of Surgical Oncology; 20
+(3):189-201
+[2] Teber D., Guven S., Simpfendorfer T., Baumhauer M., Guven E. O.,
+YencilekF.,GozenA.S.,RassweilerJ.:Augmentedreality:anewtool
+to improve surgical accuracy during laparoscopic partial nephrectomy
+Preliminary in vitro and in vivo results. Journal of European Urology
+(2009).
+[3] Su L.M. , Vagvolgyi B., Agarwal R., Reiley C. E., Taylor R.,
+Hager G. D : Augmented Reality During Robot-assisted Laparoscopic
+PartialNephrectomy:TowardReal-Time3D-CTtoStereoscopicVideo
+Registration. Journal of Urology, 73(4):896-900, 2009.
+[4] Puerto-Souza,G.A.andMariottini,G.L.:Anaugmented-realitysystem
+for laparoscopic surgery robust to complete occlusions and fast camera
+motions. In International Conference on Robotics and Automotion
+2013.
+[5] Figl M., Rueckert D., Hawkes D., Casula R., Hu M., Pedro O., Zhang
+D. P., Penney G., Bello F., Edwards P.: Image guidance for robotic
+minimally invasive coronary artery bypass. In Proceedings of the 4th
+international workshop on Medical Imaging and Augmented Reality
+(Berlin, Heidelberg, 2008), MIAR ’08, Springer-Verlag, pp. 202 209.
+[6] Pratt P., Visentini Scarzanella M., Stoyanov D. and Yang G-Z.:
+Dynamic Guidance for Robotic Surgery using Image-Constrained
+Biomechanical Models. In Medical Image Computing and Computer
+Assisted Interventions (MICCAI10), 2010.
+[7] Jae-Hak Kim , Adrien Bartoli, Toby Collins and Richard Hart-
+ley. Tracking by Detection for Interactive Image Augmentation
+in Laparoscopy. In Workshop on Biomedical Image Registration,
+WBIR’2012.
+[8] Speidel S., Roehl S., Suwelack S., Dillmann R.: Intraoperative surface
+reconstructionand biomechanical modeling for soft tissue registration.
+In SCATh joint Workshop on New Technologies for Computer/Robot
+Assisted Surgery, 2011.
+[9] Shen T., Li H.; Huang X.: Active Volume Models for Medical Image
+Segmentation. In IEEE Trans. Med. Imaging. 30 (3), 2011.
+[10] Sermesant M., Forest C., Pennec X., Delingette H, Ayache N.:
+Deformable biomechanical models: Application to 4D cardiac image
+analysis. In Medical Image Analysis, 4 (7), 2003.
+[11] Peterlik I., Duriez C., Cotin S.: Modeling and Real-Time Simulation
+of a Vascularized Liver Tissue. In MICCAI 2012.
+[12] Haouchine N., Dequidt J., Berger M.-O., and Cotin S. Deformation-
+based Augmented Reality for Hepatic Surgery. In Medicine Meets
+Virtual Reality, MMVR 20, San Diego, USA, 2013.
+[13] Haouchine N., Dequidt J., Peterlik I., Kerien E., Berger M.-O., and
+Cotin S. Image-guided Simulation of Heterogeneous Tissue Deforma-
+tion for Augmented Reality during Hepatic Surgery. In International
+Sympsium of Mixed and Augmented Reality (to appear), ISMAR’13,
+Adelaide, Australia, 2013.
+[14] Elhawary H., Popovic A.: Robust feature tracking on the beating heart
+for a robotic-guided endoscope. Int J Med Robot. 2011 Dec;7(4):459-
+68. doi: 10.1002/rcs.418. Epub 2011 Oct 7.
+[15] M¨ uller M., Dorsey J., McMillan L., Jagnow R. and Cutler B.: Stable
+real-time deformations. In ACM SIGGRAPH/Eurographics symposium
+on Computer Animation 2002.
+[16] Levin, D. Mesh-independent surface interpolation. In ”Geometric
+Modeling for Scientiﬁc Visualization” Edited by Brunnett, Hamann
+and Mueller, Springer-Verlag, 2003, 37-49.
+[17] L. Maier-Hein, P. Mountney, A. Bartoli, H. Elhawary, D. Elson, A.
+Groch, A. Kolb, M. Rodrigues, J. Sorger, S. Speidel, D. Stoyanov,
+Optical techniques for 3D surface reconstruction in computer-assisted
+laparoscopic surgery, Medical Image Analysis, Volume 17, Issue 8,
+December 2013, Pages 974-996, ISSN 1361-8415.
+[18] Z. Zhang. A ﬂexible new technique for camera calibration. IEEE
+Trans. Pattern Anal. Mach. Intell., 22(11):13301334, Nov. 2000.
+[19] D. Stoyanov. Stereoscopic scene ﬂow for robotic assisted minimally
+invasive surgery. In Proceedings of the 15th international conference
+on Medical Image Computing and Computer-Assisted Intervention,
+MICCAI12, pages 479486. Springer-Verlag, 2012.
+[20] X. Maurice, P. Graebling, and C. Doignon. Real-time structured light
+coding for adaptive patterns. Journal of Real-Time Image Processing,
+pages 110, 2011.
+[21] R. Richa, A. P. L. B, and P. Poignet. Robust 3d visual tracking
+for robotic-assisted cardiac interventions. In Proceedings of the 13th
+international conference on Medical image computing and comput-
+erassisted intervention, pages 267274. Springer-Verlag, 2010.
+[22] Herrera, S.E.M.; Malti, A.; Morel, O.; Bartoli, A., ”Shape-from-
+Polarization in laparoscopy,” Biomedical Imaging (ISBI), 2013 IEEE
+10th International Symposium on , vol., no., pp.1412,1415, 7-11 April
+2013 doi: 10.1109/ISBI.2013.6556798
+[23] T.Mala,B.Edwin,I.Gladhaug,E.Fosse,O.Sreide,A.Bergan,andO.
+Mathisen. A comparative study of the short-term outcome following
+openandlaparoscopicliverresectionofcolorectalmetastases.Surgical
+Endoscopy And Other Interventional Techniques, 16(7):10591063,
+2002.
+[24] C. Duriez, S. Cotin, J. Lenoir, and P. Neumann. New approaches to
+catheter navigation for interventional radiology simulation. Computer
+Aided Surgery, 2006.
+4126

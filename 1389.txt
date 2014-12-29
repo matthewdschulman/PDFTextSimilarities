@@ -1,0 +1,1041 @@
+Fast Online Learning and Detection of Natural Landmarks
+for Autonomous Aerial Robots
+M. Villamizar, A. Sanfeliu and F. Moreno-Noguer
+Institut de Robòtica i Informàtica Industrial, CSIC-UPC
+{mvillami,sanfeliu,fmoreno}@iri.upc.edu
+Abstract—We present a method for efﬁciently detecting
+natural landmarks that can handle scenes with highly repetitive
+patterns and targets progressively changing its appearance.
+At the core of our approach lies a Random Ferns classiﬁer,
+that models the posterior probabilities of different views of the
+target using multiple and independent Ferns, each containing
+featuresatparticularpositionsofthetarget.AShannonentropy
+measure is used to pick the most informative locations of these
+features. This minimizes the number of Ferns while maximizing
+its discriminative power, allowing thus, for robust detections at
+low computational costs. In addition, after ofﬂine initialization,
+the new incoming detections are used to update the posterior
+probabilities on the ﬂy, and adapt to changing appearances that
+can occur due to the presence of shadows or occluding objects.
+All these virtues, make the proposed detector appropriate for
+UAV navigation. Besides the synthetic experiments that will
+demonstrate the theoretical beneﬁts of our formulation, we
+will show applications for detecting landing areas in regions
+with highly repetitive patterns, and speciﬁc objects under the
+presence of cast shadows or sudden camera motions.
+I. INTRODUCTION
+Statistical methods for object detection and categorization
+haveachievedadegreeofmaturitythatmakesthemrobustto
+several challenging conditions such as target scaling, 2D and
+3D rotations, nonlinear deformations and lighting changes
+[6], [8], [10], [14], [21], [19], [26], [28], [30]. Yet, most of
+these approaches involve complex computations, preventing
+its use in systems requiring online video processing. This
+limitation is specially critical when designing perception
+algorithmsforUnmannedAerialVehicle(UAVs),whereboth
+real time and robustness are mandatory characteristics.
+Most current UAV perception algorithms use external
+markers placed along the environment or on the object of
+interest, which can be easily detected with RGB or infra-
+red cameras. Tasks such target detection [12], [15], [18],
+navigation [9], [31] and landing [7], [24] can be easily
+simpliﬁed with the use of these markers. There are, however,
+situationswherethedeploymentofmarkersisnotpracticalor
+possible,especiallywhenthevehicleoperatesindynamically
+changing and outdoor scenarios.
+In this paper, we propose an efﬁcient algorithm for
+detecting the pose of natural landmarks on input video
+sequences without the need of using external markers. This
+is especially remarkable, as we consider scenes like the one
+shown in Fig. 1, where the target is a chunk of grass in
+which identifying distinctive interest points is not feasible,
+preventingthustheuseofkeypointrecognitionmethods[13],
+Fig. 1. Detecting natural landmarks. Top: Kind of outdoor scenario
+we consider. Some of the challenges our detector needs to address are
+light changes, shadows and repetitive textures. Bottom: Schematic of the
+approach we propose. It consists of two stages, an ofﬂine learning stage
+where a general model of the object’s appearance is learned, and an online
+stage, where the object’s model is continuously updated using input images.
+[20]. In addition, our approach continuously updates the
+targetmodeluponthearrivalofnewdata,beingabletoadapt
+to dynamic situations where the its appearance may change.
+This is in contrast to the previous approaches, which learn
+object appearances from large training datasets, but once
+these models are learned, they are kept unchanged during
+the whole testing process.
+As shown in Fig. 1, our approach consists of two main
+stages. Initially, a canonical sample of the target is provided
+by the user as a bounding box in the ﬁrst frame of the
+sequence(Fig.1(a)).Throughsyntheticwarpsbasedonshifts
+andplanarrotations,newsamplesofthetargetaregenerated,
+each associated to a speciﬁc viewpoint (Fig. 1(b)). All these
+samples are used for training a classiﬁer that models the
+posteriorofeachview(Fig.1(c)).Atthecoreoftheclassiﬁer
+there are Ferns features [22] that given an input training
+sample, model its appearance by combining random sets
+of binary intensity differences. Yet, in contrast to [22] that
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 4996
+Fig. 2. Failure of keypoint-based methods. Top: Matching of SIFT features (red lines) between the visual target (small top-left image) and a sequence
+of image examples that includes lighting and viewpoint changes. Bottom: Output of the proposed detection approach (red circles) for the same target and
+sequence.Blackcirclesindicatethegroundtruthandtherectangleshowsthedetectionrates:truepositives(TP),falsepositives(FP)andfalsenegatives(FN).
+randomly picks the location of each Fern feature within the
+image, we propose a strategy that uses an entropy reduction
+criterion for this purpose. This will let us to both minimize
+the number of Ferns to represent the target (making the
+algorithm more efﬁcient), and maximize the discriminative
+power of the classiﬁer. All this initial training is performed
+ofﬂine, in matter of minutes.
+In the second stage (Fig. 1(d)) the classiﬁer is evaluated
+at each input frame, and its detections are used to update the
+posterior probabilities, which still contain the information of
+the original target appearance that avoids drifting to false
+detections (Fig. 1(e)). This allows a non-supervised adaption
+of the classiﬁer to progressive target changes.
+All these ingredients (markerless, efﬁcient and adapt-
+able) make our approach appropriate for Autonomous Aerial
+Robots applications. After showing the theoretical beneﬁts
+of the method using synthetic data, we will describe several
+realexperimentsinwhichourclassiﬁerwillbeusedtodetect
+the position and orientation of natural landmarks in outdoor
+environments where a UAV is expected to operate.
+II. RELATED WORK
+Marker-based Approaches
+Thestandardapproachforestimatingthelocationofanaerial
+mobile robot or speciﬁc objects of its environment relies on
+visual markers introduced in the scene. These markers can
+be either perceived by RGB cameras [7], [24] or infrared
+sensors [9], [17]. Especially the latter, provide very accurate
+pose estimation results and at a high frame rate, allowing
+to design accurate control laws and perform complex tasks
+such as that of cooperative grasping and manipulation with
+multiple aerial vehicles [16].
+There are situations, though, in which deploying these
+markers is not possible or convenient. For instance, the
+response of an infra-red sensor is easily washed out by
+sunlight in outdoors scenarios. In other circumstances, the
+target to be tracked or detected is chosen on the ﬂy, and is
+not possible to place markers on it. In this kind of situations,
+passive and non-invasive techniques such as those based in
+vision alone, come into play.
+Markerless Vision-based Approaches
+Remind that our goal is to locate the position and the in-
+plane orientation of a given target in an input image or
+video sequence. One obvious solution for this is based on
+algorithms that ﬁrst extract points of interest from the input
+and target images, represent them with a potentially complex
+descriptor [1], [14], and match them using a robust algorithm
+for outlier rejection [13], [20], [25]. Yet, in the situations
+we consider with natural landmarks, repetitive patterns (like
+grass) and lighting artifacts, extracting reliable and salient
+points of interest is not an easy task. Observe, for instance,
+the example in Fig. 2, where SIFT descriptors are used
+to match points of interest of the natural target seen from
+different viewpoints. Note that the percentage of matches is
+very large for the ﬁrst images but it decreases signiﬁcantly
+for the next ones because of lighting and viewpoint changes.
+Therefore, these point based algorithms have been mostly
+used in indoor applications with controlled light conditions.
+Indeed, we can ﬁnd some recent works that under these con-
+straints have been shown effective for UAV navigation [4],
+visual tracking [18] and target detection [27].
+When single feature points are not reliable cues, one
+can model the appearance of the whole target object. This
+can be expressed as a classiﬁcation problem, where each
+target orientation corresponds to a different class. There are
+potentially many algorithms which could be used for this
+task, and which have been shown to give excellent results in
+object detection applications [6], [8], [23], [26]. Yet, most
+of them have a high computational cost and require rigorous
+training procedures for being effectively implemented in
+aerial robots.
+The approach we present here falls within this group of
+methods, but we alleviate the computational cost of our clas-
+siﬁer using two strategies. First, we split the learning process
+in two stages, one ofﬂine and the other online. This helps
+to reduce the amount of information included in the model
+and thus, reduces its complexity. And second, we propose
+an optimization strategy based on entropy minimization, in
+which the number of features is minimized while retaining
+their discriminative power. The essence of this strategy is
+4997
+Fig. 3. Synthetic training data. The canonical sample (left) is synthetically warped to generate new training samples (middle). These samples are
+computed at different orientations and at different shift and blurring levels (right). The red circle and arrow indicate the target pose for each sample.
+ 
+Fig. 4. Fern-based classiﬁer. Computation of the classiﬁer using J = 2 Ferns with M = 2 binary features. Left: Schematic representation of the Ferns
+structure using binary trees. At the bottom of the tree we plot the distributions which are updated for a training samplex. For instance, assuming the training
+sample x belongs to the positive class and that F
+1
+(x) = (00)
+2
++1 = 1, the bin of the positive class in z = 1 would be increased in one unit. The same
+sample, would also increase in one unit the bin corresponding to z = 3 of F
+2
+, as F
+2
+(x) = (10)
+2
++1 = 3. Right: Example of how the Ferns are tested
+on an image sample x. Features are signed comparisons between image pixels. (u,v) denote the spatial coordinate, and c the color channel coordinate.
+similar to what is done in recent works with two-class
+classiﬁcation problems [11], [29], [30]. Yet, these works are
+not applicable to our multiview-classiﬁcation problem.
+III. APPROACH
+We next describe the main steps for building the classiﬁer:
+generation of an initial set of synthetic samples, ofﬂine
+construction of the classiﬁer, a new criteria for selecting the
+features, and ﬁnally, the online adaption of the algorithm.
+A. Generating Synthetic Samples for Ofﬂine Training
+We initially assume that we only have one single sample
+of the target we seek to detect. This canonical sample is
+provided by the user as a bounding box in the ﬁrst frame
+of the video sequence. In order to obtain a more complete
+description of the target we synthetically generate new views
+of the canonical shape.
+As it is typically done in aerial imagery, the depth of the
+targetisassumednegligiblecomparedtoitsdistancew.r.t.the
+camera. We therefore consider the canonical target as being
+planar, and approximate the multiple views it can take as in-
+plane rotations. Note, however, that our approach is equally
+valid for non-planar objects. In that case, sample training
+images could be either generated with more sophisticated
+rendering tools or by simply acquiring real images of the
+target from each of the viewpoints.
+For the purposes of this paper, and as shown in the
+example of Fig. 3, the canonical shape is rotated at W = 12
+principal pose orientations, that will establish the classes
+of our classiﬁcation problem. In addition, for each pose
+w ? {1,2,..,W} we further include 6 additional samples
+with random levels of shifting and blurring. This helps to
+model small deviations from the planar assumption, as well
+as the blurring produced by sudden motions of the camera.
+A ﬁnal subset with a similar number of background samples
+(random patches chosen from background) per pose is also
+considered. We denote this whole initial training dataset as
+D = {(x
+i
+,y
+i
+)}
+N
+i=1
+where x
+i
+? X corresponds to a sample
+in the image space X, N is the number of samples, and
+y
+i
+={+w
+i
+,?w
+i
+} is the class label, indicating if the sample
+belongs to the pose w or background classes, respectively.
+B. Building the Classiﬁer
+In order to perform online learning and object detection,
+we use Random Ferns (RFs) [22]. This classiﬁer can be
+understood as an extreme and very fast implementation of a
+random forest [5] which combines multiple random decision
+trees. Furthermore, subsequent works have shown the RFs to
+be robust to over-ﬁtting and that they can be progressively
+computed upon the arrival of new data [11], [29]. The most
+distinctive characteristic of RFs compared to the classical
+random forests is that the same test parameters are used in
+all nodes of the tree level [5], [22]. We show this in Fig. 4-
+left, where we can see two Ferns F, each one with two
+decision tests or binary features f.
+More formally, the online classiﬁer is built as an average
+of J Ferns in which each Fern F
+j
+consists of a set of M
+binary features, F
+j
+={f
+j
+1
+,f
+j
+2
+,...,f
+j
+M
+}, representing binary
+comparisons between pairs of pixel intensities. This can be
+written as
+f(x) = I(x(u
+1
+,v
+1
+,c
+1
+)>x(u
+2
+,v
+2
+,c
+2
+))
+4998
+where x is the image sample, x(u,v,c) indicates the image
+value at pixel coordinates (u,v) with color channel c, and
+I(e) is the indicator function:
+I(e) =
+
+1 if e is true
+0 if e is false
+As we will describe in the following subsection, and in
+contrast to the original Ferns formulation [22], the location
+of these pairs of pixels is computed during the training stage
+according to a criterion of entropy minimization. Fig. 4-
+right shows a simple example of how two different Ferns
+with two features are evaluated in an image sample x. The
+combination of these binary features determines the Fern
+output, F(x) = z, where z = (f
+1
+,...,f
+M
+)
+2
++ 1, is the
+co-occurrence of the features and corresponds to the Fern
+leaf where the sample x falls (See Fig. 4-left).
+So far, we have discussed how a single Fern is evaluated
+on an image sample. Let us now explain how the classiﬁer
+is built, from the response of J Ferns F = {F
+1
+,...,F
+J
+}.
+The response of the classiﬁer, for an input sample image x
+can be written as
+H(x) =
+
++1 if conf(x? ˆ w)>?
+?1 otherwise,
+where ˆ w is the estimated pose of the sample, conf(x? ˆ w) is
+the conﬁdence of the classiﬁer on predicting that x belongs
+to the class ˆ w, and? is a conﬁdence threshold whose default
+value is 0.5. Thus, if the output of the classiﬁer for a
+sample x is H(x) = +1, the sample is assigned to the target
+(positive)class ˆ w.Otherwise,itisassignedtothebackground
+(negative) class. The conﬁdence of the classiﬁer is deﬁned
+according to the following posterior:
+conf(x? ˆ w) =p(y = +ˆ w|F(x),?), (1)
+where? are parameters of the classiﬁer we will deﬁne below
+and y ={+w,?w} denotes the class label.
+The estimated pose ˆ w is computed by evaluating the
+conﬁdence function over all possible poses, and picking the
+one with maximum response, i.e.:
+ˆ w = argmax
+w
+p(y = +w|F(x),?), w = 1,...,W
+As said before, this posterior probability is computed by
+combining the posterior of the J Ferns:
+p(y = +w|F(x),?) =
+1
+J
+J
+X
+j=1
+p(y = +w|F
+j
+(x) =z,?
+j,z,w
+),
+where z is the Fern output, and ?
+j,z,w
+is the probability that
+a sample in the Fern j with output z belongs to the positive
+class with pose w. Since the posterior probabilities follow a
+Bernoulli distribution
+p(y|F
+j
+(x) =z,?
+j,z,w
+)? Ber(y|?
+j,z,w
+),
+with we can write that
+p(y = +w|F
+j
+(x) =z,?
+j,z,w
+) =?
+j,z,w
+The parameters of these distributions are computed during
+the training stage through a Maximum Likelihood Estimate
+Fig. 5. Feature selection process. Example of the kind of distributions
+we consider in the Fern leaves, for a case where we have two classes or
+poses w. Each distributionH encodes the amount of positive and negative
+samples, for each of the classes.
+(MLE) over the labeled set of synthetic samplesD we have
+previously generated. That is,
+?
+j,z,w
+=
+N
++w
+j,z
+N
++w
+j,z
++N
+?w
+j,z
+(2)
+where N
++w
+j,z
+is the number of positive samples that fall into
+the leaf z of the Fern j. Similarly, N
+?w
+j,z
+corresponds to the
+numberofnegativesamplesfortheFernj withoutputz.The
+reader is referred to Fig. 4-left for an illustrative example.
+C. Feature Selection
+In all previous works that use RFs classiﬁers, the Ferns
+features, i.e, the pairs of pixels whose intensities are com-
+pared, are chosen at random [11], [22], [29]. In this paper we
+claim, and we will demonstrate it in the results, that a more
+principled approach for selecting those features can lead to
+increased levels of efﬁciency and robustness.
+For this purpose we propose a methodology to choose the
+binary features that reduce the classiﬁcation error over the
+training dataD. As an approach to this, we will seek for the
+features that minimize the Shannon Entropy E, which gives
+a measure about the impurity of the tree (i.e, how peaked
+are the posterior distributions at each Fern), and about the
+uncertainty associated with the data [3], [26].
+Morespeciﬁcally,eachFernF
+j
+isindependentlycomputed
+from the rest of Ferns, and using a different and small
+random subset S ?D of the training data. Partitioning the
+training data will avoid potential overﬁtting errors during
+testing [3], [5]. Let us now assume we have a large and
+random pool of binary features, and we want to pick the
+best of them for a Fern F
+j
+. At each node level m, we will
+choose the binary feature f
+m
+that minimizes the entropy of
+the Fern E(F
+j
+), computed as
+E(F
+j
+) =
+2
+m
+X
+z=1
+?
+N
+j,z
+|S|
+E(H
+z
+), E(H
+z
+) =?H
+z
+logH
+z
+,
+where N
+j,z
+is the number of samples falling into the leaf z
+and|S| is the size of the samples subset S. The variableH
+z
+isthedistributionofsamplesacrossposesw intheleafz,and
+is represented trough a normalized histogram (See Fig. 5).
+Once the feature f
+m
+that minimizes E(F
+j
+) is chosen, it
+is added to the set of features of F
+j
+. This is repeated until
+a maximum number of features M (corresponding the the
+depth of the Fern) is reached. The pseudocode of the whole
+procedure for building the classiﬁer is presented in Alg. 1.
+4999
+0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+0.9
+1
+Random Selection ? EER: 60.00%  
+ 
+0.5
+0.55
+0.6
+0.65
+0.7
+0.75
+0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+0.9
+1
+conf(x)
+ 
+ 
+Positive/Target
+Negative/Background
+0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+0.9
+1
+Proposed Approach ? EER: 87.89%  
+ 
+0.5
+0.55
+0.6
+0.65
+0.7
+0.75
+0.8
+0.85
+0.9
+0.95
+0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+0.9
+1
+conf(x)
+ 
+ 
+Positive/Target
+Negative/Background 
+Fig. 6. Random Ferns (Top) vs Entropy-based Ferns (Bottom). Left: The proposed approach is compared to standard RFs in a two-class synthetic
+problem. Cyan and red symbols correspond the the two main classes, positive and negative respectively, and the + and 0 are two additional values that
+each element of every class can take. Black symbols indicate misclassiﬁed samples. Middle: Maps showing the response of the classiﬁers on the dense
+sample space. Right: Distributions of positive and negative classes according to the conﬁdence conf(x) of the classiﬁers, computed from Eq. 1.
+In order to highlight the advantages of the Entropy-based
+approach for selecting features, compared to the standard
+random approach, we have performed the toy experiment
+summarized in Fig. 6. The problem consists in building a
+classiﬁer for a two-class (red and cyan classes) problem,
+where each class element may take two possible values
+(“+” and “0”). The binary features in this example are
+axis-aligned split functions (2D decision stumps) with a
+random threshold. That is, given a samplex with coordinates
+(u,v)? [0,1]?[0,1] we compute binary features as
+f(x) = (p>?),
+where p = {u,v} corresponds to one of the axis, and ? a
+randomthresholdintheinterval[0,1].Wetraintheclassiﬁers
+with 20 Ferns and 7 such features per Fern.
+The left-most column of Fig. 6 shows the response of
+both classiﬁers to new testing data, where black “0” or
+“+” symbols are misclassiﬁed samples. As expected, the
+classiﬁcation results are consistently better when using the
+Entropy for selecting the features. This is also illustrated
+in the dense classiﬁcation maps shown in Fig. 6-middle,
+where the response of the our classiﬁer, clearly yields a more
+precise information about the spatial layout of each of the
+classes.
+Another advantage of the proposed classiﬁer is that it
+provides a greater separation between positive and negative
+classes than standard RFs, being thus more discriminative.
+This is shown in the right-most column of Fig. 6, where we
+plot the conﬁdence value of Eq. 1 for each of the classes.
+D. Online Learning
+The ofﬂine training procedure described in the previous
+section can be done in about one minute (forM ≈ 3 features
+andJ ≈ 20trees).Then,atruntime,theresultingclassiﬁeris
+evaluated over the input data and it is continuously updated
+inordertoadapttopotentialchangesundergonebythetarget
+object.
+As shown in the approach overview in Fig. 1, during
+the online learning process, new detections are fed into the
+Algorithm1:FeatureSelection&BuildingtheClassiﬁer
+Input:
+-J: Number of Ferns.
+-M: Number of binary features.
+-D ={(x
+i
+,y
+i
+)}
+N
+i=1
+: Training dataset consisting of N
+image samples x?X, where y
+i
+?{+w,?w} is the
+label for the target and background classes with pose
+w, respectively.
+Output: Visual target classiﬁer H(x).
+1 for j = 1;j≤J do
+2 Sample at random a reduced set of images S ?D
+from the training data D.
+3 for m = 1;m≤M do
+4 Compute a set of K random binary features.
+5 for k = 1;k≤K do
+6 Test feature f
+k
+on the sample set S.
+7 Compute the entropy of the current Fern j,
+E(F
+j
+) =
+P
+2
+m
+z=1
+?
+Nj,z
+|S|
+E(H
+z
+)
+8 Select the feature f
+m
+that minimizes E(F
+j
+).
+9 Add feature f
+m
+to the Fern f
+m
+?F
+j
+.
+10 Assemble the computed Ferns F
+j
+?F.
+classiﬁer to update the posterior probabilities. These samples
+are labeled as either positive, corresponding to the target, or
+negative, when they correspond to the background.
+The labeling is done based on the conﬁdence value about
+the input samplex computed using Eq. 1. If a samplex with
+pose w has a conﬁdence value conf(x)>?, it is assigned to
+the positive class +w. Otherwise, the sample is considered
+negative ?w. The parameter ? is the threshold of the
+classiﬁerandtoreducetheriskofmisclassiﬁcationitissetto
+the Bayes error rate. Yet, since an incorrect labeling might
+lead to drifting problems and loss of the target, we make
+use of a more rigorous rejection criterion [2], and we set a
+conﬁdence interval ? around ? to indicate predictions with
+5000
+ERFs RFs ERFs RFs
+0.55 0.57 0.45 0.55
+0.66 0.67 0.62 0.65
+0.72 0.79 0.82 0.85
+0.77 0.86 0.86 0.87
+# Ferns
+# Features
+5 10 20 50
+3
+5
+7
+9
+0.46 0.46 0.48 0.44
+0.60 0.52 0.44 0.51
+0.52 0.57 0.63 0.63
+0.63 0.65 0.61 0.64
+# Ferns
+# Features
+5 10 20 50
+3
+5
+7
+9
+0.96 0.97 0.99 0.97
+0.92 0.90 0.93 0.89
+0.83 0.67 0.61 0.57
+0.74 0.53 0.47 0.49
+# Ferns
+# Features
+5 10 20 50
+3
+5
+7
+9
+0.99 0.98 0.97 0.98
+0.98 0.96 0.99 0.99
+0.97 0.96 0.92 0.93
+0.93 0.89 0.94 0.90
+# Ferns
+# Features
+5 10 20 50
+3
+5
+7
+9
+Fig. 7. 2D classiﬁcation problem. Evaluation of ERFs (ﬁrst and third columns) against RFs (second and fourth columns). Left: Classiﬁcation performance
+of both classiﬁers measured trough precision-recall rates. Right: Degree of overlapping between positive and negative class distributions.
+ambiguous conﬁdence values. Samples within this interval
+are not further considered in the updating process.
+The labeled samples that pass the conﬁdence test are then
+used to recompute the prior probabilities?
+j,z,w
+of Eq. 2, and
+updatetheclassiﬁer.Forinstance,letusassumethatasample
+x is labeled as +w
+i
+, and that it activates the output z of the
+fernF
+j
+, i.e,F
+j
+(x) =z. We will then update the classiﬁer by
+addingoneunittothei-thbinofthehistogramofN
++w
+j,z
+.This
+is repeated for all ferns. With these new distributions, we can
+recompute the priors ?
+j,z,w
+, and thus, update the classiﬁer.
+IV. EXPERIMENTS
+We next evaluate the proposed method, dubbed ERFs (for
+Entropy-based Random Ferns), using both synthetic data and
+real experiments of detection of natural landmarks.
+A. 2D Classiﬁcation Problem
+Thisexperimenthasalreadybeenpresentedintheprevious
+section to evaluate different characteristics of the ERFs and
+compare them against a classiﬁer whose Ferns are computed
+completely at random (RFs). In Fig. 6 we have already
+shown some qualitative results that visually demonstrate the
+advantagesofourapproach.Wenextpresentamorein-depth
+analysis of two approaches.
+We ﬁrst analyze the amounts of Ferns and features used to
+compute both types of classiﬁers. Fig. 7-(two leftmost plots)
+represents the classiﬁcation performance of these approaches
+throughtheEqualErrorRate(EER)overprecisionandrecall
+scores. Note that the classiﬁcation rates grow with the size
+of the classiﬁer, and that ERFs consistently obtain higher
+classiﬁcation rates than RFs, even when for smaller amounts
+of features and Ferns.
+Another advantage of the proposed classiﬁer is that it
+yields larger degrees of separability between the positive and
+negative classes. We already qualitatively observed this in
+Fig. 6. In the new Fig. 7-(two rightmost plots) we numer-
+ically demonstrate this using the Bhattacharyya coefﬁcient,
+that measures the amount of overlap between distributions.
+We clearly see that ERFs provide lower coefﬁcients than the
+classiﬁer computed at random (RFs). This is critical for on-
+line learning and detection, as it reduces the misclassiﬁcation
+error and possible drifting problems.
+RFs ERFs
+0.55
+0.6
+0.65
+0.7
+0.75
+0.8
+0.85
+0.9
+0.95
+1
+Approaches
+PR?EER
+ 
+ 
+5 Ferns
+10 Ferns
+20 Ferns
+50 Ferns
+28.23 24.47 21.53 18.63
+19.32 16.50 13.75 11.51
+12.29 9.61 7.91 6.41
+5.80 4.33 3.39 2.72
+# Ferns
+# Features
+5 10 20 50
+3
+5
+7
+9
+Fig. 8. Detection of ground patches. Left: Detection rates according to
+the number of Ferns used to compute the classiﬁer. Right: Speed of the
+classiﬁer (frames per second) for different amounts of features and Ferns.
+B. Detection of Ground Patches
+We next use the ERFs classiﬁer to detect speciﬁc patches
+on the ground, in a ﬁeld containing a mixture of grass
+and soil. While this is a very useful task for detecting
+landing areas for UAVs it is extremely challenging, due to
+the presence of many similar patterns, and the lack of salient
+and recognizable visual marks. Fig. 12-(top, middle) shows
+a few sample images.
+Like in the previous experiment, we again compare the
+ERFs and RFs. To this end, we evaluate the classiﬁers in
+a video sequence containing 150 images of a ground ﬁeld,
+that suffers from several artifacts, such as sudden camera
+motions,andlightandscalechanges(seeFig.12-top).Inthis
+experiment, weconsidered 9features perFern. Thedetection
+performance rate of both methods are presented in Fig. 8-
+left, where we detail the PR-EER (Equal Error Rate over
+the Precision-Recall curve) values for classiﬁers trained with
+different numbers Ferns. Note again that the ERFs classiﬁer
+yields better results and is less sensitive to the number of
+Ferns, thus allowing for more efﬁcient evaluations. This is
+veriﬁed in Fig. 8-right where we provide the computation
+time of the classiﬁers in frames per second. Some sample
+images with the outputs of the ERFs (red circles) and the
+RFs (green ones) are depicted in Fig. 12-top. Observe that
+the ERFs are able to accurately detect the visual target, even
+when it is difﬁcult for the human eye.
+Fig. 12-middle shows another experiment of recognizing
+ground landmarks. This experiment contains 64 images
+where the target appears at multiple locations and under
+5001
+RFs ERFs
+0
+0.2
+0.4
+0.6
+0.8
+1
+Approaches
+PR?EER
+ 
+ 
+5 Ferns
+10 Ferns
+20 Ferns
+50 Ferns
+RFs ERFs
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+Overlapping
+Approaches
+ 
+ 
+5 Ferns 
+10 Ferns
+20 Ferns
+50 Ferns
+Fig. 9. Landmark detection performance. ERFs are evaluated and
+compared to RFs using different number of Ferns (left), and according to
+the degree of overlapping between the target and background classes (right).
+NCC RFs ERFs (Off) ERFs
+0
+0.2
+0.4
+0.6
+0.8
+1
+Approaches
+PR?EER
+ 
+ 
+0 20 40 60 80 100 120
+0
+0.2
+0.4
+0.6
+0.8
+1
+# Frames
+conf(x)
+ 
+ 
+NCC
+RFs
+ERF(Off.) 
+ERFs
+Fig. 10. Detection of 3D objects. ERFs are assessed to learn and detect
+3D objects. Left: Detection rates. Right: Output of the classiﬁer conf(x).
+various rotations. In this experiment, the classiﬁers are
+trained with W = 16 in-plane possible orientations. The
+detection rates of both the ERFs and the RFs are shown
+in Fig. 9-left. Again, the ERFs provide better results. In
+addition, if we analyze the degree of overlapping between
+the target and background classes through the Bhattacharyya
+coefﬁcient (Fig. 9-right), we see that ERFs provide much
+higher separation of classes, and therefore, much higher
+conﬁdence values in its detection. Observe in Fig. 12-middle
+a few sample results where both the position and orientation
+of the target are correctly estimated. Indeed, the proposed
+method yields a detection rate over 95% (PR-EER) and an
+orientation accuracy of 93%.
+C. 3D Object Detection
+We have also tested our approach in objects that do not
+satisfy the assumption we made of having a depth which is
+negligible compared to its distance to the camera. Fig. 12-
+bottom shows a few samples of a 120 frames sequence of a
+bench seen from different viewpoints and scales.
+In this case we have included in the analysis a template
+matching approach based on Normalized Cross Correlation
+(NCC),widelyusedfordetectingspeciﬁcobjects.Therecog-
+nition results of all methods are summarized in Fig. 10-left.
+Observe that the performance of NCC is quite poor. This
+is because a plain NCC template matching can not adapt
+the appearance changes produced different viewpoints. The
+samelimitationwouldsufferourapproachwithouttheonline
+adaption, shown in the ﬁgure as ERFs (Off). This behavior
+is also reﬂected in Fig. 10-right that plots the conﬁdence
+conf(x) of each classiﬁer along the sequence. ERFs (Off.)
+Fig. 11. 3D target detection. Our approach is able to learn and detect 3D
+targets in outdoor environments. Red circle indicates the classiﬁer output,
+whereas black one is the ground truth or visual target.
+and NCC give very high scores for the ﬁrst frames, but these
+values rapidly fall when the viewpoint changes. On the other
+hand, the online approaches continue updating the classiﬁers
+with new incoming samples and maintain high recognition
+scores.
+The circles in Fig. 12-bottom, represent the detection
+results of the ERFs (red), NCC (cyan) and ground truth
+(black), for a few sample frames. Note that the ERFs are
+able to effectively handle viewpoint change.
+Finally, Fig. 2 (which we already introduced in Sect. II)
+and Fig. 11 show additional examples where our classiﬁer
+is used to detect 3D objects, in this case speciﬁc trees,
+which can help for performing UAV navigation and obstacle
+avoidance tasks. Our ERFs classiﬁer is able to learn these
+visual landmarks on the ﬂy and to detect them despite
+illumination variations, self-occlusions, viewpoints changes
+and repetitive textures. As we already showed in Fig. 2-top,
+methods based on feature-point descriptors like SIFT [14]
+would not succeed in theis kind of scenarios, as they would
+seldom ﬁnd good matches.
+V. CONCLUSIONS
+We have proposed an efﬁcient and robust vision-based
+approachforlearninganddetectingnaturaltargetsinoutdoor
+environments. Applications like UAV landing area detection
+of obstacle avoidance beneﬁt from this outcome, and con-
+trasts with the most of recent detection approaches which
+typically rely on artiﬁcial markers spread over the scene. Our
+solution includes an online classiﬁer that is used to learn the
+modelofthetargetontheﬂyandisabletoupdatethatmodel
+online with the new incoming observations. In addition, we
+have proposed a theoretically grounded strategy based on
+Entropy minimization to guarantee a high discriminative
+power of the classiﬁer while keeping its efﬁciency. The
+advantages of our method are demonstrated by thorough
+testing on both synthetic data and real scenes with natural
+targets.
+5002
+Fig. 12. Visual target detection. Output of the proposed approach (red circles) for detecting ground targets (top, middle) and 3D objects (bottom). Black
+circles denote the location of the targets, whereas the rectangle shows the detection rates: true positives (TP), false positives (FP) and false negatives (FN).
+VI. ACKNOWLEDGMENTS
+This work was partially supported by the projects PAU+
+DPI2011-27510, RobTaskCoop DPI2010-17112, ERA-Net
+Chistera project ViSen PCIN-2013-047, and by the EU
+project ARCAS FP7-ICT-2011-28761.
+REFERENCES
+[1] H. Bay, T. Tuytelaars, and L. Van Gool. SURF: Speeded up robust
+features. In ECCV, 2006.
+[2] C. M. Bishop. Pattern recognition and machine learning. Springer,
+2006.
+[3] Leo Breiman. Random forests. Machine Learning, 45(1):5–32, 2001.
+[4] A. Cesetti, E. Frontoni, A. Mancini, P. Zingaretti, and S. Longhi.
+A vision-based guidance system for uav navitagion and safe landing
+using natural landmarks. Journal of intelligent and robotic systems,
+57(1):233–258, 2010.
+[5] A.Criminisi,J.Shotton,andE.Konukoglu. Decisionforests:Auniﬁed
+framework for classiﬁcation, regression, density estimation, manifold
+learning and semi-supervised learning. Foundations and Trends in
+Computer Graphics and Vision, 7(2–3):81–227, 2011.
+[6] N. Dalal and B. Triggs. Histograms of oriented gradients for human
+detection. In CVPR, 2005.
+[7] Y.Fan,S.Haiqing,andW.Hong. Avision-basedalgorithmforlanding
+unmanned aerial vehicles. In International Conference on Computer
+Science and Software Engineering, pages 993–996, 2008.
+[8] P.F. Felzenszwalb, R.B. Girshick, D. McAllester, and D. Ramanan.
+Object detection with discriminatively trained part-based models.
+PAMI, 32(9):1627–1645, 2010.
+[9] G. Flores, S. Zhou, R. Lozano, and P. Castillo. A vision and gps-based
+real-time trajectory planning for mav in unknown urban environments.
+In ICUAS, 2013.
+[10] S. Hinterstoisser, V. Lepetit, P. Fua, and N. Navab. Dominant
+orientation templates for real-time detection of texture-less objects.
+In CVPR, 2010.
+[11] Z. Kalal, J. Matas, and K. Mikolajczyk. P-N learning: Bootstrapping
+binary classiﬁers by structural constraints. In CVPR, 2010.
+[12] J. Kim and D.H. Shim. A vision-based target tracking control system
+of a quadrotor by using a tablet computer. In ICUAS, 2013.
+[13] V. Lepetit and P. Fua. Keypoint recognition using randomized trees.
+PAMI, 28(9):1465–1479, 2006.
+[14] D.G. Lowe. Distinctive image features from scale-invariant keypoints.
+IJCV, 60(2):91–110, 2004.
+[15] A. Masselli, S. Yang, K.E. Wenzel, and A. Zell. A cross-platform
+comparison of visual marker based approaches for autonomous ﬂight
+of quadrocopters. In ICUAS, 2013.
+[16] D. Mellinger, M. Shomin, N. Michael, and V. Kumar. Cooperative
+grasping and transport using multiple quadrotors. Distributed au-
+tonomous robotic systems, pages 545–558, 2013.
+[17] N. Michael, D. Mellinger, Q. Lindsey, and V. Kumar. The grasp
+multiple micro-uav testbed. Robotics and Automation Magazine,
+17(3):56–65, 2013.
+[18] I.F. Mondragon, P. Campoy, J.F. Correa, and L. Mejias. Visual model
+feature tracking for uav control. In IEEE International Symposium on
+Intelligent Signal Processing, pages 1–6, 2007.
+[19] F Moreno-Noguer, J Andrade-Cetto, and A Sanfeliu. Fusion of color
+and shape for object tracking under varying illumination. In Pattern
+Recognition and Image Analysis, pages 580–588, 2003.
+[20] F. Moreno-Noguer, V. Lepetit, and P. Fua. Pose priors for simultane-
+ously solving alignment and correspondence. In ECCV, 2008.
+[21] F. Moreno-Noguer, A. Sanfeliu, and D. Samaras. Integration of
+deformable contours and a multiple hypotheses ﬁsher color model for
+robust tracking in varying illuminant environments. Image and Vision
+Computing, 25(3):285–296, 2007.
+[22] M. Ozuysal, M. Calonder, V. Lepetit, and P. Fua. Fast keypoint
+recognition using random ferns. PAMI, 32(3):448–461, 2010.
+[23] M. Ozuysal, V. Lepetit, and P. Fua. Pose estimation for category
+speciﬁc multiview object localization. In CVPR, 2009.
+[24] J.L. Sanchez-Lopez, S. Saripalli, P. Campoy, J. Pestana, and C. Fu.
+Towardvisualautonomousshipboardlandingofavtoluav. In ICUAS,
+2013.
+[25] E. Serradell, M. Ozuysal, V. Lepetit, P. Fua, and F. Moreno-Noguer.
+Combining geometric and appearance priors for robust homography
+estimation. In ECCV, 2010.
+[26] J. Shotton, M. Johnson, and R. Cipolla. Semantic texton forests for
+image categorization and segmentation. In CVPR, 2008.
+[27] A. Symington, S. Waharte, S. Julier, and N. Trigoni. Probabilistic
+target detection by camera-equipped uavs. In ICRA, 2010.
+[28] M. Villamizar, J. Andrade-Cetto, A. Sanfeliu, and F. Moreno-Noguer.
+Bootstrapping boosted random ferns for discriminative and efﬁcient
+object classiﬁcation. Pattern Recognition, 45(9):3141–3153, 2012.
+[29] M. Villamizar, A. Garrell, A. Sanfeliu, and F. Moreno-Noguer. Online
+human-assisted learning using random ferns. In ICPR, 2012.
+[30] M. Villamizar, F. Moreno-Noguer, J. Andrade-Cetto, and A. Sanfeliu.
+Efﬁcient rotation invariant object detection using boosted random
+ferns. In CVPR, 2010.
+[31] S. Yang, S.A. Scherer, and A. Zell. An onboard monocular vision
+system for autonomous takeoff, hovering and landing of a micro aerial
+vehicle. Journal of intelligent and robotic systems, 69(1–4):499–515,
+2013.
+5003

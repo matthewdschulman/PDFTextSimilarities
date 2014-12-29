@@ -1,0 +1,1594 @@
+Online Contact Point Estimation for Uncalibrated Tool Use
+Yiannis Karayiannidis, Christian Smith, Francisco E. Vi÷ na, and Danica Kragic
+AbstractÑ One of the big challenges for robots working
+outside of traditional industrial settings is the ability to robustly
+and ßexibly grasp and manipulate tools for various tasks. When
+a tool is interacting with another object during task execution,
+several problems arise: a tool can be partially or completely
+occluded from the robotÕs view, it can slip or shift in the robotÕs
+hand - thus, the robot may lose the information about the exact
+position of the tool in the hand. Thus, there is a need for online
+calibration and/or recalibration of the tool. In this paper, we
+present a model-free online tool-tip calibration method that
+uses force/torque measurements and an adaptive estimation
+scheme to estimate the point of contact between a tool and the
+environment. An adaptive force control component guarantees
+that interaction forces are limited even before the contact point
+estimate has converged. We also show how to simultaneously
+estimate the location and normal direction of the surface being
+touched by the tool-tip as the contact point is estimated. The
+stability of the the overall scheme and the convergence of
+the estimated parameters are theoretically proven and the
+performance is evaluated in experiments on a real robot.
+I. INTRODUCTION
+The ability to robustly grasp and manipulate tools intended
+for human use and employ these for various tasks (as in
+Fig. 1) remains one of the big challenges for robots working
+outside of traditional industrial settings. The application
+areas range from ßexible industrial robots working with
+tools intended for human use to domestic service robots
+that perform household chores [1]. In order to provide the
+input for the control loop guiding the execution of a task,
+the knowledge of the position of the tool-tip is necessary.
+In contrast to classical industrial or other robots with
+Þxed and a priori known tools, it is not realistic to assume
+that service robots have precise beforehand calibrations of
+the positions of the tool-tips. Even if they did, the tool
+may slip and move relative to the gripper while it is being
+used. Therefore, there is a need for online calibration and/or
+recalibration of the position of the tip of the tool the
+robot is using. Current approaches mostly rely on vision-
+based methods for calibrating the pose and are therefore not
+applicable in scenarios where the tools or relevant parts of
+it are occluded.
+In this paper, we present an online tool-tip calibration
+method that uses force/torque measurements and an adaptive
+estimation scheme to Þnd the point of contact between a tool
+and the environment. This estimation can be carried out in
+real-time while the robot is using the tool to perform some
+The authors are with the Computer Vision and Active Perception Lab.,
+Centre for Autonomous Systems, School of Computer Science and Com-
+munication, Royal Institute of Technology (KTH), SE-100 44 Stockholm,
+Sweden. e-mail: fyiankarjccsjfevbjdanig@kth.se
+Fig. 1 : Robot manipulating a tool intended for human use.
+arbitrary task, and does not require any predeÞned model of
+the shape, size or initial position of the tool being used.
+An adaptive force control component guarantees that in-
+teraction forces are limited even before the contact point
+estimate has converged. We also show how to simultaneously
+estimate the location and normal direction of the surface be-
+ing touched by the tool-tip as the contact point is estimated.
+The paper has the following structure: Section II reviews
+the state of the art in related work, Section III formalizes the
+problem in terms of statics and kinematics, Section IV de-
+scribes the proposed approach and motivates it theoretically,
+giving stability and convergence proofs, while Section V
+describes the experimental implementation of the method on
+a real robot and the experimental results. Finally, conclusions
+are presented in Section VI.
+II. RELATED WORK
+The problem of resolving uncertainties in the end-effector
+or the tool positioning is well-studied and has been a relevant
+topic in robotics since the advent of the Þrst manipulators.
+Early work focused on solving the problem of calibrating
+the position of the manipulators and end-effectors them-
+selves [2], and this has been extended to also include objects
+grasped by the robot [3].
+Some works treat the problem without explicitly modelling
+the position of a tool or its point of interaction with the
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 2488
+environment, but focus rather on robust performance of a
+well-deÞned task under positioning uncertainties. Examples
+of this includes work by Bruyninckx et al. that estimates
+the alignment error between the peg and the hole for an
+insertion task [4], work by Hovland and McCarragher that
+uses a neural network approach to estimate the contact states
+between two work pieces [5], and work by Koeppe and
+Hirzinger that learns the appropriate interaction forces for
+a peg-in-hole task [6].
+Some work treats tool-tip position estimation as a cali-
+bration problem that can be performed ofßine prior to using
+the tool. Yang et al. use an iterative least squares approach
+to calibrate the relationship between tool-tip position and
+joint angles, using measurements from a known external
+reference [7]. Cheah et al. use adaptive control for tracking
+a kinematically uncertain manipulator chain, including a tool
+grasped by the end-effector, but only estimate the kinematics
+Ñ the position of the end-effector and the tool are measured
+externally [3].
+Others use a particle Þlter approach to Þt a model to
+the object pose by collecting measurements from touching
+the object before grasping it [8], [9]. Hebert et al. use a
+fusion approach with vision, force/torque measurements and
+proprioception to estimate the position of an object with
+a known model, held in the end-effector [10]. Pù ais ü et al.
+learn relations between a held object and an external tool it
+interacts with using gaussian mixture models [11].
+Atkeson et al. have proposed a method for estimating
+inertial parameters of a grasped object based on force/torque
+measurements [12], and Kubus et al. have used sensor
+fusion combining measurements of acceleration, velocities,
+position, forces, and torques to estimate inertial parameters
+and principal moments of inertia of a grasped object, Þt-
+ting parameters to estimate object pose [13]. Both these
+approaches require free motion in a prespeciÞed trajectory,
+and can not be applied to estimate the contact point of a tool
+online as it is being used.
+Muto and Shimokura have shown a method for estimating
+contact points given a known tool Þxed in the end-effector,
+using force measurements [14]. Lei et al. propose a method
+that learns model parameters to estimate the position and
+external force load on a speciÞc non-rigid grinding tool,
+using proprioception and force/torque measurements [15].
+The literature on vision-based object pose estimation and
+tracking is far too vast to summarize here, but some examples
+of tool pose estimation based on computer vision methods
+include work by Kemp and Edsinger who use visual gra-
+dients to detect tool-tip positions [16], Krainin et al. who
+simultaneously build an object model and track it in the
+robot hand [17], and Beetz et al., who use repeated visual
+template matching to Þnd the location of a spatula in the
+robot hand [18].
+In our previous work, we have shown how an adaptive es-
+timator, integrating proprioception and force/torque measure-
+ments can be used to estimate the location of hinges on doors,
+or the direction of unconstrained motion for drawers that the
+robot is opening [19], and to estimate slopes on surfaces
+the robot is in contact with [20]. We have also shown how
+to learn manipulation affordances and slippage behaviors of
+held objects by using combined measurements of wrist-based
+force/torque measurements and grasp forces [21].
+In the present paper, we build on these ideas and propose
+an adaptive controller that estimates the point of contact of
+the tool with the environment, along with estimating the
+contact surface normal. This enables the robot to execute
+a task with the held tool while performing the estimation.
+The proposed controller limits the interaction forces, to avoid
+damage to the tool or workpiece while estimates are converg-
+ing. The proposed method uses force/torque measurements
+from a wrist-mounted sensor, it is inherently online and fast
+enough to react to changes, and can thus track the contact
+point even if it moves relative to the robot hand while
+executing the task.
+III. KINETO-STATICS FORMULATION
+Before describing the proposed method for estimating the
+contact point and the surface normal, we deÞne notation and
+formalize the relevant Þrst-order differential kinematics and
+the statics. We assume a system that consists of a robot which
+performs a task with its tool on a surface; the task requires
+motion control of the tool contact point and control of the
+contact forces of the tool on a surface.
+A. Notation
+First, we introduce the following notation and deÞnitions
+that will be used throughout this paper:
+Bold small letters denote vectors and bold capital letters
+denote matrices. I
+
+, O
+
+2 R
+
+denote an identity and a
+square matrix of zeros respectively while 0
+
+2R
+
+denotes a
+column vector of zeros. Hat ^ and tilde ~ denote estimates
+and the errors between control variables and their corre-
+sponding desired values/vectors respectively. R
+a
+denotes a
+rotation matrix that describes the orientation of a frame with
+respect to the global frame. A left superscript (e.g.
+a
+b)
+denotes the frame (e.g.fag) in which a three-dimensional
+vector (e.g. b2R
+3
+) is expressed, e.g.
+a
+b = R
+>
+a
+b, and it is
+omitted in case of the global frame. The projection matrix on
+the orthogonal complement space of a unit three dimensional
+vector a is denoted by
+
+P(a), I
+3
+  aa
+>
+. S(b) denotes the
+skew-symmetric matrix produced by b2 R
+3
+to perform a
+cross product operation with any three-dimensional vector
+a2R
+3
+i.e. b a = S(b)a.
+B. First Order Differential Kinematics
+Consider a robot end-effector equipped with a force/torque
+sensor on its wrist that is grasping a tool which is in contact
+with a surface, as shown in Fig. 2. We denote withfeg
+a frame attached at a kinematically known position of the
+end-effector (e.g. center of force/torque sensor) denoted by
+p
+e
+. We assume that the contact between the tool and the
+surface is modeled as a contact point that can slide along
+the surface when the end-effector is moving. At the contact
+point position p
+c
+, we attach a framefcg with orientation
+described by R
+c
+= [n
+c
+o
+c
+a
+c
+], with n
+c
+being a unit vector
+2489
+which is normal to the surface while o
+c
+, a
+c
+being vectors
+that span the ßat surface and can be arbitrarily chosen. Let
+r be the relative position offeg andfcg deÞned as follows:
+r = p
+c
+  p
+e
+(1)
+Note that
+e
+r, R
+>
+e
+r is constant if we assume that the end-
+effector is rigidly grasping the tool. Assuming additionally
+that only sliding motion is performed i.e. _ p
+c
+= _ p
+e
+then r
+is constant too and the velocity of the end-effector frame is
+constrained as follows:
+n
+>
+c
+_ p
+e
+= 0 (2)
+Note that the assumption of pure sliding motion that simpli-
+Þes the estimation of the surface slope is not necessary for
+the main objective of this work which is the contact point
+estimation. Differentiating (1) implies that the contact point
+velocity is related to the end-effector velocity as follows:
+_ p
+c
+= J
+t
+
+_ p
+e
+!
+e
+
+; with J
+t
+,
+
+I
+3
+ S(r)
+
+2R
+36
+(3)
+being the tool Jacobian matrix and!
+e
+being the end-effector
+rotational velocity i.e. S(!
+e
+) =
+_
+R
+e
+R
+>
+e
+. By commanding
+zero rotational velocity and assuming only sliding motion,
+we can omit the tool Jacobian when mapping the contact
+point velocities to the joint space. This means that the Þrst
+order inverse kinematics are given by:
+_ q = J
++
+
+u
+0
+3
+
+(4)
+where u is a commanded end-effector or contact point
+velocity control law and J
++
+is the right pseudo-inverse of
+the end-effector Jacobian with J
++
+, J
+>
+(JJ
+>
+)
+ 1
+.
+C. Statics
+While the end-effector presses with the tool on the surface,
+the normal force arising (with magnitude denoted byf
+n
+) can
+Ð in case of rigid contact Ð be regarded as a Lagrange multi-
+plier of the controlled system associated to the constraint
+(2). While the contact point is moving along the surface
+following the motion of the end-effector, tangential forces f
+t
+arise owing to dynamic friction components that depend on
+the sliding velocity of the contact point. The total contact
+force applied at the contact point is mapped to the end-
+effector as a wrench consisting of a force vector f
+c
+and a
+torque vector
+c
+:
+f
+c
+= n
+c
+f
+n
++ f
+t
+; (5)
+
+c
+= r f
+c
+: (6)
+The total force f
+m
+and torque 
+m
+measured by the
+force/torque sensor (assuming noise-free measurements, and
+no acceleration of the end-effector) is given by:
+f
+m
+= f
+c
++ f
+g
+; (7)
+
+m
+= r f
+c
++ r
+g
+ f
+g
+; (8)
+where f
+g
+is the gravity force acting at the center of mass
+of the object and r
+g
+is the position of the center of mass
+{}
+c
+{}
+e
+{ }
+B
+e
+p
+c
+p
+r
+g
+r
+c n
+f n
+t
+f
+g
+f
+Fig. 2 : A robot end-effector equipped with a force/torque sensor
+on its wrist that is grasping a tool which is in contact with
+the surface. Frames are illustrated with red lines. Forces
+are depicted with orange. Absolute position vectors with
+respect to the base frame fBg are depicted with black
+lines. Relative positions with respect to the end-effector
+(sensor) frame are depicted with green lines.
+with regard to p
+e
+. Note that if f
+g
+and r
+g
+are known, gravity
+compensation can be performed by subtracting them from
+(7) and (8) to obtain f
+c
+and 
+c
+, and thus we can use
+(5) and (6) to identify r as proposed in Section IV-A. This
+gravity compensation can be achieved either by assuming an
+object with known mass and position with respect to the end-
+effector, or by considering identiÞcation of the gravity effects
+f
+g
+and r
+g
+in a prior free-motion phase where the only force
+acting on the object is inertial, and f
+c
+= 0
+3
+. In the latter case,
+proper rotation of the object by the end-effector can generate
+signals that can be used in the algorithm in Section IV-A to
+identify r
+g
+to allow compensation for the gravity during the
+main contact phase. In case of a lightweight tool, such that
+f
+g
+ f
+c
+, we can assume that the effects of gravity are
+within the limits of the measurement errors, and do not need
+to be compensated for.
+IV. METHODOLOGY
+In this section we propose the adaptive laws for estimating
+the contact point and the surface orientation as well as
+the force/motion control which is based on these estimates.
+The overall control scheme effectiveness is theoretically
+justiÞed and the formal proofs of the results are given in
+the Appendix.
+A. Contact Point Estimation
+First we design the adaptive law for estimating
+e
+r assum-
+ing that
+e
+r is piecewise constant or slowly varying compared
+to the rate of the estimation. An example of an estimation
+2490
+rate that can be achieved is demonstrated in Section V. The
+estimates can also be used to estimate r, R
+e
+e
+r in the global
+frame. The proposed adaptive law utilizes measurements of
+forces and torques expressed in the end-effector frame, which
+is assumed to coincide with the force/torque sensor frame, as
+this can trivially be achieved through known transformations.
+The law is given by the following equations:
+e
+_
+^ r =  
+r
+[L
+r
+(t)
+e
+^ r  c
+r
+(t)] (9)
+with
+_
+L
+r
+= 
+r
+L
+r
+  S(
+e
+f )S(
+e
+f ) with L
+r
+(0) = O
+3
+(10)
+_ c
+r
+= 
+r
+c
+r
++ S(
+e
+f )
+e
+ with c
+r
+(0) = 0
+3
+(11)
+where  
+r
+is a positive deÞnite matrix affecting the speed
+of convergence, 
+r
+is a positive design constant acting as
+forgetting factor and
+e
+f ,
+e
+ are either the measured force
+and torque after gravity compensation used to estimate
+e
+r
+during the contact phase, or the measured force and torque
+owing to gravity used to estimate the center of mass
+e
+r
+g
+in
+the free-motion phase.
+Proposition 1: The adaptive estimation law (9)-(11) guar-
+antees that:
+(i) the torque estimation error, the estimate
+e
+^ r and its
+derivative are bounded i.e.
+e
+ 
+e
+^  ,
+e
+^ r,
+e _
+^ r2L
+1
+,
+(ii) the torque estimation error and and the estimation rate
+e _
+^ r are square integrable, i.e.
+e
+ 
+e
+^  ,
+e _
+^ r2L
+2
+,
+(iii) lim
+t!1
+e
+^  =
+e
+ and lim
+t!1
+k
+_
+^ rk = 0, and
+(iv) if S(
+e
+f ) is persistently excited (PE)
+e
+^ r converges
+exponentially to
+e
+r. By choosing  
+r
+= 
+r
+I, with 
+r
+being positive constant, the speed of convergence can
+be arbitrarily increased by increasing 
+r
+.
+The proposed estimator (9)-(11) is an integral adaptive
+control law since its design is based on the minimization
+of an integral cost function of the error between the actual
+and the estimated torque [22]; the proof of the Proposition 1
+is following the proof of the integral adaptive control for
+identifying the parameters in a multiple inputs-single output
+parametric model and is based on the use of a quadratic
+Lyapunov function V (
+e
+~ r) =
+1
+2
+e
+~ r
+>
+ 
+ 1
+r
+e
+~ r.
+As is demonstrated in Section V, convergence to the
+actual parameters can be achieved by varying the direction
+of f
+e
+in order to span some surface in the Cartesian space,
+which is an identiÞcation condition arising from the problem
+formulation.
+The contact point estimate ^ p
+c
+can be calculated using
+proprioception and the estimate
+e
+r produced by exploiting
+force/torque measurements:
+^ p
+c
+= p
+e
++ R
+e
+e
+^ r (12)
+Note that it is also possible to use the contact point estimation
+together with an accurate model of the grasped tool to
+determine which of a possible set of points is in contact.
+In this case, we can additionally infer the orientation of the
+tool given that the grasping point is obtained through tactile
+sensing.
+The adaptive law can also be used to identify the center
+of mass in case of free-space motion. The parameters are
+identiÞed exponentially fast given that
+e
+f = R
+>
+e
+f is PE.
+Note that f = f
+g
+is constant and thus the identiÞcation is
+excited by the rotational motion of the object.
+B. Surface Normal Estimation
+In order to estimate the surface normal direction we design
+the following adaptive law:
+_
+^ n
+c
+= 
+n
+
+P(^ n
+c
+)L
+n
+(t)^ n
+c
+(13)
+_
+L
+n
+= 
+n
+L
+n
++
+1
+1+k_ p
+e
+k
+2
+_ p
+e
+_ p
+>
+e
+with L
+n
+(0) = O
+3
+(14)
+where 
+n
+is a positive constant for tuning the speed of
+convergence and 
+n
+is a positive forgetting factor.
+Proposition 2: The adaptive law (13)-(14) guarantees that:
+(i) the norm of the estimate ^ n
+c
+(t) is invariant i.e. given
+thatk^ n
+c
+(0)k = 1,k^ n
+c
+(t)k = 1;8t> 0,
+(ii) if #(0)2 ( 
+
+2
+;
+
+2
+) then #(t)2 ( 
+
+2
+;
+
+2
+);8t> 0 where
+# is the angle formed between n
+c
+and ^ n
+c
+,
+(iii) lim
+t!1
+k
+_
+^ n
+c
+k = 0, and
+(iv) if _ p
+e
+is persistently excited (PE) # converges to zero
+exponentially which implies that ^ n
+c
+converges expo-
+nentially to n
+c
+with a rate that can be tuned by 
+n
+.
+The proposed estimator (13)-(14) is an integral adaptive
+control Ð in contrast to those used in our previous work [19],
+[20]Ð with normalized input but here is modiÞed in order
+to produce unit and well-deÞned estimates of the normal
+direction as the problem in hand requires. The proof of
+Proposition 2 can be found in the Appendix, and is based
+on deÞning the Lyapunov function in the domain of the
+estimation error angle # formed between n
+c
+and ^ n
+c
+.
+Measurements of the contact force f
+c
+alone cannot in
+general be used together with (5) to identify the surface
+normal if the contribution from the tangential force f
+t
+due
+to friction is unknown. However, we can use the force
+measurements in order to initialize the proposed estimator
+when contact is detected i.e. ^ n
+c
+(0) = f (0)=kf (0)k. Given
+that the gravity is compensated in f (0), the initial angle
+error will be within the cone of friction which implies that
+j#(0)j<=2 and consequently that the estimator is properly
+initialized. If there is no rotational motion of the end-effector,
+the sliding velocity of the tool-tip on the surface is equal to
+the end-effector velocity, and thus the latter can be directly
+used to estimate the surface normal direction, independent
+of the accuracy of the contact point estimate.
+C. Force/motion Control
+The control objective is to follow a velocity trajectory
+v
+d
+(t) and to press upon the surface with a desired force
+f
+d
+. In this way, we can perform a meaningful task and
+simultaneously generate signals
+e
+f and _ p
+e
+. In particular, the
+motion along the surface not only generates _ p
+e
+that span the
+orthogonal complement of the normal direction required in
+(13) but gives rise to tangential forces owing to dynamical
+friction that can be added to the normal interaction forces,
+2491
+see (5), in order to generate an appropriate signal
+e
+f to excite
+(9) by spanning a surface in the Cartesian space.
+The velocity control design is based on decomposing
+the motion and force control directions according to hybrid
+force/motion control methodology by using however the
+estimates ^ n
+c
+Ð like the kinematic loop of [20]. The proposed
+kinematic controller is given by the following equation:
+u =
+
+P(^ n
+c
+)v
+d
+  ^ n
+c
+v
+f
+(15)
+where v
+f
+is a PI control loop of the estimated force error
+~
+^
+f
+n
+=
+^
+f
+n
+ f
+d
+. Note that the estimated
+^
+f
+n
+can be calculated
+based on force measurements and the online estimates ^ n
+c
+.
+In particular:
+v
+f
+=
+I
+Z
+t
+0
+(
+^
+f
+n
+ f
+d
+)d +
+P
+(
+^
+f
+n
+ f
+d
+);
+^
+f
+n
+= ^ n
+>
+c
+f (16)
+with 
+I
+and 
+P
+are positive control gains.
+The velocity trajectory v
+d
+(t) can be either deÞned a priori
+in a feedforward fashion or designed appropriately by using
+feedback of control errors such as end-effector or contact
+point position errors. A simple way to deÞne v
+d
+(t) is the
+following:
+v
+d
+(t) = _ p
+d
+ (p  p
+d
+) (17)
+where is positive control gain and p can be either the end-
+effector position or the contact point estimate depending on
+the deÞnition of the desired position p
+d
+. Note that p
+d
+can
+be deÞned as follows:
+1) directly and a priori in the robot workspace e.g. by using
+vision and mapping a desired trajectory from the image
+space to robot space. In this case the feedback control
+is designed using the contact point position which is
+however based on estimates obtained by (9) i.e. p :=
+^ p
+c
+.
+2) locally at the surface as 
+d
+2 R
+2
+and then mapped
+online to the robot workspace through a transformation
+(p
+e
+(0),
+^
+R
+c
+). Details on the motivation behind this se-
+lection and the construction of
+^
+R
+c
+can be found in [20].
+In this case the design of v
+d
+(t) is based on p
+e
+instead of
+^ p
+c
+. This can be explained by the following observation:
+the objective of drawing a circle with center around the
+initial contact point is equivalent of drawing a virtual
+circle around the end-effectorÕs initial position.
+In more complicated scenarios where both sliding and rolling
+motion of the tool take place the estimated contact point
+position must be used in v
+d
+(t) even when the target is
+deÞned based on local coordinates.
+Analysis of the closed loop when u (15)Ð(17) is applied
+(brießy sketched in the Appendix) yields to the following
+theorem:
+Theorem 1: The control law (15)Ð(17) applied as a trans-
+lational velocity controller to a robot Þrmly grasping a
+tool which is in contact with a ßat surface, together with
+the adaptive laws (9) and (13) used for estimating the
+contact parameters such as contact point position and surface
+orientation ensure the boundedness of the contact force and
+the velocity along the unconstrained directions as well as
+the convergence of the force/motion errors to zero and the
+identiÞcation of the uncertain parameters given that u and
+e
+f are persistently excited.
+V. EXPERIMENTS
+Our adaptive control framework for tool and surface
+calibration was evaluated with a robot setup consisting of a
+7-DOF velocity controlled manipulator controlled at 130 Hz.
+The manipulator also includes a wrist mounted ATI Mini45
+6-axis force-torque sensor used for the force feedback control
+and the contact point estimator.
+For more details on the experimental setup, see e.g. [23].
+The end-effector velocities used for the estimation of the
+surface normal were calculated using joint velocities Þltered
+through joint position measurements.
+Fig. 3 : Experimental setup used for evaluating our adaptive con-
+trol scheme for contact point and surface normal estima-
+tion.
+To perform our experiments we attached a tool rigidly
+to the robotÕs gripper as shown in Fig. 3. Attaching the
+tool rigidly to the end-effector allowed us to have a con-
+sistent ground truth with which to compare the controllerÕs
+estimation of the contact point. Furthermore, we tested the
+controller over a ßat table which was previously calibrated to
+obtain the ground truth of the surface normal. A circular tra-
+jectory of 4 cm radius and 5 second period was commanded
+to the manipulator during the experiment.
+Fig. 4 shows the normal force errorj
+~
+f
+n
+j =jf
+n
+ f
+d
+j which
+indicates that the adaptive controller manages to regulate the
+normal contact force.
+Fig. 5 and 6 show the estimation errors of the contact
+point and the surface normal respectively. The contact point
+converges with an error of approximately 5 mm, which, given
+2492
+0 0.5 1 1.5 2 2.5 3 3.5 4 4.5
+0
+5
+10
+15
+20
+25
+30
+35
+normal force error (N)
+time (s)
+Fig. 4 : Normal force error j
+~
+fnj.
+0 0.5 1 1.5 2 2.5 3 3.5 4 4.5
+0
+5
+10
+15
+20
+25
+30
+35
+contact point estimation error (cm)
+time (s)
+Fig. 5 : Contact point estimation error.
+the 30.8 cm distance from the force-torque sensor to the tool-
+tip is within the error margins of the setup. Moreover, the
+surface normal estimate converges with an approximately 1.5
+degree error with respect to the ground truth normal.
+For a set of contact forces that share the same direction
+and only vary in magnitude, the contact point estimate ^ p
+c
+will converge to a point on a line passing through the actual
+contact point p
+c
+, parallel to the force direction. As the
+direction of contact forces vary, ^ p
+c
+will converge to the
+intersection point of a set of such lines, which will be p
+c
+.
+In the experimental convergence of ^ p
+c
+, as seen in Fig. 5,
+we see an initial convergence to a point on such a line after
+approx 0.1 s, and then, as the direction of the contact force
+starts to change as the tool-tip slides on the surface, we see
+convergence to the intersection point, or p
+c
+. For the setup
+in the experiment we see that we have good convergence
+for forces that spread over approximately 14 degrees with
+respect to the surface normal. For faster convergence with
+the same setup, we would need contact forces spanning that
+angle variation in shorter time.
+VI. CONCLUSIONS
+In this paper, we have proposed a method for simultaneous
+online estimation of the point of contact of a tool held
+by a robot, and the normal of the surface it is interacting
+with. The method is based on adaptive estimation and a
+hybrid force/motion controller, and uses force and torque
+measurements from a wrist-mounted sensor.
+The fast convergence of the contact point estimate makes
+it suitable for real time tracking of the endpoint of a tool that
+may slip and move in the robotÕs hand as it is being used for
+a task execution. The method also guarantees stable control
+of contact forces even before the estimates converge. For
+non-contact motion, the method can be used to estimate the
+center of mass of the end-effector and/or a grasped object.
+0 0.5 1 1.5 2 2.5 3 3.5 4 4.5
+0
+5
+10
+15
+20
+25
+30
+surface normal estimation error (deg)
+time (s)
+Fig. 6 : Surface normal estimation error.
+This enables tool use with unmodelled and/or uncalibrated
+tools.
+The strength of the method lies in the fact that it uses force
+and torque measurements and it is therefore complimentary
+to vision based approaches where occluded or bad lighting
+conditions make affect the estimation. An interesting future
+extension is to combine the proposed method with other
+methods for object tracking. One possibility is to combine it
+with model based vision methods or tactile sensors to use the
+tracked contact point to improve pose tracking of an object.
+APPENDIX
+Proof of Proposition 2: (i) Note that
+d
+dt
+ 
+k^ n
+c
+k
+2
+
+=
+ 
+n
+[
+
+P(^ n
+c
+)^ n
+c
+]
+>
+L
+n
+(t)^ n
+c
+= 0; thus the norm of the estimate
+is invariant and consequently bounded. (ii) Note that (14)
+and the constraint (2) implies:
+d
+dt
+(L
+n
+n
+c
+) = 
+n
+L
+n
+n
+c
+which in turn, for L
+n
+(0) = O
+3
+, implies that n
+c
+belongs in the
+nullspace of L
+n
+. Note also that L
+n
+is positive semideÞnite.
+Consider the following Lyapunov function:
+V () =  ln(cos#); V : ( 
+
+2
+;
+
+2
+)!R (18)
+Its time derivative along the systems trajectories (13)-(14) is
+given by:
+_
+V (;t) = 
+n
+~ n
+>
+c
+L
+n
+(t)~ n
+c
+(19)
+From (18) and (19) we conclude thatV () is bounded which
+implies #(t)2 ( 
+
+2
+;
+
+2
+);8t > 0 for #(0)2 ( 
+
+2
+;
+
+2
+). (iii)
+Clearly (i) and (ii) imply that ^ n
+c
+2L
+1
+. Furthermore, since
+1
+1+k_ p
+e
+k
+2
+_ p
+e
+_ p
+>
+e
+is bounded by construction, (14) implies that
+L
+n
+and
+_
+L
+n
+are bounded too. By integrating both sides of (19)
+int2 [0;1) and taking into account thatV (1) is bounded
+from (ii), we get that L
+1=2
+n
+~ n
+c
+2L
+2
+. The update law (13) im-
+plies: (a)k
+_
+^ n
+c
+k
+n
+k(L
+>
+n
+)
+1=2
+kkL
+1=2
+n
+~ n
+c
+k which implies that
+_
+^ n
+c
+2L
+1
+T
+L
+2
+as well as (b)
+
+^ n
+c
+given the boundedness of
+_
+^ n
+c
+and
+_
+L
+n
+. Clearly (a) and (b) yield lim
+t!1
+k
+_
+^ n
+c
+k = 0. (iv) The
+PE condition is satisÞed given that there exists 
+0
+, T
+0
+such
+that
+R
+t+T0
+t
+_ p
+e
+_ p
+>
+e
+d
+0
+I
+3
+. Using the integral expression of
+L
+n
+=
+R
+t
+0
+exp( 
+n
+(t ))
+1
+1+k_ p
+e
+k
+2
+_ p
+e
+_ p
+>
+e
+d implied by (14),
+it can be found that L
+n
+(t)  exp( 
+n
+T
+0
+)I
+3
+given that
+the PE condition is satisÞed. Then we consider a quadratic
+Lyapunov function U =
+1
+2
+k~ n
+c
+k
+2
+which in our case depends
+2493
+only on the estimation error angle i.e. U = 1  cos#. It can
+be easily proved that
+_
+U 2
+n
+exp( 
+n
+T
+0
+)U
+U(t) exp
+ 
+ 2
+n
+e
+ nT0
+t
+
+U(T
+0
+) (20)
+Note also that
+4
+
+2
+k#k
+2
+ U() 
+1
+2
+k#k
+2
+and thus (21)
+implies that the angle between the actual and the estimated
+vector ^ n
+c
+, converges exponential to zero as follows:
+j#(t)j
+
+p
+2
+4
+exp
+ 
+ 
+n
+e
+ nT0
+t
+
+j#(T
+0
+)j (21)
+Proof of Theorem 1: Let us consider the case of a
+bounded input v
+d
+. This assumption is valid even when v
+d
+is deÞned using feedback given that p
+d
+, _ p
+d
+are bounded
+and by considering a bounded robot workspace. Saturation
+on the position error can be used in order to construct a
+bounded v
+d
+. Substituting the control law in to the system
+Þrst order differential kinematics (4) we get: _ p
+e
+= u. By
+projecting the aforementioned equation along the surface
+normal we get:v
+f
+=
+1
+cos#
+n
+>
+c
+
+P(^ n
+c
+)v
+d
+. Since ^ n
+c
+is bounded
+and # 6= =2 from (i) and (ii) of Proposition 2, v
+f
+is
+bounded. The boundedness of v
+f
+implies _ p
+e
+is bounded
+and additionally that
+R
+t
+0
+(
+^
+f
+n
+ f
+d
+)d,
+^
+f
+n
+are bounded. Hence
+e
+f is bounded and thus the update law for
+e
+^ r (9)-(11) is
+well-deÞned. The boundedness of p
+e
+can be proved by
+using the boundedness of the estimates
+e
+^ r, ^ n
+c
+and their
+derivatives
+e _
+^ r,
+_
+^ n
+c
+. Ultimate bounds can also be found by
+exploiting lim
+t!1
+e _
+^ r = 0
+3
+, lim
+t!1
+_
+^ n
+c
+= 0
+3
+(Proposition
+1 and 2); analytic derivations are omitted. Given that
+e
+f ,
+_ p
+e
+(or v
+d
+) satisfy the PE condition the estimation error
+converges to zero exponentially fast and thus v
+f
+converges
+exponential fast to zero which implies
+R
+t
+0
+(
+^
+f
+n
+ f
+d
+)d! 0
+and f
+n
+! f
+d
+. Furthermore, _ p
+e
+!
+
+P(n
+c
+)v
+d
+with implies
+that
+
+P(n
+c
+)(p  p
+d
+)! 0
+3
+.
+ACKNOWLEDGMENT
+This work has been supported by the Swedish Research
+Council (VR), the European Union FP7 project Robo-
+How.Cog (FP7-ICT-288533), and the Swedish Foundation
+for Strategic Research. The authors gratefully acknowledge
+the support.
+REFERENCES
+[1] C. Kemp, A. Edsinger, and E. Torres-Jara, ÒChallenges for robot
+manipulation in human environments [grand challenges of robotics],Ó
+IEEE Robotics Automation Magazine, vol. 14, no. 1, pp. 20Ð29, 2007.
+[2] Z. S. Roth, B. Mooring, and B. Ravani, ÒAn overview of robot
+calibration,Ó IEEE Journal of Robotics and Automation, vol. 3, no. 5,
+pp. 377Ð385, 1987.
+[3] C. Cheah, C. Liu, and J. Slotine, ÒAdaptive jacobian tracking control of
+robots with uncertainties in kinematic, dynamic and actuator models,Ó
+Automatic Control, IEEE Transactions on, vol. 51, no. 6, pp. 1024Ð
+1029, 2006.
+[4] H. Bruyninckx, S. Dutre, and J. De Schutter, ÒPeg-on-hole: a model
+based solution to peg and hole alignment,Ó in IEEE International
+Conference on Robotics and Automation, vol. 2, 1995, pp. 1919Ð1924.
+[5] G. Hovland and B. J. McCarragher, ÒCombining force and position
+measurements for the monitoring of robotic assembly,Ó in IEEE/RSJ
+International Conference on Intelligent Robots and Systems, vol. 2,
+1997, pp. 654Ð660.
+[6] R. Koeppe and G. Hirzinger, ÒSensorimotor compliant motion from
+geometric perception,Ó inIEEEInternationalConferenceonIntelligent
+Robots and Systems, vol. 2, 1999, pp. 805Ð811.
+[7] G. Yang, I.-M. Chen, S. H. Yeo, and W. K. Lim, ÒSimultaneous
+base and tool calibration for self-calibrated parallel robots,Ó Robotica,
+vol. 20, pp. 367Ð374, 7 2002.
+[8] A. Petrovskaya, O. Khatib, S. Thrun, , and A. Y . Ng, ÒTouch based
+perception for object manipulation,Ó in Robotics Science and Systems
+Conference, Robot Manipulation Workshop, Atlanta, GA, 2007.
+[9] C. Corcoran and R. Platt, ÒA measurement model for tracking hand-
+object state during dexterous manipulation,Ó in IEEE International
+Conference on Robotics and Automation, 2010, pp. 4302Ð4308.
+[10] P. Hebert, N. Hudson, J. Ma, and J. Burdick, ÒFusion of stereo vision,
+force-torque, and joint sensors for estimation of in-hand object loca-
+tion,Ó in IEEE International Conference on Robotics and Automation,
+2011, pp. 5935Ð5941.
+[11] L. Pù ais ü, K. Umezawa, Y . Nakamura, and A. Billard, ÒLearning
+robot skills through motion segmentation and constraints extraction,Ó
+ACM/IEEE International Conference on Human-robot Interaction,
+Workshop on Collaborative Manipulation, 2013.
+[12] C. Atkeson, C. An, and J. Hollerbach, ÒRigid body load identiÞca-
+tion for manipulators,Ó in 24th conf on Decision and Control, Fort
+Lauderdale, Fl, Dec 1985, pp. 996Ð1003.
+[13] D. Kubus, T. Kr¬ uger, and F. M. Wahl, ÒOn-line rigid object recognition
+and pose estimation based on inertial parameters,Ó in EEE/RSJ Inter-
+national Conference on Intelligent Robots and Systems, San Diego,
+CA, 2007, pp. 1402Ð1408.
+[14] S. Muto and K. Shimokura, ÒTeaching and control of robot contour-
+tracking using contact point detection,Ó in IEEE International Confer-
+ence on Robotics and Automation, 1994, pp. 674Ð681.
+[15] Y . Lei and S. F. Miller, ÒPose estimation and machining efÞciency of
+an endoscopic grinding tool,Ó The International Journal of Advanced
+Manufacturing Technology, pp. 1Ð11, 2013.
+[16] C. C. Kemp and A. Edsinger, ÒRobot manipulation of human tools:
+Autonomous detection and control of task relevant features,Ó in 5th
+IEEE International Conference on Development and Learning (ICDL-
+06, 2006.
+[17] M. Krainin, P. Henry, X. Ren, and D. Fox, ÒManipulator and object
+tracking for in hand model acquisition,Ó in Workshop on Best Practice
+in 3D Perception and Modeling for Mobile Manipulation at the Int.
+Conf. on Robotics & Automation (ICRA), Anchorage, Alaska, 2010.
+[18] M. Beetz, U. Klank, I. Kresse, A. Maldonado, L. Mosenlechner,
+D. Pangercic, T. Ruhr, and M. Tenorth, ÒRobotic roommates mak-
+ing pancakes,Ó in IEEE-RAS International Conference on Humaoid
+Robots, 2011, pp. 529Ð536.
+[19] Y . Karayiannidis, C. Smith, F. Vi÷ na, P.
+¬
+Ogren, and D. Kragic, ÒModel-
+free robot manipulation of doors and drawers by means of Þxed-
+grasps,Ó in IEEE International Conference on Robotics and Automa-
+tion, 2013, pp. 4470Ð4477.
+[20] Y . Karayiannidis and Z. Doulgeri, ÒAdaptive control of robot contact
+tasks with on-line learning of planar surfaces,Ó Automatica, vol. 45,
+no. 10, pp. 2374Ð2382, 2009.
+[21] F. Vi÷ na, Y . Bekiroglu, C. Smith, Y . Karayiannidis, and D. Kragic,
+ÒPredicting slippage and learning manipulation affordances through
+gaussian process regression.Ó in IEEE-RAS International Conference
+on Humanoid Robots, 2013.
+[22] P. A. Ioannou and J. Sun, Robust Adaptive Control. Upper Saddle
+River, NJ:Prentice Hall, 1996.
+[23] C. Smith and Y . Karayiannidis, ÒOptimal command ordering for
+serial link manipulators,Ó in IEEE-RAS International Conference on
+Humanoid Robots, 2012, pp. 255Ð261.
+2494

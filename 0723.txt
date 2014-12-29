@@ -1,0 +1,1019 @@
+Estimating nger grip force from an image of the hand using
+Convolutional Neural Networks and Gaussian Processes
+Nutan Chen, Sebastian Urban, Christian Osendorfer, Justin Bayer, and Patrick van der Smagt
+Abstract? Estimating human ngertip forces is required to
+understand force distribution in grasping and manipulation.
+Human grasping behavior can then be used to develop force-
+and impedance-based grasping and manipulation strategies for
+robotic hands. However, estimating human grip force naturally
+is only possible with instrumented objects or unnatural gloves,
+thus greatly limiting the type of objects used.
+In this paper we describe an approach which uses images of
+the human ngertip to reconstruct grip force and torque at the
+nger. Our approach does not use nger-mounted equipment,
+but instead a steady camera observing the ngers of the hand
+from a distance. This allows for nger force estimation without
+any physical interference with the hand or object itself, and is
+therefore universally applicable.
+We construct a 3-dimensional nger model from 2D images.
+Convolutional Neural Networks (CNN) are used to predict the
+2D image to a 3D model transformation matrix. Two methods
+of CNN are designed for separate and combined outputs of
+orientation and position. After learning, our system shows an
+alignment accuracy over 98% on unknown data.
+In the nal step, a Gaussian process estimates nger force
+and torque from the aligned images based on color changes and
+deformations of the nail and its surrounding skin. Experimental
+results shows that the accuracy achieves about 95% in the force
+estimation and 90% in the torque.
+I. INTRODUCTION
+To fully exploit grip stability, manipulation capabilities,
+and grip force and stiffness of dexterous robotic hands, the
+human hand often serves as an example. Detailed studies of
+nger positions during grasping (e.g., [1]?[4]) give key in-
+formation of the position of the ngers during grasp, but not
+on the forces and torques exerted. Studies with instrumented
+objects (e.g., [5], [6]) can give some information, but only
+limited: in many cases, simple force-sensitive resistors are
+used which can only estimate surface normal forces, or a
+very limited number (1 or 2) of load cells can estimate full
+force and torque but at only one predened location.
+We use a different approach to estimate grip force and
+torque. For our method, we exploit the fact that nger tip
+depression causes nail (bed) color change related to that
+pressure. Through this, full estimation of grip and torque
+is possible at any interaction point.
+Our method does not require mounting a sensor at the n-
+ger or the object; instead, we localize the nger in an image
+and estimate from there. A crucial aspect therefore is image
+alignment. Prior methods of ngernail image registration are
+2D-to-3D registration with a grid pattern and ducial markers
+The authors are with the Faculty for Informatics, Technical
+University Munich, 80333 Germany nutan(at)in.tum.de,
+surban(at)tum.de, osendorf(at)in.tum.de,
+bayer.justin(at)gmail.com. PvdS is also with fortiss.
+Fig. 1: Setup: a xed camera observes the ngers to estimate
+nger grip force and torque.
+onto the nger [7], rigid body transformation including the
+Harris feature point based method [8], Canny edge detection
+[9], template matching using markers [10], non-rigid reg-
+istration tting a nger model [8], and Active Appearance
+Models (AAM) [11]. Other methods use sensors mounted on
+the nger [10], [12] or require restrictions such as a bracket
+to support the hand [7] or the nger [9], [11].
+We argue that, for human grasping, a more robust and
+generally applicable system is required, which does not
+obstruct movement or interferes with experiments otherwise.
+To address this challenge, we learn a 3D model of a nger
+and match 2D images using Convolutional Neural Networks
+(CNNs) to estimate grip force. The images can be aligned
+robustly without distortion as non-rigid registration, even
+when they are partially blocked. 2D?3D alignment was also
+used in [7] but needs special markers on the nger and a laser
+grid pattern. In contrast, our method just needs a designed
+marker pasted on the nger nail without calibration, since
+the marker is designed to add features for the nger but no
+position requirement. Our setup is depicted in Fig. 1. The
+calibration method for a single nger is shown in Fig. 2.
+Following preprocessing, various methods have been de-
+veloped to estimate the force. Model-based methods [11]
+contain linearized sigmoid models, EigenNail models [13],
+and linearized sigmoid models. In [10] we previously esti-
+mated force and torque using Gaussian processes (GP) and
+neural networks. Following the high accuracy obtained there,
+here we use Gaussian processes to estimate force from the
+aligned images.
+II. METHODOLOGY
+In this section we describe the data acquisition setup and
+the methods used to extract the nail from the video data and
+estimate the forces.
+A. Hardware Setup
+The recording system is shown in Fig. 3. A stationary
+IMAGINGSOURCE camera captures video data at 15 fps
+with a resolution of 1024 768 pixels. Additionally, an
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 3137
+Fig. 2: Calibration setup. A force-torque sensor (FTS) mea-
+sures the real forces and torques exerted by the nger, while
+being observed by the camera.
+ATI Nano-17 force/torque sensor records force/torque data
+from a nger pad at 100 Hz. Green LEDs are used to
+synchronize the timing of the visual and force/torque data
+through blinking at the beginning and end of a recording
+sequence. The experiments take place with a mini lighting
+studio (404040 cm
+3
+) with diffuse white lamp light.
+force/torque
+transducer (FTS)
+(ATI, Nano 17)
+green LED
+video camera
+(IMAGINGSOURCE)
+PC
+force
+sampling
+force
+display
+video/image video
+grabbing display
+force/torque & visual 
+  data synchronizing
+Arduino
+Fig. 3: Recording system. The stationary camera records
+visual data of the nger which applies pressure on the force-
+torque sensor.
+B. Image alignment using convolutional neural networks
+In the video stream the nger position and orientation
+vary with time. To reduce the effect of these variations
+we use a convolutional neural network (CNN) to predict
+and correct for the nger position and orientation before
+estimating forces and torques.
+1) 3D model construction: To train the CNN we need a
+3D model of the nger. Thus, before the actual experiments
+take place, we construct a triangular, textured mesh 3D
+model from between 12 and 15 images of a nger using
+the commercially available Agisoft Photoscan 0.9.1 software.
+This process lasts a few tens of seconds.
+2) Finger detection and tracking: Since the video stream
+contains not only the nger but also an arbitrary background
+we rst need to extract the nger from the image. We employ
+tresholding in the YCbCr color space, which is a nonlinear
+RGB signal often used for skin detection, to segment the
+nger. We then use the mean shift algorithm [14] to track
+the nger in the video stream.
+But the ?raw? 2D image of a nger cannot, when the nger
+is tilted, be perfectly mapped on the original image. Using
+the image of a tilted nger would lead to considerable data
+loss. To resolve this problem, we transform tilted images
+back to the original, as follows.
+3) Transformation matrix estimation using convolutional
+neural networks: Let the position of the nger in world
+coordinates be given by the tuple x;y;z and the orientation
+by the angles, and, which refer to the yaw, pitch, and
+roll, respectively. We setx =y =z = = = = 0 to be
+the front view of the 3D nger model. The world coordinate
+p
+1
+of a pointp
+0
+on the nger surface is given byp
+1
+=Vp
+0
+with the afne transformation matrix V given by
+V =
+
+R q
+0 1
+
+; (1)
+where
+R = Rot
+z
+()Rot
+y
+()Rot
+x
+(); (2)
+q = (x y z)
+T
+; (3)
+and Rot
+w
+() denotes the rotation matrix for a rotation about
+the w-axis by angle .
+To simplify the alignment task and reduce environment
+ambiguities such as lighting and reection we place a marker
+(see Fig. 4) on each nail. The method is not sensitive to the
+placement of the marker, as long as the marker is located
+at the same place of the ngernail for the training and
+testing data. The design of the marker is chosen so that the
+four lines identify the orientation of the nail, while the x
+and y coordinates of the nail can be estimated by locating
+the red point in the 2D image. The black line on the left
+unambiguously distinguishes the lines from each other.
+x
+y
+yaw
+roll
+pitch
+Fig. 4: Marker. The left picture shows the design of the mark-
+er. The right picture shows the marker image from a nger
+image. The middle image shows the marker coordinate.
+We render about 40,000 two-dimensional training images
+from the 3D model created in step 1 with varying values
+for the nger position z and orientation , , . z is in a
+range of [ 2;3] with a step of 0.5 virtual distance in the
+model coordinate, while 2 [ 25;30], 2 [ 15;35] and
+2 [ 23;37] with a step of 3.5 degrees each. The virtual
+distance is the distance in thez direction with respect to the
+3D model. The unit of the virtual distance depends on the
+size ratio from the human nger to the 3D nger model.
+The points making up the marker in the rendered image are
+extracted and resized to 8188 pixels. For testing we use
+real nger images captured with the camera.
+A convolutional neural network [15] is a neural network
+architecture for regression and classication that is relatively
+3138
+robust to shifts, scales and distortions of the input data
+and can be trained efciently on large data sets. Therefore,
+CNNs can detect the transformation parameters between
+a mis-aligned image and a reference image. We compare
+two approaches: one with separate orientation and position
+outputs through two CNNs, and one combining outputs
+through one CNN.
+Fig. 5 illustrates the architecture of the proposed network
+for the combined output method. It contains six layers: a
+rst convolutional layer followed by a rst max-pooling
+layer, another convolutional layer followed by a second
+max-pooling layer, and two fully connected layers. In our
+experiments, both convolutional layers have 55 sized lters.
+The rst convolutional layer employs 8 kernels, while the
+second makes use of 25 kernels.
+We now describe convolutional neural networks more
+formally. Typically, a CNN is designed as subsequent stages
+of convolution and max-pooling. The top layers are usually
+ordinary multi-layer perceptrons.
+The convolution of a 2D image for a feature map h is
+h(m;n) =
+lx
+X
+u=0
+ly
+X
+v=0
+w(u;v)g(u+m;v+n)+b; (4)
+where g is the input map, w the kernel weights, and b the
+bias. (l
+x
+;l
+y
+) is the size of the lter. (m;n) is the pixel
+position on the feature map.
+The max-pooling activation can be computed as
+p(m;n) = max
+r1
+i=1
+
+max
+r2
+j=1
+h(r
+1
+m+i;r
+2
+n+j)
+
+; (5)
+where (r
+1
+;r
+2
+) is the pooling size and p is the feature map
+in the max-pooling layer.
+Max-pooling, a non-linear down-sampling method, de-
+creases the computational complexity. These layers take
+the output of convolutional layers as input, and reduce the
+resolution of the input. In our case, that is a reduction from
+7784 to 3842 and from 3438 to 1719.
+The fully-connected MLP contains 50 hidden units. The
+last layer is linear and has 7 outputs O
+1
+;O
+2
+;:::;O
+7
+. We
+identify the rst of those outputs asz =O
+1
+while the remain-
+ing 6 contribute to the three orientations. The orientations
+2f;;g are calculated as follows:
+ = arccos
+ 
+O
+i
+q
+O
+2
+i
++O
+2
+i+1
+!
+ 
+
+2
+; (6)
+where i2f2;4;6g. Note that since this form of encoding
+of angles is differentiable, we can use the chain rule to
+backpropagate error gradients back into the network.
+Assuming that the output
+1
+y and input x are related
+linearly, i.e., y(x) =w
+T
+x+ where w refers to the weight
+vector and the residual error  is the difference between
+predictions and true values.
+1
+In the sequel we assume the output y to be one-dimensional for
+notational simplicity, but the general equations generalize.
+Convolution Convolution Pooling Pooling
+Fully-
+Connected
+MLP
+Linear 
+regression
+1? 81? 88 8? 77? 84 8? 38? 42 25? 34? 38 25? 17? 19 50 7
+?
+?
+?
+z
+Fig. 5: Architecture of the proposed CNNs with combined
+orientation and position output.
+With a conditional probability density, the linear regression
+model [16] is denoted by
+p(yjx;) =N
+ 
+yj(x);
+2
+
+; (7)
+where N is the normal distribution,  = (w;
+2
+) are the
+parameters, and 
+2
+is the variance. The expected output is
+(x) =w
+T
+x. In our model,x is the output of the MLP and
+the input of linear regression, and y := (O
+1
+;O
+2
+;:::;O
+7
+)
+T
+is the output of linear regression.
+The training data is assumed as independent and identi-
+cally distributed (iid). To determine optimal values for the
+weights w, we minimize the negative log likelihood (NLL)
+NLL()
+
+= 
+N
+X
+i=1
+logp(y
+i
+jx
+i
+;)
+=
+ 1
+2
+2
+SSE(w) 
+N
+2
+log(2
+2
+); (8)
+where the sum of squared errors (SSE) is dened by
+SSE(w)
+
+=
+N
+X
+i=1
+(y
+i
+ w
+T
+x
+i
+)
+2
+; (9)
+with N the number of data points that we optimize on.
+Since the orientations are periodic, we investigated using
+a von Mises distribution [17] to calculate the log likelihood
+function. However, experimental evidence showed that using
+a straightforward L2 norm leads to better results. Therefore
+the cost function f is denoted by
+f() =
+N
+X
+n=1
+(
+n
+ 
+0
+)
+2
+: (10)
+Through minimizing the cost function of , , and  and
+the negative log likelihood of z, we can update the weights
+of the CNN.
+Observation from the training process of the combined
+output CNNs model, the position and orientation variables
+converge separately at the beginning. More specically, z
+convergence occurs almost after the ,  and  are stable;
+therefore, with the assumption that z is independent of ,
+ and , we design CNNs as Fig. 6 for the comparison
+of combined and separate training. In contrast to the com-
+bined method, this method trains position and orientation
+separately with the only connection that the trained output
+of orientation is set as the bias of the linear regression layer
+3139
+?
+?
+?
+z
+Fig. 6: CNNs of separate orientation and position output.
+The prediction of the orientation is the bias of of last layer
+for position.
+of the position CNNs model. Thus, the expected outputs of
+z is given by
+(x) =w
+
++w
+
+ +w
+
+ +w
+1
+x
+1
+++w
+n
+x
+n
+:
+4) Texture Mapping: Given the estimated transformation
+matrix from the CNN, the image can be aligned using texture
+mapping [18]. This is an efcient method [19] to create
+the appearance from a source image without the tedious
+processes such as modeling or rendering a 3D surface for
+every detail. It allows ?glueing? the source 2D frame onto the
+3D nger surface in the estimated position and orientation.
+The mapped 3D nger model is then drawn to the destination
+image through the perspective projection in the reference
+position and orientation.
+The source image is in a texture space labeled by (u;v);
+the 3D model is in an object space labeled by (x
+w
+;y
+w
+;z
+w
+),
+and the aligned image is in a screen space labeled by(x
+s
+;y
+s
+).
+Fig. 7 shows the texture mapping process and the spaces.
+3D mesh 
+(Object Space)
+2D image
+(Texture Space)
+Model projected 
+by the image
+(Object Space)
+Aligned image
+(Screen Space)
+Fig. 7: Texture mapping.
+5) Nail and Skin Extraction: In the aligned images, the
+edges of the ngers may not be the same, because different
+images may have different occluded areas during the move-
+ment. However, the common visible areas have the same
+appearance in the aligned images which contain the pressure
+information in the form of colour changes. To reduce the
+noise induced by the nger edges and the environment the
+intersection of all visible areas over the whole video stream
+is extracted.
+C. Image Estimates Force/Torque?Gaussian Process
+The aligned images are divided into a training and test set
+with about 82% of the data is used for training. The testing
+samples are selected from time-continuous blocks of data.
+A Gaussian Process (GP) [20] is a stochastic process given
+by its mean m(x) and covariance k(x;x
+0
+),
+m(x) =E[f(x)]; (11)
+k(x;x
+0
+) =E
+h
+ 
+f(x) m(x)
+ 
+f(x
+0
+) m(x
+0
+)
+
+i
+: (12)
+Assuming the GP has a zero mean function, the squared
+exponential covariance (SE) is derived as
+k(x;x
+0
+) =
+2
+f
+exp
+
+ 
+1
+2l
+2
+kx x
+0
+k
+2
+2
+
+: (13)
+The length-scalel and the signal variance
+2
+f
+are the hyper
+parameters. Points that have distances to each other smaller
+than l can be considered to have similar values.
+The inputs of training points are(x
+1
+;x
+2
+;:::;x
+N
+).x
+i
+is an
+aligned image after being reshaped to a 1D vector. In addi-
+tion, the estimated force and torque, y := (y
+1
+;y
+2
+;:::;y
+N
+)
+T
+is the corresponding target. Thus, the target value f(x
+
+) for
+x
+
+is distributed as
+E[f
+
+] =k
+T
+(K +
+2
+n
+I)
+ 1
+y; (14)
+Var[f
+
+] =k(x
+
+;x
+
+) k
+T
+(K +
+2
+n
+I)
+ 1
+k
+
+; (15)
+where K
+ij
+= k(x
+i
+;x
+j
+), k
+
+i
+= k(x
+i
+;x
+
+), I is the identity
+matrix and 
+n
+the noise variance hyper parameter.
+We maximize the log likelihood function
+logp(yjX) = 
+1
+2
+y
+T
+(K +
+2
+n
+I)
+ 1
+y
+ 
+1
+2
+log
+
+
+K +
+2
+n
+I
+
+
+ 
+n
+2
+log2; (16)
+and consequently obtain the optimal values for the three
+hyper parameters using the training set.
+III. EXPERIMENTS AND RESULTS
+Experiments are carried out to evaluate the proposed
+approaches. There are 3 subjects denoted by S
+1
+, S
+2
+, and
+S
+3
+respectively. The subjects are trained separately using
+different models. The accuracy
+p
+R
+2
+for both CNNs and GP
+is given by
+R
+2
+= 1 
+P
+N
+i=1
+(y
+i
+ d
+i
+)
+2
+P
+N
+i=1
+(y
+i
+ y)
+2
+; (17)
+where d
+i
+is the target value, y
+i
+the estimation value, and y
+the mean value of the test set.
+A. Alignment Result
+The training and validation data sets are generated from
+the 3D model as stated in the previous section. For one nger
+model, with different position and orientation, it generates
+about 40,000 images, 80% of which is randomly chosen to
+be the training set and the rest is validation set. The test set
+is made from real images captured by the camera.
+Table I shows the validation results for CNNs alignment.
+Since the testing data has no labels, only validation data
+3140
+TABLE I: Accuracy (
+p
+R
+2
+) of combined and separate outputs
+of the CNN.t represents the training time of the implemen-
+tation in Theano.
+z    t/min
+S
+1
+Combined 0.988 0.999 0.999 1.000 352
+Separate 0.973 0.999 0.999 1.000 323
+S
+2
+Combined 0.986 0.998 0.999 1.000 360
+Separate 0.971 0.998 0.999 1.000 333
+S
+3
+Combined 0.985 0.997 0.997 1.000 372
+Separate 0.981 0.996 0.996 1.000 339
+avg
+Combined 0.986 0.998 0.998 1.000 362
+Separate 0.975 0.998 0.998 1.000 332
+is quantied in this process. The combined method and
+separate method achieve high accuracy and have almost the
+same accuracy for , , and , while 1:14% difference on
+z. It indicates that z is approximately independent of the
+orientation. Further results are explained in the next section.
+In terms of the training time, training two separate CNNs
+is more effective, reducing training time from 6 hours to
+5.5. Once the system is trained, the CNN runs in realtime,
+predicting one image after 4 ms on a GPU.
+?2 0 2 4
+?2
+?1
+0
+1
+2
+3
+z target
+z prediction
+?20 0 20
+?20
+?10
+0
+10
+20
+? target [degree]
+? prediction [degree]
+?20 0 20 40
+?10
+0
+10
+20
+30
+? target [degree]
+? prediction [degree]
+?20 0 20
+?20
+?10
+0
+10
+20
+? target [degree]
+? prediction [degree]
+Fig. 8: Validation result of alignment forS
+1
+by Convolutional
+Neural Networks
+As an example, some detailed results are shown in Fig. 8
+for S
+1
+. The other two subjects are similar. The prediction
+error is shown for z and for the three rotation angles. The
+reduced accuracy in z is related to the small range that
+z has. One can see that there are systematic errors?the
+model overestimates for low, and underestimates for high
+orientations/positions. We hypothesize that it can be tackled
+with either more data and/or more powerful models, e.g.
+more hidden layers and units.
+Fig. 9 shows three different testing images before and after
+alignment. The aligned images have the same appearance in
+the interested areas, but different colors in the same pixel.
+Fig. 9: Alignment result of a nger. The top row are the
+images before alignment, the bottom row pictures are the
+images after alignment.
+TABLE II: Accuracy (
+p
+R
+2
+) of combined and separate
+outputs of Force Estimation by Gaussian process
+Combined Separate
+x y z x y z
+S
+1
+f 0.936 0.929 0.956 0.939 0.929 0.957
+ 0.927 0.941 0.886 0.914 0.943 0.888
+S
+2
+f 0.933 0.913 0.970 0.930 0.915 0.966
+ 0.914 0.917 0.785 0.913 0.925 0.815
+S
+3
+f 0.942 0.946 0.947 0.950 0.952 0.944
+ 0.766 0.934 0.873 0.751 0.942 0.886
+Avg.
+f 0.937 0.934 0.958 0.940 0.932 0.956
+ 0.869 0.937 0.848 0.859 0.937 0.863
+B. Force/torque Estimation Result
+After obtaining the aligned images, the force and torque
+can be estimated through the GP method we used before
+[10]. Both of the training and testing inputs are from the
+aligned frames of the video camera. There are about 1500
+frames for each subject.
+Finger rotation was not restricted. The rotation ranges
+estimated by the CNN is up to about 30
+
+, 25
+
+and 20
+
+for
+,  and .
+We evaluate the force (f) / torque () effects for all 3
+subjects in Table II. The negative z-coordinate with respect
+to the transducer is the downward movement in direction to
+the pressure transducer. The accuracy of f
+z
+reaches about
+95.8% with the range up to 10 N, while f
+x
+and f
+y
+achieve
+over 93%. Some results of the torque are not as accurate as
+the rest, which is caused by the recording data. The contact
+point of the nger and the sensor is not xed, especially, to
+prove the robust alignment, the subjects rotate the nger in a
+relative large range without support for the arm or the nger;
+therefore, the estimation sifts according to the contact point.
+Fig. 10 exemplarily illustrates the results for S
+1
+.
+The accuracy of force estimation using the aligned images
+from two CNNs methods have no more than 1% difference.
+Thus, we can deduce that the orientation and position are
+independent for all practical reasons. Based on the effective
+training, the separate method is better than the combined
+method.
+3141
+0 50 100 150
+?5
+0
+5
+F
+X
+ 
+ 
+truth
+estimation
+0 50 100 150
+?5
+0
+5
+F
+Y
+0 50 100 150
+?5
+0
+5
+F
+Z
+0 50 100 150
+?100
+0
+100
+?
+X
+0 50 100 150
+?100
+0
+100
+?
+Y
+0 50 100 150
+?100
+0
+100
+frame no
+?
+Z
+0 50 100 150
+?10
+0
+10
+? F
+X
+0 50 100 150
+?10
+0
+10
+? F
+Y
+0 50 100 150
+?10
+0
+10
+? F
+Z
+0 50 100 150
+?50
+0
+50
+? ?
+X
+0 50 100 150
+?50
+0
+50
+? ?
+Y
+0 50 100 150
+?50
+0
+50
+frame no
+? ?
+Z
+Fig. 10: Test result of force/torque estimation for S
+1
+by
+Gaussian process. The left pictures show the true value and
+estimation value of the force/torque. The right pictures show
+the estimation and true value difference. The shadow is the
+95% condence interval of the predictor.
+IV. CONCLUSIONS
+This paper has presented a new approach to align 2D nger
+images to a 3D model using machine learning approaches,
+in order to deduce accurate grip force from nail coloration
+with a steady camera. Our approach, based on Convolutional
+Neural Networks, predicts the rotation with an accuracy
+of 97.47% to 99.97%. We compare two approaches, by
+learning learning rotation and translation in one CNN or in
+two separate CNNs. Both approaches obtain similar results,
+except that the separated approach is computationally more
+efcient (and would allow for additional parallelization)
+during learning. Both methods need only 4 ms to evaluate
+one image during use.
+The proposed alignment approach obtains as much as
+information of the nail and its surrounding skin without
+distortion as non-rigid registration. It does not require any
+special lighting conditions.
+With the robust alignment system, the force and torque
+estimation of a nger is about 95% cq. 90%, allowing for
+unrestricted movement of the hand and a placement-free
+camera.
+V. ACKNOWLEDGEMENT
+Part of this work has been supported in part by the TAC-
+MAN project, EC Grant agreement no. 610967, within the
+FP7 framework programme. This work has been supported in
+part by the Swedish Research Council, VR 2011-3128. The
+authors kindly thank Benoni Ben Edin and G¬ oran Westling,
+Ume	 a University for their active support of this work.
+REFERENCES
+[1] J. N. Ingram, K. P. K¬ ording, I. S. Howard, and D. M. Wolpert, ?The
+statistics of natural hand movements,? Experimental Brain Research,
+vol. 188, no. 2, pp. 223?236, Mar. 2008.
+[2] A. Gustus, G. Stillfried, J. Visser, H. J¬ orntell, and P. van der Smagt,
+?Human hand modelling: kinematics, dynamics, applications,? Biolog-
+ical cybernetics, vol. 106, no. 11-12, pp. 741?755, Nov. 2012.
+[3] N. Fligge, H. Urbanek, and P. van der Smagt, ?Relation between
+object properties and emg during reaching to grasp,? Journal of
+Electromyography and Kinesiology, vol. 23, no. 2, pp. 402?410, 2013.
+[4] H. H¬ oppner, J. McIntyre, and P. van der Smagt, ?Task dependency
+of grip stiffness?a study of human grip force and grip stiffness
+dependency during two different tasks with same grip forces,? PLOS
+ONE, vol. 8, no. 12, p. e80889, 2013.
+[5] B. B. Edin, G. Westling, and R. S. Johansson, ?Independent control of
+human nger-tip forces at individual digits during precision lifting,?
+The Journal of Physiology, vol. 450, pp. 547?564, May 1992.
+[6] J. R. de Gruijl, P. van der Smagt, and C. I. de Zeeuw, ?Anticipatory
+grip force control using a cerebellar model,? Neuroscience, 2009.
+[7] Y . Sun, J. Hollerbach, and S. Mascaro, ?Predicting ngertip forces by
+imaging coloration changes in the ngernail and surrounding skin,?
+IEEE Tr Biomed Eng, vol. 55, no. 10, pp. 2363?2371, 2008.
+[8] ??, ?Estimation of ngertip force direction with computer vision,?
+IEEE Tr Robotics, vol. 25, no. 6, pp. 1356?1369, 2009.
+[9] T. Grieve, L. Lincoln, Y . Sun, J. Hollerbach, and S. Mascaro, ?3d
+force prediction using ngernail imaging with automated calibration,?
+in IEEE Haptics Symposium, 2010, pp. 113?120.
+[10] S. Urban, J. Bayer, C. Osendorfer, G. Westling, B. B. Edin, and P. van
+der Smagt, ?Computing grip force and torque from nger nail images
+using gaussian processes,? in IROS, 2013.
+[11] T. R. Grieve, J. M. Hollerbach, and S. A. Mascaro, ?Force prediction
+by ngernail imaging using active appearance models,? in World
+Haptics Conference (WHC), 2013, 2013, pp. 181?186.
+[12] S. A. Mascaro and H. H. Asada, ?Measurement of nger posture
+and three-axis ngertip touch force using ngernail sensors,? IEEE
+Tr Robotics and Automation, vol. 20, no. 1, pp. 26?35, Jan. 2004.
+[13] Y . Sun, J. Hollerbach, and S. Mascaro, ?EigenNail for nger force
+direction recognition,? in ICRA, 2007, pp. 3251?3256.
+[14] D. Comaniciu, V . Ramesh, and P. Meer, ?Real-time tracking of non-
+rigid objects using mean shift,? 2000, pp. 142?149.
+[15] Y . LeCun, L. Bottou, Y . Bengio, and P. Haffner, ?Gradient-based
+learning applied to document recognition,? in Proc IEEE, vol. 86,
+no. 11, 1998, pp. 2278?2324.
+[16] K. Murphy, Machine Learning: A Probabilistic Perspective. The MIT
+Press, 2012.
+[17] C. M. Bishop, Pattern Recognition and Machine Learning. Springer-
+Verlag, 2006.
+[18] T. Yu, H. Wang, N. Ahuja, and W.-C. Chen, ?Sparse lumigraph
+relighting by illumination and reectance estimation from multi-view
+images,? in ACM SIGGRAPH 2006 Sketches, 2006.
+[19] P. S. Heckbert, ?Survey of texture mapping,? IEEE Comput. Graph.
+Appl., vol. 6, no. 11, pp. 56?67, Nov. 1986.
+[20] C. Rasmussen and C. Williams, Gaussian Processes for Machine
+Learning. MIT Press, 2006.
+3142

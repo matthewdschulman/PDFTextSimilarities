@@ -1,0 +1,1018 @@
+Navigation on Point-cloud - a Riemannian Metric approach
+Ming Liu
+
+, Roland Siegwart
+The Hong Kong University of Science and technology
+eelium@ust.hk
+Autonomous Systems Lab, ETH Zurich, Switzerland
+rsiegwart@ethz.ch
+Abstract—Mobile wheeled- or tracked-robots drive in 2.5-
+dimensional (2.5D) environments, where the traversable surface
+can be considered as a 2D-manifold embedded in a three-
+dimensional (3D) ambient space. In this work, we aim at solving
+the 2.5D navigation problem solely on point-cloud.
+The proposed method is independent of traditional surface
+parametrization or reconstruction methods, such as a meshing
+process, which generally has high computational complexity.
+Instead, we utilize the output of 3D tensor voting framework
+(TVF) using raw point-clouds. A novel local Riemannian metric
+is deﬁned based on the saliency components of TVF, which helps
+the modeling of the latent traversable surface. Using this metric,
+we prove that the geodesic in the 3D tensor space leads to
+rational path-planning results. Compared to traditional methods,
+the results reveal the advantages of the proposed method in terms
+of facilitating the robot maneuver with minimum movement.
+I. INTRODUCTION
+The development of robotics is always inspired by human
+experience and activities. Taking the typical scenario shown in
+ﬁgure 1 for instance: an elder man is trying to fetch the blue
+cup which is ﬁlled with his favorite coffee. Out of rational
+consideration, he probably would take the cyan (light color)
+detour rather than the red (dark color) bumpy path. For his
+situation, it hardly makes sense to take the red path, even
+though the red path leads to an accumulated shorter distance.
+Derived from that, such a concept is usually extended to
+robotic planning for navigation, using various cost functions
+depending on selected criteria. The generated path ought to
+not only regard the shortest Euclidean distance, but also ease
+the maneuver of the mobile robot.
+A. Robotic Challenges
+Most existing navigation algorithms for mobile robots take
+advantage of the assumption that the conﬁguration space of
+the traversable surroundings is a developable surface. It means
+that the map can be simply considered as a two-dimensional
+(2D) plane [1], [2] without distortion, or directly projected to
+a 2D plane without information loss. It is originated from the
+widely-applied representations derived by mature 2D SLAM
+techniques [3], such as ﬁltering-based methods [4], [5] or
+posegraph-based methods [6]. Such an assumption greatly
+alleviates the requirement on detailed analysis of the terrain.
+However, the robot ought to deal with the dynamics introduced
+from the 3D terrain shape in real environments.
+This work was supported by HKUST project IGN13EG03, partially sup-
+ported by the EU FP7 project NIFTi (contract # 247870).
+Fig. 1. Typical scenario that implies rational planning
+In recent years, the fast development of 3D mapping tech-
+niques [7], [8] and sensors [9] makes the modeling of the
+multi-terrain environment feasible [10] and easy to approach
+for real applications [11] under task scheduling [12].
+As the raw output from these 3D mapping techniques, point-
+cloud has been widely studied. The following major aspects
+make the analysis on raw point-cloud a challenging problem,
+let alone the navigation on it.
+ Unreliability of observation: the unreliability is multi-
+fold. Outliers, missing points and non-uniform distribu-
+tion of points are the major drawbacks of point-cloud.
+ Large amount of sparse data: the 3D sensor usually
+generates a large amount of points per scan. However,
+points are not continuously deﬁned in the 3D space.
+The missing information among points, especially latent
+structural information, must be recovered by subtle ﬁlters.
+ Computational complexity: due to the large amount of
+data, the high computational cost is a bottleneck.
+Because of these challenges, many works try to avoid the
+direct operations on points, leading to various representations,
+e.g. meshed surface [13] or tree based structures [14].
+Despite these difﬁculties, we tackle the surface modeling
+problem using raw point-cloud as input in this paper. It is
+because we aim at solving the related problems in real-
+time, and the raw point-cloud is the most readily available
+representation. In order to cope with the large amount of
+sparse data, we adopt tensor voting framework (TVF) [15]
+for this study. Respecting with the computational complexity,
+we utilize a GPU implementation [16] proposed by us, which
+enables the TVF calculation in near real-time. After that, we
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 4088
+construct a novel local Riemannian metric based on saliency
+components of the TVF, which aids the further analysis of the
+surface properties and the corresponding tensor ﬁeld.
+As a typical application, we present how such metric can be
+used for trajectory planning, for which a functional property
+derived from TVF has been adopted. The stick saliency of
+TVF indicates the strength of local planarity. This information
+is used to help generating a trajectory that can be viewed as a
+“rational path”, i.e. try to drive along ﬂat areas, avoid climbing
+redundant slops and avoid paths that lead to too much vibration
+on the way. The mathematical criteria for the evaluation are
+introduced in section V .C.
+II. RELATED WORK
+A. Tensor Voting Framework (TVF)
+Tensor voting [15] is originated in computer vision. It has
+been applied to several applications, such as segmentation
+[17], [18]. Through these works, tensor voting has shown
+its importance in reconstructing missing structures and lo-
+cal information registration [19], [20]. We consider it as
+one of the most important algorithms for structural analysis,
+because it outperforms other methods by its tolerance to
+noise and missing data, its consistency for local information
+and intuitive extraction of evidence saliency etc. Preliminary
+work using TVF for planning has been proposed using a
+iterative algorithm over the dense voting grids [21], where
+the generated path adapts to smooth local curvature due to the
+non-holonomic motion constraints. In this paper, we use the
+results from sparse voting directly and consider not only the
+shortest distance, also to facilitate the robot maneuver. The
+local information is represented by a Riemannian metric.
+Nevertheless, the computational cost of tensor voting is
+high. The original algorithm has complexity O(N
+2
+), where
+N is the number of points in the point-cloud. In our previous
+work, we proposed a parallel computation, which was further
+optimized considering the advanced calculation characteristics
+of CUDA, in order to improve calculation efﬁciency, e.g.
+using coalesced memory access, avoiding atomic operation
+and implementing online tensor split etc[16].
+B. Geodesic on Point-cloud
+Provided the surface model, the geodesic calculation is
+relatively easy, such as using iterative midpoint search or
+approximating by descent gradient [22]. An efﬁcient method
+based on contour propagation was proposed in [23]. Mean-
+while, several works have put effort to calculate geodesic on
+point-cloud. Ruggeri et al. proposed an approximation method
+based on energy minimization, regarding errors in local surface
+ﬁtting [24]. In our case, the local surface information is
+embedded in TVF, which is computationally more efﬁcient
+since the voting procedure is linear in time on GPU. M´ emoli
+and Sapiro explain the intrinsic properties for geodesic on
+point clouds, considering the case of manifold sampling [25].
+However, all these existing works deal with the point-cloud
+only in Euclidean space, i.e. E
+3
+, which equips a Riemannian
+metric as a rank-three identity matrix. It introduces inherent
+drawbacks for robotic navigation, since it assumes the whole
+conﬁguration space is linked by straight geometry. In order to
+ameliorate that, we deﬁne a Riemannian metric in the tensor
+spaceT
+3
+introduced by TVF. The smoothness of such a space
+indicates the similarity of local smooth structures instead of
+direct distances. By analysing the metric of TVF (T
+3
+) in terms
+of the direction of eigen vectors, we obtain the weights for
+edges of a graph constructed by sample points.
+III. TVF AND SPARSE VOTING
+Tensor V oting [15] is a computational framework used for
+structural extraction based on saliency of basic evidences. It
+originated in computer vision problems. King extended its
+application regarding point-cloud based terrain modeling and
+proposed an optimized stick voting ﬁeld [20]. Following a
+generic pipeline described in [26], we construct sparse ball vot-
+ing ﬁelds eyes(3), and broadcast it through each neighboring
+point by a exponential decay function. For robotics applica-
+tions, the kernel size can be chosen as the size of the navigation
+footprint. In this work, we omit dense voting process, which
+is often performed after sparse voting. Nevertheless it is a
+powerful tool for further structural inference when needed.
+The collected votes from each point lead to a tensor
+containing the neighbouring structural information. The eigen
+decomposition of the 33 tensor T can be formulated as:
+T =
+1
+^ e
+1
+^ e
+T
+1
++
+2
+^ e
+2
+^ e
+T
+2
++
+3
+^ e
+3
+^ e
+T
+3
+=(
+1
+ 
+2
+)^ e
+1
+^ e
+T
+1
++ (stick component)
+(
+2
+ 
+3
+)(^ e
+1
+^ e
+T
+1
++^ e
+2
+^ e
+T
+2
+)+ (plate component)
+
+3
+(^ e
+1
+^ e
+T
+1
++^ e
+2
+^ e
+T
+2
++^ e
+3
+^ e
+T
+3
+) (ball component)
+(1)
+where 
+i
+’s are eigenvalues sorted in decreasing length se-
+quence, ^ e
+i
+’s are the corresponding eigenvectors. The stick
+saliency can be represented by 
+1
+= 
+1
+  
+2
+. The stick
+saliency for each point indicates how conﬁdent that a point
+can be considered as lying on a local plane. The corresponding
+tensor, indicating the plane, is characterized by the normal
+direction of the local plane ^ e
+1
+.
+IV. RIEMANNIAN METRIC EQUIPPED ON TVF
+A. Projection and transition function
+The embedded manifold M can be interpreted as shown
+in ﬁgure 2. For each point s in the point-cloud, subjecting
+to the local latent surface, a neighborhood homeomorphic
+ 
+ 1
+to an open subset in the TVF space. The corresponding
+manifold is equipped with a Riemannian metric g, which
+determines the inherent relations between two projected points.
+Adopting the results from TVF, we build the metric g such
+that local roughness of the latent surface can be reﬂected.
+This property is speciﬁcally interesting for the use-case of
+trajectory planning. Usually, the optimal trajectory is not
+necessarily the shortest; instead, the smoothness in curvature
+is also important. For example, if the one with the shortest
+Euclidean distance passes through rough terrain or induces
+complex morphological adaptations, a relatively longer but
+ﬂatter trajectory is preferable, considering risks and power
+consumption for the robot.
+4089
+Fig. 2. Intuition of the embedded local manifold for points inE
+3
+. The dashed
+line indicates the latent surface, where the points lie on.
+B. Metric deﬁnition
+The Riemannian metric onM is a family of inner products
+on each tangent spaceT
+p
+M, such that it depends smoothly on
+p,8p2M. However, the speciﬁcation of theT
+p
+M is trivial if
+and only if it possesses a frame of global sections, e.g. a vector
+ﬁeld is deﬁned on M.
+1
+Therefore, for the case that a tensor
+ﬁeld has already expanded the point-cloudS, the Riemannian
+metric g can be arbitrarily deﬁned, as long as it is canonical.
+Regarding the components introduced in TVF, we see that
+the stick component indicate the ﬂatness of a local latent
+surface, with eigenvector expanding ^ e
+T
+1
+^ e
+1
+; on the other hand,
+the orthogonal plane is expanded by ^ e
+T
+2
+^ e
+2
++ ^ e
+T
+3
+^ e
+3
+. Inspired
+by the 2D metric introduced in [28] and [29], with symmetric
+positive-deﬁnite tensors, we propose the following metric:
+g(s):=I
+3
++
+ 
+
+1
+(s)
+ 
+^ e
+1
+(s)^ e
+1
+(s)
+T
+
++ 
+ 
+
+1
+(s)
+ 
+^ e
+1
+(s)^ e
+1
+(s)
+T
++^ e
+2
+(s)^ e
+2
+(s)
+T
+ (2)
+where I
+3
+is identity matrix; 
+1
+(s) is the normalized stick
+saliency and ^ e
+i
+(s) indicates the i-th component of the local
+tensor for sites derived from TVF. Using the proposed metric,
+we intend to guarantee the following two properties:
+ A unit vector is along the most desirable curve when the
+vector is normal to ^ e
+1
+(s);
+ A unit vector is along the most undesirable curve when
+the vector is parallel to ^ e
+1
+(s).
+For example, if the embedded vector is the control velocity to
+the robot, it means that we want to keep the robot move on
+ﬂat surface as much as possible; at the same time, avoiding
+climbing redundant hills etc. Guided by these properties, we
+deﬁne the co-efﬁciencies() and () using the combination
+of exponential functions, where we need to ensure
+(x)
+ (x)
+is
+monotonically increasing and
+(0)
+ (0)
+=1. We set
+(x)=
+e
+kx
+e
+kx
++e
+ kx
+and (x)=
+e
+ kx
+e
+kx
++e
+ kx
+(3)
+Please notice that the ball saliency is not considered, since the
+free points are less of interest for structural information.
+1
+The proof for this proposition is omitted here. The readers are referred to
+[27] for details.
+C. Distance derivation
+Using the proposed metric g, the Riemannian curve length
+C is obtained by the integral on M, as shown in equation
+(4), where
+s
+deﬁnes the direction derivatives on the manifold.
+Given the results in (4), the following properties can be drawn:
+ The length decreases when the direction of ^ e
+1
+diverges
+from 
+s
+, where j
+T
+s
+^ e
+1
+j
+2
+indicates the cosine of the
+separation angle.
+ When the stick saliency 
+1
+grows, the length decreases,
+which coincidently means that the integral path lies on a
+ﬂatter surface.
+ The local minimal direction is orthogonal to the sec-
+ondary eigen vector ^ e
+2
+, where j
+T
+s
+^ e
+2
+j
+2
+is minimized.
+It implies that the local geodesic is along the ^ e
+3
+di-
+rection (or its opposite) in T
+s
+. This information may
+help the exploration task for mobile robots, since the
+corresponding direction is the easiest one to approach.
+Further discussion is not included in this paper.
+ Based on the last item, when the robot is moving in the
+direction of ^ e
+3
+, the Euclidean distance is used. Otherwise,
+the curve length is greater than then Euclidean distance.
+ It does not depend on parameterisation of the curve, i.e.
+jCj
+M
+=
+Z
+C
+q
+
+T
+s
+g(s)
+s
+ds=
+Z
+C
+0
+q
+
+T
+s
+0g(s
+0
+)
+s
+0 ds
+0
+ It does not depend on coordinates on Riemannian mani-
+fold M, i.e.
+jCj
+M
+=
+Z
+C
+q
+
+T
+s
+g(s)
+s
+ds=
+Z
+C
+q
+
+0T
+s
+g(s)
+0
+s
+ds
+ The sum rule of integral also shows the additivity ofjCj.
+As basic properties of a Riemannian manifold, the proof
+of these three last properties is omitted. The readers are
+referred to [30] for further discussions.
+Though the shortest distance is provided by following local
+^ e
+3
+’s, the geodesic to realize such distance does not necessarily
+exist due to physical constraints in E
+3
+space, e.g. the robot
+cannot tele-transport. Therefore, we need to deﬁne a numeric
+solution to generate the feasible optimal path, which best real-
+izes the proposed concept. To this end, we adopt the k-Nearest-
+Neighbor (kNN) concept which is mostly applied in manifold
+learning methods such as Isomap [31]. The projected weights
+can then be evaluated in a projected space onto the plane
+supported by ^ e
+2
+and ^ e
+3
+, which are direction vectors inE
+3
+. In
+the next section, we introduce the typical trajectory planning
+for a mobile robot on a point-cloud-based representation.
+V. RECIPE FOR PROCESSING POINT-CLOUD
+A. Graph construction and distance mapping
+A typical application using the proposed model is the tra-
+jectory planning on point-clouds. However, the close-form of
+planning using the given metric is mathematically intractable.
+Utilizing the fact that the local geodesic is along the direction
+of local ^ e
+3
+, we propose an accessible approximation shown as
+algorithm I, which equivalently maintains the major properties
+of the proposed metric of (4):
+4090
+jCj
+M
+=
+Z
+C
+q
+
+T
+s
+g(s)
+s
+ds
+=
+Z
+C
+s
+
+T
+s
+
+I
+3
++
+e
+k1(s)
+e
+k1(s)
++e
+ k1(s)
+^ e
+1
+(s)^ e
+1
+(s)
+T
++
+e
+ k1(s)
+e
+k1(s)
++e
+ k1(s)
+
+^ e
+1
+(s)^ e
+1
+(s)
+T
++^ e
+2
+(s)^ e
+2
+(s)
+T
+
+
+
+s
+ds
+=
+Z
+C
+s
+
+T
+
+s
++j
+T
+s
+^ e
+1
+j
+2
++j
+T
+s
+^ e
+2
+j
+2
+
+1
+e
+2k1(s)
++1
+
+ds
+(4)
+Algorithm I
+ALGORITHM OF TRAJECTORY PLANNING ON POINT-CLOUD
+1 Create kNN graphG(V;D), where the nodes are positions of
+points s
+i
+2E
+3
+2 The edgesD is calculated by embedding of Riemannian metric
+in Euclidean space, using the fact that a direction along ^ e
+3
+is preferred. For site s
+i
+and its neighbor s
+j
+i
+, distance d
+j
+i
+is
+deﬁned as:
+d
+j
+i
+=jt
+j
+i
+je
+1 jt
+j
+i
+T
+^ e
+3i
+j
+; where t
+j
+i
+=
+s
+j
+i
+ s
+i
+js
+j
+i
+ s
+i
+j
+(5)
+3 For each query that consists of a pair of starting and ending
+points, Dijkstra [32] search is implement onG(V;D).
+Considering that g(s) is built in canonical form, following
+the discussion in section IV .C, the optimal direction is along
+the direction of ^ e
+3
+. By using equation (5), the Euclidean
+distance is used in this case. Furthermore, weights among
+sites are deﬁned in a way, such that the diversity between
+the directions of the path and ^ e
+3
+is exponentially punished.
+B. Metrics for evaluation
+In order to validate or compare various algorithms for
+trajectory planning, the following metrics can be used.
+ Number of site visits: It indicates the number of interme-
+diate points along the path. It can also be interpreted as
+the shortest distance by considering all weights among
+sites are unity.
+ Length of trajectory: The accumulated Euclidean distance
+of the calculated path.
+ Mean-curvature (MC): It is the average of the principal
+curvatures at a point, i.e. MC =
+1+2
+2
+. It reﬂects to
+which extent the local neighborhood can be considered
+as a minimal surface. Intuitively, it represents the local
+ﬂatness. The smaller mean of MC along the path indi-
+cates that the path lies on a ﬂatter terrain.
+ Gaussian-curvature (GC): It is the product of the two
+principal curvatures at a point, i.e.GC =
+1
+
+2
+. Formally,
+it depends only on the Riemannian metric of the surface.
+It represents the local shape change around a point. The
+smaller mean of GC suggests less shake on the path.
+VI. SIMULATION
+In this section we evaluate three related methods on simu-
+lated dataset. Each simulated point-cloud is uniformly sampled
+from a parametric surface. The three methods are all based on
+k-NN graph of point sites, but with different weight deﬁnitions.
+A. Complex surface
+1) Representations: In order to validate the proposed
+method in a general case, we evaluate the related methods
+on the point-cloud shown in ﬁgure 3. It is sampled from a
+0
+5
+10
+15
+20
+0
+5
+10
+15
+20
+4
+6
+8
+x
+y
+z
+Fig. 3. 4000 points sampled from the surface.
+latent surface, which is arbitrarily deﬁned. The advantage of a
+parametric surface is that GC and MC can be easily derived
+[27].
+2) Rational path planning: Inspired by the deﬁnition of
+metric tensor, we consider the trace of the Riemannian metric
+g as the local measure of feasibility for a rational path. Greater
+trace of g implies a longer incremental curve length, which
+further induces more divergence of surface orientation and
+curvature. Figure 4 shows the trace of local metric tensor.
+Intuitively, the bump areas are equipped with metric of higher
+0
+5
+10
+15
+20
+0
+5
+10
+15
+20
+4
+6
+8
+ 
+x
+y
+ 
+z
+1.15 1.2 1.25 1.3 1.35 1.4 1.45
+Fig. 4. Trace of the proposed Riemannian Metric. It indicates the roughness
+of the estimated neighbourhood surface, highlighted by color.
+trace, which are places that hard to traverse. By arbitrarily
+given starting and end point beyond bumps, the calculated
+trajectories are shown in ﬁgure 5. The primary observation
+is that the proposed method (in white) leads to ﬂat trajectory
+by actively avoiding the bumps in reasonable fashion, though
+with relatively longer path. A summary of the variations in
+z (elevation) direction along the path is shown in ﬁgure 6.
+It can be inferred that the proposed trajectory requires less
+adaptation to the terrain, which leads to easier motion or
+4091
+Fig. 5. Generated path for different methods. Green: nearest-neighbour search
+(21.42); Red: shortest Euclidean geodesic (20.41); White:proposed method
+(21.90). The numbers in parentheses indicate the total length of the path.
+0 0.2 0.4 0.6 0.8 1
+5
+5.5
+6
+6.5
+7
+Ratio of finished path
+Height
+ 
+ 
+k?NN
+Euclidean
+Proposed
+Fig. 6. Height variation along the path for different methods
+morphological planning for the mobile robot. Regarding the
+energy consumption, it can also beneﬁt from the less variation.
+3) Validation by the direction of ^ e
+3
+: The property of the
+proposed method by Algorithm I is that it is supposed to
+optimize the path by following local ^ e
+3
+direction as much
+as possible. It is because ^ e
+3
+directs the direction of lo-
+cal geodesic, which leads to the most terrain similarity. A
+qualitative result is shown in ﬁgure 7. The ^ e
+3i
+directions
+are represented by short lines, and the color deﬁnition of
+paths follows ﬁgure 5. We can see that the yellow trajectory
+calculated by Algorithm I follows mostly the short lines. A
+Fig. 7. Comparison to the direction of local ^ e
+3
+.
+quantitative comparison is depicted in ﬁgure 8. It shows the
+statistics of the absolute cosine values of the path separation
+angle to local ^ e
+3
+along the path. A higher value indicates the
+direction is more similar to ^ e
+3
+. It indicates that the proposed
+Method k-NN Shortest Euclidean Proposed
+# Nodes 39 43 47
+Length 21.42 20.41 21.90
+mean MC 0.0946 0.0853 0.0578
+std-dev MC 0.1208 0.0989 0.0636
+mean GC -0.0249 -0.0254 -0.0089
+std-dev GC 0.0246 0.0232 0.0116
+Table I
+STATISTICS OF THE TEST RUN.MC INDICATES MEAN CURVATURE;GC
+INDICATES GAUSSIAN CURVATURE.
+method fulﬁlls the most coincidence aligning with ^ e
+3
+.
+0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+0.9
+Absolute cosine of the separation angle to ˆ e3
+k?NN Shortest Euclidean Proposed
+Fig. 8. Boxplot to show the divergence to ^ e
+3i
+directions along the path.
+4) Curvature statistics: Recalling the metrics deﬁned in
+section V .C, the comparison of curvature dynamics is shown
+in table I, where the outperforming value is highlighted by
+gray background. Despite of the longer traveled length, the
+proposed method holds the minimum MC and GC, as they
+are the main goal of the design.
+VII. TESTS ON REAL DATA
+As a sample of use-case, we utilize one of the dataset
+introduced by [33] for the test on real data. The scenario is
+shown in top-right of ﬁgure 9. Notice that the yellow eclipse
+marks a ﬁreweed area, which may cause trouble for the robot.
+In order to reduce the cost of planning, we sample 10K
+points out of the raw point-cloud (around 504K points).
+Adopting the GPU implementation of TVF introduced in [16],
+the computation time for sparse voting is 24.79ms. Based on
+Algorithm I, the calculated path is shown in ﬁgure 9. It can
+be observed that the cyan trajectory, by the proposed method,
+actively avoids the ﬁreweed area, leading to a more rational
+path for the mobile robot.
+The estimation of curvatures on point-cloud is a subtle prob-
+lem. The readers are referred to [34] for curvature estimation
+by TVF. The evaluation in terms of GC and MC is omitted.
+VIII. CONCLUSION
+In this paper, we introduced a Riemannian metric for the
+representation of point-cloud, which helps the modeling of the
+4092
+Fig. 9. Scene of the experiment and calculated trajectories for various
+methods. Green: nearest-neighbour search (24.7m); Red: shortest Euclidean
+geodesic (22.5m); Cyan: proposed method (29.3m). The numbers in paren-
+theses indicate the total length of the path.
+environment, especially aiding the path planning for mobile
+robots directly on raw point-cloud. Geometrical properties of
+the proposed metric tensor are discussed, which provide hints
+for further research related to the modeling problems using
+raw point-clouds. The proposed framework is validated by path
+planning task on point-clouds, using both simulated data and
+real dataset. The results show that the proposed method is
+able to calculate rational paths for the robots, which facilitate
+the robotic navigation. Comparison and integration with other
+robotic tasks are to be carried out in the future.
+REFERENCES
+[1] G. Pereira, L. Pimenta, A. Fonseca, L. Corrˆ ea, R. Mesquita,
+L. Chaimowicz, D. De Almeida, and M. Campos, “Robot navigation
+in multi-terrain outdoor environments,” The International Journal of
+Robotics Research, vol. 28, no. 6, pp. 685–700, 2009.
+[2] M. Liu, C. Pradalier, and R. Siegwart, “Visual homing from scale with
+an uncalibrated omnidirectional camera,” Robotics, IEEE Transactions
+on, vol. 29, no. 6, pp. 1353–1365, Dec 2013.
+[3] T. Bailey and H. Durrant-Whyte, “Simultaneous localization and map-
+ping (SLAM): Part II,” Robotics & Automation Magazine, IEEE, vol. 13,
+no. 3, pp. 108–117, 2006.
+[4] A. Elfes, “Using occupancy grids for mobile robot perception and
+navigation,” Computer, vol. 22, no. 6, pp. 46–57, 1989.
+[5] M. Montemerlo, S. Thrun, D. Koller, and B. Wegbreit, “FastSLAM: A
+factored solution to the simultaneous localization and mapping problem,”
+in Proceedings of the National conference on Artiﬁcial Intelligence.
+Menlo Park, CA; Cambridge, MA; London; AAAI Press; MIT Press;
+1999, 2002, pp. 593–598.
+[6] K. Konolige, G. Grisetti, R. Kummerle, W. Burgard, B. Limketkai,
+and R. Vincent, “Efﬁcient sparse pose adjustment for 2D mapping,”
+in Intelligent Robots and Systems (IROS), 2010 IEEE/RSJ International
+Conference on. IEEE, 2010, pp. 22–29.
+[7] R. Rusu and S. Cousins, “3D is here: Point cloud library (PCL),” in
+Robotics and Automation (ICRA), 2011 IEEE International Conference
+on. IEEE, 2011, pp. 1–4.
+[8] M. Liu and R. Siegwart, “Information theory based validation for point-
+cloud segmentation aided by tensor voting,” in International Conference
+on Information and Automation (ICIA). IEEE, 2013.
+[9] P. Henry, M. Krainin, E. Herbst, X. Ren, and D. Fox, “RGB-D mapping:
+Using depth cameras for dense 3D modeling of indoor environments,”
+in the 12th International Symposium on Experimental Robotics (ISER),
+vol. 20, 2010, pp. 22–25.
+[10] A. N¨ uchter, K. Lingemann, J. Hertzberg, and H. Surmann, “6D
+SLAM3D mapping outdoor environments,” Journal of Field Robotics,
+vol. 24, no. 8-9, pp. 699–722, 2007.
+[11] G.-J. Kruijff, M. Janicek, S. Keshavdas, B. Larochelle, H. Zender,
+N. Smets, T. Mioch, M. Neerincx, J. van Diggelen, F. Colas, M. Liu,
+F. Pomerleau, R. Siegwart, V . Hlavac, T. Svoboda, T. Petricke, M. Re-
+instein, K. Zimmerman, F. Pirri, and M. Gianni, “Experience in System
+Design for Human-Robot Teaming in Urban Search & Rescue,” in Field
+and Service Robotics. Springer, 2012.
+[12] M. Gianni, P. Papadakis, F. Pirri, M. Liu, F. Pomerleau, F. Colas,
+K. Zimmermann, T. Svoboda, T. Petricek, G. Kruijff et al., “A uniﬁed
+framework for planning and execution-monitoring of mobile robots,” in
+Workshops at the Twenty-Fifth AAAI Conference on Artiﬁcial Intelli-
+gence, 2011.
+[13] W. E. Lorensen and H. E. Cline, “Marching cubes: A high resolution 3D
+surface construction algorithm,” in ACM Siggraph Computer Graphics,
+vol. 21, no. 4. ACM, 1987, pp. 163–169.
+[14] K. Wurm, A. Hornung, M. Bennewitz, C. Stachniss, and W. Burgard,
+“OctoMap: A probabilistic, ﬂexible, and compact 3D map representation
+for robotic systems,” in Proc. of the ICRA 2010 workshop on best
+practice in 3D perception and modeling for mobile manipulation, vol. 2,
+2010.
+[15] G. Medioni, M. Lee, and C. Tang, A computational framework for
+segmentation and grouping. Elsevier Science, 2000, vol. 1.
+[16] M. Liu, F. Pomerleau, F. Colas, and R. Siegwart, “Normal Estimation
+for Pointcloud using GPU based Sparse Tensor V oting,” in IEEE Int.
+Conf. on Robotics and Biomimetics (ROBIO), 2012.
+[17] Y . Dumortier, I. Herlin, and A. Ducrot, “4-D Tensor V oting motion
+segmentation for obstacle detection in autonomous guided vehicle,” in
+IEEE Intelligent Vehicles Symposium. IEEE, 2008, pp. 379–384.
+[18] J. Jia and C. Tang, “Inference of segmented color and texture description
+by tensor voting,” IEEE Transactions on Pattern Analysis and Machine
+Intelligence, vol. 26, no. 6, pp. 771–786, 2004.
+[19] H. Schuster, “Segmentation of lidar data using the tensor voting frame-
+work,” International Archives of Photogrammetry, Remote Sensing and
+Spatial Information Sciences, vol. 35, pp. 1073–1078, 2004.
+[20] B. King, “Range data analysis by free-space modeling and tensor
+voting,” Ph.D. dissertation, Rensselaer Polytechnic Institute, 2009.
+[21] F. Colas, S. Mahesh, F. Pomerleau, M. Liu, and R. Siegwart, “3d
+path planning and execution for search and rescue ground robots,” in
+Intelligent Robots and Systems (IROS), 2013 IEEE/RSJ International
+Conference on. IEEE, 2013, pp. 722–727.
+[22] J. Baek, A. Deopurkar, and K. Redﬁeld, “Finding geodesics on surfaces,”
+Technical Report,(November 2007), Tech. Rep., 2007.
+[23] R. Kimmel, A. Amir, and A. M. Bruckstein, “Finding shortest paths
+on surfaces using level sets propagation,” Pattern Analysis and Machine
+Intelligence, IEEE Transactions on, vol. 17, no. 6, pp. 635–640, 1995.
+[24] M. R. Ruggeri, T. Darom, D. Saupe, and N. Kiryati, “Approximating
+geodesics on point set surfaces,” in Proc. of the symposium on point-
+based graphics, 2006, pp. 85–93.
+[25] F. M´ emoli and G. Sapiro, “Distance Functions and Geodesics on
+Submanifolds of R
+d
+and Point Clouds,” SIAM Journal on Applied
+Mathematics, vol. 65, no. 4, pp. 1227–1260, 2005.
+[26] P. Mordohai and G. Medioni, “Tensor voting: a perceptual organization
+approach to computer vision and machine learning,” Synthesis Lectures
+on Image, Video, and Multimedia Processing, vol. 2, no. 1, pp. 1–136,
+2006.
+[27] J. Gallier, Geometric methods and applications: for computer science
+and engineering. Springer, 2011, vol. 38.
+[28] H. Koo and N. Cho, “Graph cuts using a Riemannian metric induced
+by tensor voting,” in Computer Vision, 2009 IEEE 12th International
+Conference on. IEEE, 2009, pp. 514–520.
+[29] Y . Boykov and V . Kolmogorov, “Computing geodesics and minimal
+surfaces via graph cuts,” in Computer Vision, 2003. Proceedings. Ninth
+IEEE International Conference on. IEEE, 2003, pp. 26–33.
+[30] H.M.Khudaverdian, “Riemannian geometry.” [Online]. Avail-
+able: http://www.maths.manchester.ac.uk/
+
+khudian/Teaching/Geometry/
+GeomRim11/riemgeom11.pdf
+[31] M. Balasubramanian and E. Schwartz, “The isomap algorithm and
+topological stability,” Science, vol. 295, no. 5552, pp. 7–7, 2002.
+[32] E. Dijkstra, “A note on two problems in connexion with graphs,”
+Numerische mathematik, vol. 1, no. 1, pp. 269–271, 1959.
+[33] F. Pomerleau, M. Liu, F. Colas, and R. Siegwart, “Challenging data sets
+for point cloud registration algorithms,” The International Journal of
+Robotics Research, 2012.
+[34] W.-S. Tong and C.-K. Tang, “Robust estimation of adaptive tensors of
+curvature by tensor voting,” Pattern Analysis and Machine Intelligence,
+IEEE Transactions on, vol. 27, no. 3, pp. 434–449, 2005.
+4093

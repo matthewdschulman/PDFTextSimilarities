@@ -1,0 +1,961 @@
+Time-Based RRT Algorithm for Rendezvous Planning of Two Dynamic
+Systems
+Avishai Sintov and Amir Shapiro
+AbstractÑThe work presented in this paper proposes a new
+method for time based motion planning of a dynamic system
+to reach a dynamical goal within a speciÞed time. The method
+enables trajectory planning based on the dynamics of the system
+with time constraint. Moreover, this method allows rendezvous
+planning of two dynamic systems where only one is controlled.
+To reach this objective, we introduce a new concept termed
+Time-Based RRT (TB-RRT) which is an extended version of
+the Rapidly-exploring Random Tree (RRT). The concept of the
+TB-RRT is to add time parameters to the nodes in the tree such
+that each node denotes a speciÞc state in a speciÞc time. The
+algorithm was implemented in two applications to demonstrate
+the approach and validate its feasibility; The Þrst application
+is a one degree of freedom bat hitting a ball and the second
+application is a three degrees of freedom manipulator catching
+a moving object. Simulation results show the system accurately
+following the planned trajectory and the robot catching the
+object in time.
+I. INTRODUCTION
+Many applications in robotics demand not only motion
+planning of a feasible trajectory for a robot to move from
+one state (conÞguration and velocity) to another, but demand
+also that it should be completed within a speciÞc time.
+Such applications range from industrial and civil areas to
+military ones. In industrial production lines, robotic arms
+could regrasp parts by tossing them in the air and catching
+them in a desired conÞguration. Flying drones could be
+catchedinairinsteadofperforminglandingtoavoidstructure
+damage due to the landing shocks. Performing car passing
+on road by an autonomous car should be done within a set
+time range to avoid collision. All of these applications and
+moredemandthatthetrajectorywilltakeintoaccountanother
+uncontrolled dynamic system (referred in this paper as the
+dynamic goal) in a speciÞc time.
+To deal with the presented problem, two main aspects are to
+be considered; the Þrst is the time-based trajectory planning
+toaccountforthedynamicgoalandthesecondisthetracking
+problem of the uncontrolled dynamic goal to estimate its
+trajectory. In this work we focus on the Þrst aspect and
+assumefullknowledgeofthegoalstrajectory,thatis,accurate
+measurement and prediction of the objects position and
+velocity at all times.
+The trajectory planning problem has been widely researched.
+The most common methods for time based trajectory plan-
+ning are the point to point polynomial trajectories and cubic
+splines [1]. However, these methods do not take the dynamics
+and constraints of the system into account. PotentialÞelds are
+also a known method for path planning [2]. However, speciÞc
+time constraints are not taken into account. Many other works
+presents trajectory planning under cost minimization such as
+jerk [3] or time [4]. Another method is the Rapidly-exploring
+Random Tree (RRT) [5] which is a probabilistic method
+for trajectory planning in a complex environment taking the
+dynamics of the system into account. The RRT approach is
+the base approach of this work.
+Another problem dealt in this paper is rendezvous planning
+of two dynamic systems where only one is controlled. Many
+solutions to this problem were presented; The proportional
+navigation algorithm [6], [7] is a commonly used method to
+account for a moving object such as a UAV or a missile. The
+algorithm is shown to be complete as it will intercept the
+object in Þnite time, however not in a speciÞc desired time.
+Many other rendezvous algorithms for optimal trajectories
+werepresented[8],[9]toÞndthebesttrajectoryinadynamic
+environment.
+In the presented work we wish to address two main problems.
+The Þrst problem is trajectory planning to reach a goal in
+a speciÞc desired time. To solve this problem we present
+the Time-Based RRT (TB-RRT) method which incorporates
+the advantages of the known RRT with time constraint. The
+other problem is the rendezvous planning of a controlled
+dynamic system with an uncontrolled one. To solve the
+second problem we use the TB-RRT and sample the goals
+trajectory into the trees space.
+The paper is organized as follows. Section II deÞnes the
+problem discussed in this paper. Section III reviews the RRT
+algorithm. In Section IV we present our algorithm forÞnding
+a trajectory to a dynamic goal using a time based RRT
+algorithm. In Section V we present some applications for
+the method with two simulations of a bat hitting a ball and
+a manipulator catching a moving object. We conclude and
+suggest some future work in Section VI.
+II. PROBLEM FORMULATION
+This section deÞnes the motion planning problem. Given
+a dynamic system with the non-linear differential constraint
+úx(t)=f(x(t),u(t)) (1)
+wherex(t)? R
+n
+andu(t)? R
+m
+are the state and control
+inputs of the system, respectively, at timet. The initial state
+att=0 is given byx(0)=x
+o
+. A set of constraints on
+the statesx(t) are imposed to avoid obstacles and physical
+limits of the system.X
+free
+?X deÞnes the subset of states
+within a metric spaceX, free from obstacles and systemÕs
+kinematic and dynamic limitations. The control inputs are
+bounded according to the limits of the systems actuators
+|u(t)|<u
+max
+.
+Another uncontrollable non-linear dynamic system is given
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 6745
+which represents a moving goal to be reached. Its system is
+given by
+úq(t)=g(q(t)) (2)
+whereq(t)?R
+n
+is the state of the system at timet. Its initial
+stateisq(0)=q
+o
+.Thestateofthegoaldoesnothavetobein
+R
+n
+but should be transformed to it for compatibility reasons.
+The objective is to reach the dynamic goal, that is, the time-
+varying stateq(t). The objective would be completed if at
+some timet
+f
+the condition
+t
+f
+={t
+f
+?[0,°)|x(t)?X
+free
+?[0,t
+f
+]
+and ?(x(t
+f
+),q(t
+f
+))<} (3)
+is met. Where? is some metric criterion to be deÞned later
+and>0 is a predeÞned tolerance. Therefore, the motion
+planning problem is deÞned as follows. Given the initial state
+x
+o
+, the state constraintsX
+free
+and the control input limit
+u
+max
+, compute the control input sequenceu(t),t?[0,t
+f
+]
+to form a trajectoryx(t) for the dynamic system to reach the
+dynamic goal at some Þnite timet
+f
+?[0,°).
+III. RRT BACKGROUND
+The basic RRT algorithm wasÞrstly introduced by LaValle
+[5] as a stochastic approach for trajectory planning to reach a
+goal state from an initial state under a differential constraint
+(such as in eq. (1)). The advantage of this method is in
+its simplicity of applying multiple constraints and avoiding
+obstacles.
+The basics of the simple RRT algorithm is by sampling
+random states and extending the RRT toward them. In every
+iterationk, a random statex
+rand
+?X is sampled. Then,
+a nearest-neighbor search Þnds the closest statex
+k
+in the
+tree to the random point according to a deÞned metric?.
+By applying an input|u
+k
+|<u
+max
+for small time?t,an
+incremental motion is performed towardx
+rand
+basedoneq.
+(1) to a new state
+x
+k+1
+=x
+k
++f(x
+k
+,u
+k
+)?t (4)
+where?t is the time interval used for discretization andx
+k
+is the state at timet=k?t. The differential constraint is
+discretized and integrated here with a Þrst-order approxima-
+tion. For better accuracy one can use an higher order method
+such as the fourth-order Runge-Kutta. The new statex
+k+1
+is
+added to the tree only ifx
+k+1
+?X
+free
+. The goal stateq
+g
+is
+reached if?(q
+g
+,x
+k
+)< for a pre-deÞned small>0.The
+euclideanmetricisthecommononeusedfor?.Theiterations
+could be terminated under two approaches; An upper bound
+on the number of iterations will terminate the algorithm and
+the best solution be taken based on some optimality criteria.
+The second approach is a greedy one where the Þrst solution
+found is taken. According to LaValle, the exploration rapidly
+and uniformly covers the space and converge in a Þnite time.
+The state space and the RRT graph of a simple Pendulum
+are presented in Figure 1 where a trajectory from the down
+position to the upright position is shown.
+?¹/2 ?3¹/2 ¹/2 ?¹/6 ¹/6 ?2¹/3 ?5¹/6
+Fig. 1. A RRT graph of a pendulum and a trajectory from down position
+(?¹/2 radians) to the upright position.
+IV. DYNAMIC MOTION PLANNING
+In the previous section we presented the basic RRT
+approach for kinodynamic planning. We now present the
+Time-Based RRT (TB-RRT) to impose a time constraint for
+reaching a dynamic goal.
+A. State-Time Space
+We expand the notion of the state space to contain varying
+time. That is, we deÞne the State-Time Spacetobeaspace
+where a time coordinate is added to the state coordinates of
+the system. Therefore, a state-time vector is constructed as
+÷ x=
+
+x
+T
+t
+
+T
+(5)
+where÷ x? R
+n+1
+. A state-time vector indicates the conÞg-
+uration and velocity of a system at timet ? [0,°).The
+state-time space is now denoted as
+ö
+X?R
+n+1
+.
+With the new state-time vector we can now modify eq. (4)
+to be
+÷ x
+k+1
+=÷ x
+k
++
+
+f(÷ x
+k
+,u
+k
+)
+1
+
+?t. (6)
+That is, the next node ÷ x
+k+1
+in the tree is updated to its
+new time by adding ?t relative to its parent node ö x
+k
+.
+Moreover, we constrain the new node in the tree to be in
+the allowed state-time space, i.e.,÷ x
+k+1
+?
+÷
+X
+free
+. The region
+of
+÷
+X
+free
+?
+÷
+X is acquired straight forward fromX
+free
+with
+additional limitations on the time. Meaning, we can limit the
+nodes in the tree to a time frame. Moreover,
+÷
+X
+free
+could be
+used to model dynamic obstacles as it varies in time.
+This representation of a state-time vector enables growing a
+tree where each node has knowledge of its state at a speciÞc
+time. Therefore, a goal state-time could be deÞned and a
+trajectory could be planned by growing a tree, searching
+for a node close enough to the goal state-time. A node is
+considered to be close enough to a goal state if a predeÞned
+metric?
+?
+(to be deÞned) is smaller than a speciÞed overall
+tolerance. The tolerance must incorporate an allowed time
+tolerance. Such method enables trajectory planning reaching
+a goal in a desired time with the time tolerance accuracy.
+6746
+Fig. 2. Example of (a) a one degree of freedom motion by time and (b)
+its representation in state-time space.
+B. State-Time of the Dynamic Goal
+We now need to refer to the matter of the dynamic goal. As
+mentioned, we assume full knowledge of the goals dynamics.
+That is,q(t)?X?t?[0,t
+g
+] could be fully predicted. The
+basic idea is to sample the goals trajectory in?t
+goal
+time
+intervals and acquire the goal set
+÷
+X
+goal
+.However,wehave
+noneedforsampleswhicharenotintheallowedspace
+÷
+X
+free
+.
+Therefore, we sampleq(t) to form
+÷
+X
+goal
+={÷ q
+1
+,...,÷ q
+z
+}?
+÷
+X
+free
+(7)
+where a sampled state-time vectori is calculated to be
+÷ q
+i
+=
+
+q(iá?t
+goal
+)
+iá?t
+goal
+
+(8)
+and z=1,2,...,
+tg
+?tgoal
+. For convenience, in this work
+we choose the systems time intervals?t to be equal to the
+goals time intervals?t
+goal
+. Figure 2 shows an example for
+sampling of a one degree of freedom motion by timeq(t)
+(Figure 2(a)) to the state-time space
+÷
+X
+goal
+(Figure 2(b)).
+C. Time-Based RRT
+In the previous subsections we have deÞned the state-time
+space and the sampling strategy for the dynamic goal. We
+presenthowtheTB-RRTisgrown.Thealgorithmproposedis
+a greedy one which stops once a solution is found. However,
+it could be expanded to Þnd an optimized one by Þnding all
+solutions inK iterations and choosing the one which best
+minimizes some optimization criteria.
+Algorithm 1 presents the main steps in expansion of the TB-
+RRT and searching for a trajectory from initial state-time÷ x
+o
+to any goal state-time÷ q
+i
+?
+÷
+X
+goal
+. Similar to the original
+RRT algorithm, the treeT is initialized with the start state-
+time (step 1). The FOR loop (steps 2-15) is set to run a
+predeÞned number of iterationsK. This enables the user to
+limit the run in terms of runtime or memory usage. However,
+the FOR loop could be replaced by an inÞnite loop as there
+is a stoping condition to terminate the run once a solution
+is found. The algorithm samples a random state-time vector
+÷ x
+rand
+(step 3) within
+÷
+X and Þnds its nearest node÷ x
+i
+?T
+to it (step 4). An inputu
+i
+is selected to impose motion from
+÷ x
+i
+towards÷ x
+rand
+(step 5). That is, by applying the chosen
+inputu
+i
+on the differential constraint of eq.(6), we obtain a
+new node÷ x
+i+1
+. The control inputu
+i
+will be chosen such
+that÷ x
+i+1
+?
+÷
+X
+free
+. Now, we have to check if moving in this
+direction and magnitude is feasible (steps 7-14). Therefore,
+we check if the new node÷ x
+i+1
+is in
+÷
+X
+free
+.Iftrue,itadds
+the new node to the tree and stores connection between÷ x
+i
+to
+÷ x
+i+1
+with control inputu
+i
+. If the new node is not feasible,
+the algorithm continues to a new iteration.
+Algorithm 1 Search for trajectory to dynamic goal
+Input: ÷ x
+o
+,
+÷
+X
+free
+and
+÷
+X
+goal
+.
+Output: Trajectory and control inputs from÷ x
+o
+to÷ x
+goal
+(t).
+1: Initialize treeT with÷ x
+o
+.
+2: fork=1?K do
+3: ÷ x
+rand
+? Random state-time vector.
+4: ÷ x
+i
+?T?NearestNeighbor(T,÷ x
+rand
+).
+5: Selectu
+i
+to move from÷ x
+i
+towards÷ x
+rand
+.
+6: ÷ x
+i+1
+?÷ x
+i
++[f(÷ x
+i
+,u
+i
+)1]
+T
+?t.
+7: if÷ x
+i+1
+?
+÷
+X
+free
+then
+8: Add÷ x
+i+1
+toT .
+9: Add edge÷ x
+i
+ui
+?÷ x
+i+1
+toT .
+10: if?
+?
+(÷ x
+i+1
+,
+÷
+X
+goal
+)< then
+11: Calculate pathP inT from÷ x
+o
+to÷ x
+i+1
+.
+12: return P.
+13: end if
+14: end if
+15: end for
+The last step of the algorithm is to check whether the new
+node÷ x
+i+1
+iscloseenoughtoastate-timevectorin
+÷
+X
+goal
+tobe
+considered as the same. Most implementation of the RRT use
+the simple Euclidean metric between two vectors. However,
+such metric does not take into account the unit difference in
+the state-time vector components. It is problematic to treat
+angle units and time units with the same weight. Therefore,
+our criterion for two vectors to be considered to the same is if
+they are both within an hyper-rectangle (inn+1 dimension).
+The size of the hyper-rectangle is deÞned by the allowed
+tolerance vector. Each components unit in respectively
+correspond to the state-time vectorö x.WedeÞne our metric
+function?
+?
+used in this algorithm to implement this by
+?
+?
+(ö x
+i+1
+,
+÷
+X
+goal
+)=|÷ x
+i+1
+?÷ q
+?
+| (9)
+where÷ q
+?
+=NearestNeighbor(
+÷
+X
+goal
+,÷ x
+i+1
+). That is, we
+Þnd the nearest point in
+÷
+X
+goal
+to the new point and check if
+they are both in the same hyper-rectangle with edge lengths
+of (step 10).
+If the above condition is true, a node in the tree was
+found which is close enough to a state-time vector in
+÷
+X
+goal
+.
+Therefore, theÞnal step will be toÞnd a path in the tree from
+its root (the initial state-time) to the goal node (step 11). This
+could be done with any tree search algorithms such asA
+?
+,
+DFS, BFS, etc [10].
+Figure 3 presents a TB-RRT of a pendulum and its trajectory
+toward a static goal. A funnel shape tree could be seen
+starting from the initial state-time. For each node, its siblings
+could only be in direction where time increases. That is, the
+tree is constructed such that the system can reach many states
+in the tree and time will always increase. The box at the goal
+state-time illustrates the allowed tolerance of the algorithm.
+6747
+Fig. 3. A TB-RRT of a Pendulum and a trajectory to the goal state-time.
+The box represents the allowed goal region
+÷
+X
+goal
+.
+Onceanodeofthetreeispositionedinthebox,thealgorithm
+terminates and the trajectory is calculated from initial state
+time to Þnal state-time node. The thick red line indicates for
+the path in the tree.
+The next section provides some example applications for the
+algorithm and presents simulations validating the method.
+V. APPLICATIONS AND SIMULATIONS
+In this section we present two applications and simulations
+of the method: the Þrst is a simple one degree of freedom
+bat hitting a moving ball, the second is a motion planning
+of a three degrees of freedom manipulator to catch a moving
+object. A performance analysis is then presented.
+A. One degree bat hitting a ball
+The Þrst simulation we conducted was applying the TB-
+RRT method to a one degree of freedom bat rotating on an
+horizontal plane. The bat with massm=2kg and length
+l=0.2m has the following equation of motion:
+1
+3
+ml
+2
+¬
+?=u. (10)
+where the the bats angle is limited to be0²?²
+¹
+2
+. Initial
+state-time of the bat is along the x-axis (¹/2 radians) with
+zero velocity÷ x
+o
+=[
+¹
+2
+00]
+T
+. The motor at the axis of the
+bat can only apply torque up to|u
+max
+|=2Nm.
+The batÕs goal is to hit a planar ball moving on a straight
+line with constant velocity. That is, the goals differential
+constraint is given by
+úq=
+? ? ? ? Vx
+b
+Vy
+b
+0
+0
+? ? ? ? , q
+o
+=
+? ? ? ? x
+b,o
+y
+b,o
+Vx
+b
+Vy
+b
+? ? ? ? (11)
+whereVx
+b
+andVy
+b
+are the balls constant velocities and
+x
+b,o
+,y
+b,o
+are its initial positions at timet=0. This repre-
+sentation should be transformed to a state-time space with
+reference to the bat. The position of the ball is transformed
+to polar coordinates where the angle denotes the angle the bat
+should have in order to hit the ball. The state-time tolerance
+Fig. 4. The TB-RRT of a one degree bat hitting a ball. The green circles
+are the balls state-time vectors and the red path is the trajectory from the
+initial state-time to a goal state-time.
++
+?
+PDController
+Dynamic
+System
+TB-RRT
+Planner
+u e xd x
+Fig. 5. The PD control scheme. The TB-RRT planner outputs the desired
+trajectory.
+for terminating the search is given by the tolerance vector
+=(2.8[
+o
+]0.2[
+rad
+s
+]0.03[s])
+T
+. For demonstration purpose
+and to demonstrate a full state goal, we set a constraint that at
+encounter, the bat will have the linear velocity at the contact
+point opposite but equal to the balls velocity component
+perpendicular to the bat. The offset of bat relative to the
+balls center due to the balls radius was taken into account.
+The motion of the ball was sampled only where it is located
+in the quarter circle representing the bats work space.
+Under these properties and constraints, the algorithm was
+simulated and after 1,726 iterations outputted the TB-RRT
+shown in Figure 4. The green circles mark the sampled state-
+time vectors of the ball. The red curve presents the path
+solution from the initial state time to the goal one.
+The algorithm outputted a set of discrete states in time and a
+set of control inputs. We may use the control inputs directly
+for the motor with no feedback control on the trajectory
+position. However, for overcoming disturbances and errors
+there is a need for feedback control. Therefore, we use the
+set of discrete states in time as the reference trajectory to a
+closed loop PD controller as seen in Figure 5. The TB-RRT
+planner outputs the desired trajectory from the initial state-
+timetotheÞnal.Thereferencesignalisthenfedintoasimple
+PD controller with feedback to calculate the appropriate
+closed loop control input to the dynamic system. Figure 6
+presents the trajectory of the bat. The dashed curve is the
+trajectory from the TB-RRT planner. The continues curve
+is the controlled trajectory simulated with SIMULINK. The
+ballÕs trajectory could also be seen as the dotted curve. The
+ballÕs curve starts at 0.46s because only then it enters the
+workspace of the bat. Rendezvous between the curves show
+that att
+f
+=0.505s the state-times of the bat and the ball are
+6748
+Fig. 6. The angle (up) and angular velocity (down) vs. time of the bat
+hitting a ball.
+Fig. 7. The motion of the bat to hit the moving ball. The dashed line marks
+the workspace of the bat.
+equal. Figure 7 shows snapshots of the bats motion to hit the
+ball.
+B. Manipulator catching a moving object
+In the second simulation we used a more complex dynam-
+ics. A vertical planar three degrees of freedom manipulator
+was chosen. Its dynamics is given by the following equation
+of motion
+M(z)¬ z+C(z,úz)úz+G(z)=u (12)
+wherez(t)=[?
+1
+?
+2
+?
+3
+]
+T
+is the joint conÞguration,M(z)
+is the inertia matrix,C(z,úz) is the matrix of coriolis and
+centrifugal torques,G(z) is the gravity vector andu(t) is
+the control input vector. The masses of the links arem
+1
+=
+1[kg],m
+2
+=1.25[kg],m
+3
+=0.75[kg] and their lengths are
+L
+1
+=0.2[m],L
+2
+=0.25[m],L
+3
+=0.15[m]. Their center of
+masses are in the middle of each link. From this deÞnition
+we perform order reduction such thatx
+1
+=z, x
+2
+=úz and
+construct the systems state-time representation as follows:
+ú
+÷ x=f(÷ x,u)=
+? ? x
+1
+M
+?1
+(u?C(x
+1
+,x
+2
+)x
+2
+?G(x
+1
+))
+1
+? ? (13)
+where ÷ x=[x
+1
+T
+x
+2
+T
+1]
+T
+is the state-time vector repre-
+sentation ofz. The upper two joints were constrain to be
+?
+5
+6
+¹²(?
+2
+,?
+3
+)²
+5
+6
+¹ and the joints velocity were limited up
+to 20 rad/sec. The joint torques were limited to a maximum
+of5N/m.
+The manipulators goal is to catch a moving object such that
+at the moment of rendezvous the end-effector will have the
+same velocity (magnitude and direction) as the object. The
+object was given an arbitrary polynomial trajectory given by
+r(t)=
+
+?251.5t
+4
++219.8t
+3
+?49.6t
+2
++0.2
+?298.7t
+4
++237.5t
+3
+?45.5t
+2
+?0.2
+
+, (14)
+whereq=[r
+T
+úr
+T
+]
+T
+is the objects state. This polynomial
+representation can be used to simulate the dynamics of
+a free ßying object with the inßuence of gravitation and
+air drag damping. The goal objects differential constraint
+should be transformed to the state-time space as described.
+However, the manipulator state space is represented based
+on the joint angles and the object is based on its cartesian
+position. Therefore, the objects state space is transformed to
+the manipulators state space using the inverse kinematics of
+the manipulator. That is, the new sampled state spaceq
+?
+of
+the object is given by
+q
+?
+=
+
+h(r)
+J
+?1
+úr
+
+(15)
+whereh(u) is the transformation from the end-effectors po-
+sition to the joints conÞguration andJ is the Jacobian matrix
+mapping joint velocity to end-effector velocity. Therefore,q
+?
+is the state of the object represented in the manipulators state
+space.
+Figure 8 presents a simulated trajectory of the manipulator
+to grasp the moving object. The trajectory was calculated
+with the TB-RRT algorithm and generated this solution
+after 21,988 iterations. In this case, after 0.4 seconds the
+manipulator was able to reach the object with the same
+velocity. Figure 9 presents snapshots of the manipulators
+motion to catch the moving object. It should be mentioned
+that a method to avoid collisions of the manipulators links
+were not implemented but could be done in the future by
+excluding parts of the state-time space from
+÷
+X
+free
+.
+C. Analysis
+Table I shows some performance results of the presented
+simulations. Runtime and iteration number statistics is shown
+after 10 simulation runs. Runtime is increased as well as
+the number of iterations when the state space dimension
+6749
+Fig. 8. The trajectory of the end-effector and the object. After 0.4 seconds
+they have the same position and velocity.
+Fig. 9. The motion of the manipulator to catch the object.
+increases. The simulation for the bat was done with time
+tolerance of ±0.04 seconds. Figure 10 demonstrates the
+sensitivity of the algorithm with reference to time toler-
+ance increase. Here, decrease in the runtime and number
+of iterations can be seen as the time tolerance grow. As
+expected, with larger tolerances more solutions could be
+found, however, with less accuracy.
+VI. CONCLUSIONS
+In this paper we have presented an approach for trajectory
+planning under speciÞc time constraint. Moreover, we have
+extended the approach for rendezvous planning between a
+controlled dynamic system and an uncontrolled one. The
+TABLE I
+System Iterations Runtime
+min max min max
+Bat 1,287 19,344 1.17s 193.5s
+Manipulator 11,945 36,365 31.5s 1633s
+Fig. 10. Sensitivity of the algorithm in terms of runtime and iteration
+number as the time tolerance increases.
+TB-RRT approach was presented building a probabilistic
+tree in the deÞned state-time space, taking the dynamics of
+the systems into account. Simulations of typical applications
+were shown to demonstrate and validate the method.
+Further work on this approach should deal with computa-
+tion time of expanding the tree to enable real-time planning.
+Such work should address decreasing the complexity of
+nearest neighbor search algorithms. Another approach could
+be real-time expansion of the existing TB-RRT based on
+feedback data only in regions which are relevant to the
+systems motion.
+REFERENCES
+[1] A. Gasparetto, P. Boscariol, A. Lanzutti, and R. Vidoni, ÒTrajectory
+planning in robotics,Ó Mathematics in Computer Science, vol. 6, no. 3,
+pp. 269Ð279, 2012.
+[2] S. Ge and Y. Cui, ÒDynamic motion planning for mobile robots using
+potential Þeld method,Ó Autonomous Robots, vol. 13, no. 3, pp. 207Ð
+222, 2002.
+[3] A. Piazzi and A. Visioli, ÒGlobal minimum-jerk trajectory planning
+of robot manipulators,Ó IEEE Transactions on Industrial Electronics,
+vol. 47, no. 1, pp. 140Ð149, 2000.
+[4] Z. Bien and J. Lee, ÒA minimum-time trajectory planning method for
+two robots,Ó IEEE Transactions on Robotics and Automation,vol.8,
+no. 3, pp. 414Ð418, 1992.
+[5] S. LaValle and J. Kuffner, J.J., ÒRandomized kinodynamic planning,Ó
+in Proceedings. IEEE International Conference on Robotics and Au-
+tomation, vol. 1, 1999, pp. 473Ð479.
+[6] K. S. Erer and O. Merttopc üuoglu, ÒIndirect Impact-Angle-Control
+Against Stationary Targets Using Biased Pure Proportional Naviga-
+tion,Ó Journal of Guidance Control Dynamics, vol. 35, pp. 700Ð704,
+Mar. 2012.
+[7] M. Mehrandezh, N. Sela, R. Fenton, and B. Benhabib, ÒRobotic
+interception of moving objects using an augmented ideal proportional
+navigation guidance technique,Ó IEEE Transactions on Systems, Man
+and Cybernetics, vol. 30, no. 3, pp. 238Ð250, 2000.
+[8] J. Michael, K. Chudej, M. Gerdts, and J. Pannek, ÒOptimal ren-
+dezvous path planning to an uncontrolled tumbling target,Ó eprint:
+arXiv:1307.1327, 2013.
+[9] T. Rybus and K. Seweryn, ÒTrajectory planning and simulations of
+the manipulator mounted on a free-ßoating satellite,Ó in Aerospace
+Robotics, J. Ssiadek, Ed. Springer, 2013, pp. 61Ð73.
+[10] R. Sedgewick and K. Wayne, Algorithms, 4th Edition. Addison-
+Wesley, 2011.
+6750

@@ -1,0 +1,1128 @@
+Asymptotically near-optimal RRT
+for fast, high-quality, motion planning
+Oren Salzman
+
+and Dan Halperin
+
+
+Blavatnik School of Computer Science, Tel-Aviv University, Israel
+Abstract—We present Lower Bound Tree-RRT (LBT-RRT),
+a single-query sampling-based algorithm that is asymptotically
+near-optimal. Namely, the solution extracted from LBT-RRT
+converges to a solution that is within an approximation factor
+of 1+" of the optimal solution. Our algorithm allows for
+a continuous interpolation between the fast RRT algorithm
+and the asymptotically optimal RRT* and RRG algorithms.
+When the approximation factor is 1 (i.e., no approximation is
+allowed), LBT-RRT behaves like the RRT* algorithm. When
+the approximation factor is unbounded, LBT-RRT behaves like
+the RRT algorithm. In between, LBT-RRT is shown to produce
+paths that have higher quality than RRT would produce and
+run faster than RRT* would run. This is done by maintaining
+a tree which is a sub-graph of the RRG roadmap and a
+second, auxiliary tree, which we call the lower-bound tree. The
+combination of the two trees, which is faster to maintain than
+the tree maintained by RRT*, efﬁciently guarantee asymptotic
+near-optimality. We suggest to use LBT-RRT for high-quality,
+anytime motion planning. We demonstrate the performance of
+the algorithm for scenarios ranging from 3 to 12 degrees of
+freedom and show that even for small approximation factors, the
+algorithm produces high-quality solutions (comparable to RRT*)
+with little runtime overhead when compared to RRT.
+I. INTRODUCTION AND RELATED WORK
+Motion planning is a fundamental research topic in robotics
+with applications in diverse domains such as surgical planning,
+computational biology, autonomous exploration, search-and-
+rescue, and warehouse management. Sampling-based planners
+such as PRM [1], RRT [2] and their many variants enabled
+solving motion-planning problems that had been previously
+considered infeasible [3]. Gradually, the interest in the motion-
+planning community shifted from ﬁnding an arbitrary solution
+to the motion-planning problem to ﬁnding a high-quality solu-
+tion. Quality can be measured in terms of, for example, length,
+clearance, smoothness, energy, to mention a few criteria, or
+some combination of the above.
+A. High-quality planning with sampling-based algorithms
+Unfortunately, common planners such as RRT and PRM
+produce solutions that may be far from optimal [4], [5].
+Thus, many variants of these algorithms and heuristics were
+proposed in order to produce high-quality paths.
+This work has been supported in part by the 7th Framework Programme
+for Research of the European Commission, under FET-Open grant number
+255827 (CGL—Computational Geometry Learning), by the Israel Science
+Foundation (grant no. 1102/11), by the German-Israeli Foundation (grant
+no. 1150-82.6/2011), and by the Hermann Minkowski–Minerva Center for
+Geometry at Tel Aviv University.
+Post-processing existing paths: Post-processing an existing
+path by applying shortcutting is a common, effective, approach
+to increase path quality [6]. Typically, two non-consecutive
+conﬁgurations are chosen randomly along the path. If the
+two conﬁgurations can be connected using a straight line and
+this connection improves the quality of the original path, the
+straight line replaces the original path that connected the two
+conﬁgurations. The process is continued iteratively until a
+termination condition holds.
+Path hybridization: A path that was post-processed us-
+ing shortcutting often remains in the homotopy class of the
+original path. Combining even a small number of different
+paths (that may be of low quality) enables the construction of
+higher-quality paths [7].
+Online optimization: Changing the sampling strategy [8],
+[9], [10], the connection scheme to a new milestone [10], [11]
+are examples of the heuristics proposed to create higher-quality
+solutions. Additional approaches include, among others, reach-
+ability [12] and random restarts [13].
+Asymptotically optimal and near-optimal solutions: In a
+recent seminal work, Karaman and Frazzoli [4] give a rigorous
+analysis of the performance of the RRT and PRM algorithms.
+They show, that with probability one, the algorithms will
+not produce the optimal path and propose the PRM* and
+the RRG and RRT* algorithms (variants of the PRM and
+RRT algorithms, respectively) all of which are shown to be
+asymptotically optimal. In each algorithm, the number of
+nodes each new sample is connected to is proportional to
+log(n) (here n is the number of free samples).
+As PRM* may produce prohibitively large graphs, recent
+work has focused on sparsifying these graphs. This can be
+done as a post-processing stage of the PRM* [14], [15], or as
+a modiﬁcation of PRM* (see, e.g., [16]).
+The performance of RRT* was improved by suggesting
+different heuristics to speed up the convergence rate [17],
+[18]. Recently, RRT
+#
+[19] was suggested as an alternative
+asymptotically optimal algorithm with a faster convergence
+rate when compared to RRT*.
+Anytime and online solutions: In anytime motion-
+planning, the time to plan is not known in advance, and the
+algorithm may be terminated at any stage. Clearly, any solution
+should be found as fast as possible and if time permits, it
+should be reﬁned to yield a higher-quality solution.
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 4680
+Ferguson and Stentz [20] suggest iteratively running RRT
+while considering only areas that may potentially improve
+the existing solution. Alterovitz et al. [21] suggest the RRM
+algorithm, which ﬁnds an initial path similar to the RRT
+algorithm. Once such a path is found, RRM either explores
+further the conﬁguration space or reﬁnes the explored space.
+Luna et al. [22] suggest alternating between path shortcutting
+and path hybridization in an anytime fashion.
+RRT* was recently adapted for online motion-planning [23].
+Here, an initial path is computed and the robot begins its ex-
+ecution. While the robot moves along this path, the algorithm
+attempts to reﬁne the part that the robot has not moved along.
+B. Contribution
+We present LBT-RRT, a single-query sampling based algo-
+rithm that is asymptotically near-optimal. Namely, the solution
+extracted from LBT-RRT converges to a solution that is within
+a factor of (1+") of the optimal solution. LBT-RRT allows for
+interpolating between the fast, yet sub-optimal, RRT algorithm
+and the asymptotically optimal RRT* algorithm. By choosing
+" = 0 no approximation is allowed and LBT-RRT maintains
+a tree identical to the tree maintained by RRT*. Choosing
+" =1 allows for any approximation and LBT-RRT maintains
+a tree identical to the tree maintained by RRT.
+The asymptotic near-optimality of LBT-RRT is achieved by
+simultaneously maintaining two trees. Both trees are deﬁned
+over the same set of vertices but each consists of a different
+set of edges. A path in the ﬁrst tree may not be feasible, but
+its cost is always a lower bound on the cost of paths extracted
+from the RRT* (using the same sequence of random nodes).
+On the other hand, a path extracted from the second tree is
+always feasible and its cost is within a factor of (1 +") from
+the lower bound provided by the ﬁrst tree.
+We suggest to use LBT-RRT for high-quality, anytime
+motion planning. We demonstrate the performance of the
+algorithm for scenarios ranging from 3 to 12 degrees of
+freedom (DoF) and show that even for small values of ",
+the algorithm produces high-quality solutions (comparable to
+RRT*) with little runtime overhead when compared to RRT.
+C. Outline
+In Section II we review the RRT, RRG and RRT* algo-
+rithms. In Section III we present our algorithm and our an
+asymptotical near-optimality proof. We continue in Section IV
+to demonstrate its favorable characteristics on several scenarios
+and conclude our paper in Section V.
+II. TERMINOLOGY AND ALGORITHMIC BACKGROUND
+We begin by formally stating the problem and introducing
+several procedures used by sampling-based algorithms. We
+continue by reviewing the RRT, RRG and RRT* algorithms.
+A. Problem deﬁnition and terminology
+We follow the formulation presented by Karaman and
+Frazzoli [4]. LetX denote the conﬁguration space (C-space),
+X
+free
+andX
+forb
+denote the free and forbidden spaces, re-
+spectively. Let (X
+free
+;x
+init
+;X
+goal
+) be the motion planning
+problem where: x
+init
+2X
+free
+is an initial free conﬁguration
+andX
+goal
+X
+free
+is the goal region. A collision-free path
+ : [0; 1]!X
+free
+is a continuous mapping to the free space.
+It is feasible if (0) =x
+init
+and (1)2X
+goal
+.
+We will make use of the following procedures:
+sample_free, a procedure returning a random
+free conﬁguration, nearest_neighbor(x;V ) and
+nearest_neighbors(x;V;k) are procedures returning
+the nearest neighbor and k nearest neighbors of x within the
+set V , respectively. Let steer(x;y) return a conﬁguration z
+that is closer to y than x is, collision_free(x;y) tests
+if the straight line segment connecting x and y is contained
+inX
+free
+and cost(x;y) be a procedure returning the cost
+of the straight-line path connectingx andy. Let us denote by
+cost
+G
+(x) the minimal cost of reaching a node x from x
+init
+using a roadmapG. These are standard procedures used by
+the RRT or RRT* algorithms. Finally, we use the (generic)
+predicate build_tree to assess if a stopping criterion has
+been reached to terminate the algorithm
+1
+.
+B. Algorithmic background
+The RRT, RRG and RRT* algorithms share the same high-
+level structure. They maintain a roadmap which is a tree for
+RRT and RRT* and a graph for RRG. At each iteration a
+conﬁguration x
+rand
+is sampled at random. Then, the nearest
+conﬁguration to x
+rand
+in the roadmap x
+nearest
+is found and
+extended in the direction ofx
+rand
+to a new conﬁgurationx
+new
+.
+If the path between x
+nearest
+and x
+new
+is collision-free, then
+x
+new
+is added to the roadmap.
+The algorithms differ with respect to the connections
+added to the roadmap. In the RRT algorithm, only the edge
+(x
+nearest
+;x
+new
+) is added. In the RRG or RRT* algorithms,
+a set X
+near
+of k
+RRG
+log(jVj) nearest neighbors of x
+new
+is
+considered
+2
+. For each neighbor x
+near
+2 X
+near
+of x
+new
+, the
+RRG algorithm checks if the path betweenx
+near
+andx
+new
+is
+collision-free and if so, (x
+near
+;x
+new
+) and (x
+new
+;x
+near
+) are
+added as additional edges to the roadmap. The RRT* maintains
+a sub-graph of the RRG roadmap containing the best path
+found to each node. This is done by an additional rewiring
+procedure which is invoked twice: The ﬁrst time, it is used to
+ﬁnd the node x
+near
+2X
+near
+which will minimize the cost to
+reachx
+new
+. The second time, the procedure is used to attempt
+to minimize the cost to reach every node x
+near
+2 X
+near
+by
+considering x
+new
+as its parent.
+III. ASYMPTOTICALLY NEAR-OPTIMAL
+MOTION-PLANNING
+Clearly the asymptotic optimality of the RRT* and RRG
+algorithms come at the cost of the additionalk
+RRG
+log(jVj) 1
+calls to the local planner at each stage (and some additional
+overhead). If we are not concerned with asymptotically optimal
+1
+A stopping criterion can be, for example, reaching a certain number of
+samples or exceeding a ﬁxed time budget.
+2
+Here, k
+RRG
+is a constant ensuring that the cost of paths produced by
+RRG and RRT* converge to the optimal cost as the number of samples grows.
+Choosing k
+RRG
+= 2e is a valid choice for all problem instances [4].
+4681
+solutions, we do not have to consider all of thek
+RRG
+log(jVj)
+neighbors when a node is added. Our idea is to initially only
+assess the quality of each edge. We use the quality of the
+edge to decide if to discard it, use it without checking if
+it is collision-free or use it after validating that it is indeed
+collision-free. Thus, many calls to the local planner can be
+avoided, though we still need to estimate the quality of
+many edges. Our approach is viable in cases where such an
+assessment can be carried out efﬁciently, namely more efﬁcient
+than deciding if an edge is collision-free. This condition holds
+naturally when the quality measure is path length.
+A. Notation
+Let  be the set of all feasible paths, c :  ! R
++
+a cost function and c
+
+denote the optimal cost. Namely,
+c
+
+= min
+2
+fc()g. In this paper we only consider path
+length as the cost function. Let
+ALG
+(n) be the path produced
+by an algorithm ALG usingn free samples. It is asymptotically
+optimal if lim
+n!1
+c(
+ALG
+(n)) = c
+
+with probability one
+and asymptotically (1 +")-optimal if lim
+n!1
+c(
+ALG
+(n))
+(1 +")c
+
+with probability one. We refer to an algorithm that
+computes an asymptotically (1 +")-optimal path as asymptot-
+ically near-optimal and to (1+") as the approximation factor.
+Let order
+G
+(X;x) be a procedure which returns the ele-
+ments of X ordered according to the cost to reach x from
+x
+init
+through an element x
+0
+of X. Namely, after ordering,
+x
+1
+2 X is before x
+2
+2 X if cost
+G
+(x
+1
+) +cost(x
+1
+;x)
+cost
+G
+(x
+2
+) +cost(x
+2
+;x). The importance of this ordering
+will be discussed in the next subsection.
+B. LBT-RRT
+We propose a modiﬁcation to the RRT* algorithm by main-
+taining two roadmapsT
+lb
+;T
+apx
+simultaneously. Each roadmap
+is a tree rooted atx
+init
+and consist of the same set of vertices
+but differ in their edge set
+3
+.
+LetG
+RRG
+be the roadmap constructed by RRG if run on the
+same sequence of samples used for LBT-RRT. Now,T
+lb
+;T
+apx
+maintain the following invariants throughout the algorithm:
+Bounded approximation invariant - For every node
+x2T
+apx
+;T
+lb
+, cost
+Tapx
+(x) (1 +")cost
+T
+lb
+(x):
+and
+Lower bound invariant - For every node x 2
+T
+apx
+;T
+lb
+, cost
+T
+lb
+(x)cost
+G
+RRG
+(x):
+The lower bound invariant is maintained by constructing
+T
+lb
+as a subgraph ofG
+RRG
+, with possibly some additional
+edges that are not collision-free, containing only the best route
+to each node. Notice that the cost of an edge, regardless of
+whether it is collision-free or not, is the length of the segment
+connecting its end conﬁgurations.
+3
+The subscript ofT
+lb
+is an abbreviation for lower bound and the subscript
+ofTapx is an abbreviation for approximation.
+x
+init
+x
+new
+x
+nearest
+T
+apx
+edge
+T
+lb
+edge
+obstacle
+Fig. 1. Adding a new conﬁguration xnew to the roadmaps. Obstacles
+are depicted in pink,Tapx is depicted by solid black arrows andT
+lb
+is
+depicted be dotted blue arrows. The new edge added is depicted by a
+dotted green arrow.
+The main body of the algorithm (see Algorithm 1) follows
+the structure of the RRT, RRT* and RRG algorithms with
+respect to adding a new milestone (lines 3-7) but differs in
+the connections added. If a path between the new node x
+new
+and its nearest neighbor x
+nearest
+is indeed collision-free, it
+is added to both trees with an edge from x
+nearest
+to x
+new
+(lines 8-10). This is demonstrated in Figure 1.
+Similar to RRT*, LBT-RRT locates the set X
+near
+of
+k
+RRG
+log(jVj) nearest neighbors of x
+new
+(line 11). Then,
+it uses a rewiring procure rewire (Algorithm 2) to assess
+(i) which node x
+near
+2 X
+near
+should be the parent of x
+new
+in each tree (lines 13-14) and (ii) if x
+new
+may improve the
+cost to reach any node x
+near
+2X
+near
+in each tree (lines 15-
+16). If so, the roadmaps are updated. In contrast to RRT*
+where rewiring is always performed, LBT-RRT only performs
+rewiring that is necessary to maintain the two invariants.
+Given two nodes x
+potential parent
+, x
+child
+, the subroutine
+rewire (Algorithm 2) checks if an edge should be added
+between x
+potential parent
+and x
+child
+. If so, the newly intro-
+duced edge replaces the existing edge between the parent of
+x
+child
+andx
+child
+(namely a rewiring occurs). Initially the cost
+potential cost
+lb
+to reachx
+child
+inT
+lb
+usingx
+potential parent
+as the parent of x
+child
+is computed (lines 1-2). The cost
+of the existing path to x
+child
+in T
+lb
+is either (i) smaller
+than potential cost
+lb
+, (ii) larger than potential cost
+lb
+and
+rewiring would violate the bounded approximation invariant
+or (iii) larger than potential cost
+lb
+but rewiring would not
+violate the bounded approximation invariant.
+Each of the above cases is handled by Algorithm 2: If
+the cost of the existing path to x
+child
+inT
+lb
+is lower than
+potential cost
+lb
+(case (i)), then no action is taken (lines 3-4
+and Figure 2a). If not, then a potentially lower-cost path may
+exist (recall that the edge betweenx
+potential parent
+andx
+child
+may not be collision-free). If the bounded approximation
+invariant is violated (case (ii), line 5 and Figure 2b), then
+one must explicitly check if the connection is collision-free
+(line 6). If this is indeed the case then bothT
+lb
+andT
+apx
+are
+rewired. If the cost does not violate the bounded approximation
+invariant (case (iii), line 9 and Figure 2c) then onlyT
+lb
+is
+rewired (line 10 and Figure 2d).
+Now we can explain the advantage in ordering the nodes
+(Algorithm 1, line 12). The set X
+near
+will be traversed from
+the node that may yield the lowest bound to reachx
+new
+to the
+node that will yield the highest lower bound (Algorithm 1,
+lines 13-14). After the ﬁrst rewiring, either with or without
+a call to the collision detector (Algorithm 2 lines 7,8 and
+line 10, respectively), no subsequent node can improve the cost
+4682
+x
+init
+x
+potential parent
+x
+child
+(a) Existing path is superior to
+potential path (Line 3)
+x
+init
+x
+child
+x
+potential parent
+(b) Potential path is superior to
+existing path and violates the
+bounded approximation invari-
+ant (Line 5)
+x
+init
+x
+child
+x
+potential parent
+(c) Potential path is superior to
+existing path but does not vi-
+olate the bounded approxima-
+tion invariant (Line 9)
+x
+init
+x
+child
+x
+potential parent
+(d) Potential path is added with
+no collision checking to T
+lb
+(Line 10)
+Fig. 2. Different cases handled by Algorithm 2. Obstacles are depicted in pink and the edges ofT
+lb
+andTapx are depicted by dotted blue and solid
+black lines, respectively. Existing path from x
+init
+to x
+child
+is depicted in green while the potential path is depicted in orange.
+Algorithm 1 LBT-RRT (x
+init
+;" )
+1:T
+lb
+:V fx
+init
+g T
+apx
+:V fx
+init
+g
+2: while build tree() do
+3: x
+rand
+ sample_free()
+4: x
+nearest
+ nearest_neighbor(x
+rand
+;T
+lb
+:V )
+5: x
+new
+ steer(x
+nearest
+;x
+rand
+)
+6: if (!collision_free(x
+nearest
+;x
+new
+)) then
+7: CONTINUE
+8: T
+lb
+:V T
+lb
+:V[fx
+new
+g T
+apx
+:V T
+apx
+:V[fx
+new
+g
+9: T
+lb
+:parent(x
+new
+) x
+nearest
+10: T
+apx
+:parent(x
+new
+) x
+nearest
+11: X
+near
+ nearest_neighbors(x
+new
+;
+T
+lb
+:V;k
+RRG
+log(jT
+lb
+:Vj))
+12: X
+ordered
+ order
+T
+lb
+(X
+near
+;x
+new
+)
+13: for all (x
+near
+;X
+ordered
+) do
+14: rewire (x
+near
+;x
+new
+)
+15: for all (x
+near
+;X
+near
+) do
+16: rewire (x
+new
+;x
+near
+)
+Algorithm 2 rewire(x
+potential parent
+;x
+child
+)
+1: c cost(x
+potential parent
+;x
+child
+)
+2: potential cost
+lb
+ cost
+T
+lb
+(x
+potential parent
+) +c
+3: if (cost
+T
+lb
+(x
+child
+)potential cost
+lb
+) then
+4: return
+5: if (cost
+Tapx
+(x
+child
+)> (1 +")potential cost
+lb
+) then
+6: if (collision_free(x
+potential parent
+;x
+child
+)) then
+7: T
+lb
+:parent(x
+child
+) x
+potential parent
+8: T
+apx
+:parent(x
+child
+) x
+potential parent
+9: else
+10: T
+lb
+:parent(x
+child
+) x
+potential parent
+to reachx
+new
+. Indeed, after such rewiring, for each subsequent
+node, Algorithm 2 will not contain any (computationally
+demanding) calls to the collision detector. We note that this
+ordering is used in practice to speed up RRT*.
+C. Analysis
+We show that Algorithm 1 maintains the lower bound
+invariant (Corollary III.5) and that after every iteration the
+bounded approximation invariant is maintained (Lemma III.6).
+We note the following (straightforward, yet helpful) obser-
+vations comparing LBT-RRT, RRG and RRT* when run on
+the same set of random samples:
+Observation III.1. A node is added toT
+lb
+and toT
+apx
+if and
+only if a node is added toG
+RRG
+(Algorithm 1, lines 3-8).
+Observation III.2. Both LBT-RRT and RRG consider the
+same set of k
+RRG
+log(jVj) nearest neighbors of x
+new
+(Al-
+gorithm 1, line 11).
+Observation III.3. T
+lb
+undergoes the same rewiring process
+as RRT* (see Algorithm 2, lines 7, 10) with possibly some
+additional edges that are not collision-free (see Algorithm 2,
+line 10).
+Observation III.4. Every edge ofT
+apx
+is collision free (see
+Algorithm 1, line 10 and Algorithm 2, line 8).
+Thus, the following corollary trivially holds:
+Corollary III.5. For each node x 2 T
+lb
+, cost
+T
+lb
+(x) 
+cost
+G
+RRG
+(x)
+Using Observations III.1 through III.4 and Corollary III.5,
+Lemma III.6. After every iteration of Algorithm 1 (lines 3-16)
+the bounded approximation invariant is maintained.
+Proof: The edges ofT
+lb
+;T
+apx
+are updated in one of the
+following cases:
+case (a): When adding a new milestonex
+new
+to the trees, it is
+initially connected in both trees to the same milestonex
+nearest
+(see Algorithm 1, lines 8-10). Assume that the invariant was
+maintained prior to this step. Then,
+cost
+Tapx
+(x
+new
+) = cost
+Tapx
+(x
+nearest
+) +
+cost(x
+nearest
+;x
+new
+)
+ (1 +")cost
+T
+lb
+(x
+nearest
+) +
+cost(x
+nearest
+;x
+new
+)
+ (1 +")cost
+T
+lb
+(x
+new
+):
+case (b): Additional rewiring may occur in Algorithm 2,
+line 5. In this case both trees update the incoming edge of
+x
+child
+to bex
+potential parent
+. Assuming that the invariant was
+maintained prior to this step then it is maintained after this
+update (see case (a), only that now we use x
+potential parent
+instead of x
+nearest
+).
+4683
+case (c): Finally rewiring may also occur in Algorithm 2,
+line 10. This occurs when (cost
+Tapx
+(x
+child
+)  (1 + ")
+potential cost
+lb
+). In this case onlyT
+lb
+is updated and:
+cost
+Tapx
+(x
+child
+)  (1 +")potential cost
+lb
+= (1 +")cost
+T
+lb
+(x
+child
+):
+From Corollary III.5, Lemma III.6 and using the asymptotic
+optimality of RRG:
+Theorem III.7. LBT-RRT is asymptotically near-optimal with
+an approximation factor of (1 +").
+D. Discussion
+Let T
+!
+ALG
+denote the time needed for an algorithm ALG
+to ﬁnd a feasible solution on a set of random samples !.
+Clearly, T
+!
+RRT
+ T
+!
+RRT
+ (as the RRT* algorithm may require
+more calls to the collision detector than the RRT algorithm).
+Moreover for every "
+1
+"
+2
+it holds that
+T
+!
+RRT
+ T
+!
+LBT RRT("2)
+ T
+!
+LBT RRT("1)
+ T
+!
+RRT
+:
+Thus, given a limited amount of time, RRT* may fail to
+construct any solution. On the other hand, RRT may ﬁnd a
+solution fast but will not improve its quality (if the goal is a
+single conﬁguration). LBT-RRT allows to ﬁnd a feasible path
+quickly while continuing to search for a path of higher quality.
+RRT and RRT* have been used in numerous applica-
+tions and various implementations and heuristics have been
+suggested for them. Typically, the applications rely on the
+efﬁciency of RRT or the asymptotic optimality of RRT*.
+We argue that LBT-RRT can replace RRT and RRT* in
+many applications. If the overhead of running LBT-RRT
+when compared to RRT is acceptable, then the algorithm will
+be able to produce high-quality paths in different settings.
+Additionally, if one is concerned with fast convergence to
+a high quality solution, LBT-RRT can replace RRT* seam-
+lessly, trading the asymptotic optimality with a weaker near-
+optimality guarantee. For a partial list of examples where LBT-
+RRT can replace RRT or RRT*, the reader is referred to [24].
+Efﬁcient implementations and heuristics typically take into
+account the primitive operations used by the RRT and the
+RRT* algorithms (such as collision detection, nearest neighbor
+computation, sampling procedure etc.). Thus, techniques sug-
+gested for efﬁcient implementations of RRT and RRT* may
+be applied to LBT-RRT with little effort as the latter relies
+on the same primitive operations. Again, for a partial list of
+examples, the reader is referred to [24].
+IV. EVALUATION
+We present an experimental evaluation of the performance
+of LBT-RRT as an anytime algorithm on different scenar-
+ios consisting of 3,6 and 12 DoFs (Figure 3). All exper-
+iments were run using the Open Motion Planning Library
+(OMPL 0.10.2) [25] on a 3.4GHz Intel Core i7 processor
+with 8GB of memory. RRT* was implemented by using" = 0
+which outperforms a naive implementation of RRT* due to the
+use of theorder function (see Algorithm 1 line 12 and [17]).
+Fig. 4. One barrier of the
+Alternating barriers sce-
+nario.
+The Maze scenario (Figure 3a)
+consists of a planar polygonal robot
+that can translate and rotate. The
+Alternating barriers scenario (Fig-
+ure 3b) consists of a robot with
+three perpendicular rods free-ﬂying
+in space. The robot needs to pass
+through a series of barriers each
+containing a large and a small hole. For an illustration of
+one such barrier, see Figure 4. The large holes are located at
+alternating sides of consecutive barriers. Finally, the cubicles
+scenario consists of two L-shaped robots free-ﬂying in space
+that need to exchange locations amidst obstacles
+4
+.
+We compare the performance of LBT-RRT with RRT and
+RRT* when a ﬁxed time budget is given. We consider (1 +")
+values of 1:2; 1:4; 1:8 and report on the success rate of each
+algorithm (Figure 5). Additionally, we report on the path
+length after applying shortcuts (Figure 6). Each result is
+averaged over 100 different runs.
+Figure 5 depicts similar behavior for all scenarios: The
+success rate for all algorithms has a monotonically increasing
+trend as the time budget increases. For a speciﬁc time budget,
+the success rate for RRT is typically highest while that of the
+RRT* is lowest. The success rate for LBT-RRT for a speciﬁc
+time budget, typically increases as the value of " increases.
+Figure 6 also depicts similar behavior for all scenarios: the
+average path length decreases for all algorithms (except for
+the RRT algorithm). The RRT exhibits the highest average
+path length. The average path length for LBT-RRT typically
+decreases as the value of" decreases and is comparable to that
+of RRT* for low values of ".
+Thus, Figures 5, 6 should be looked at simultaneously as
+they encompass the tradeoff between speed to ﬁnd any solution
+and the quality of the solution found. For supplementary
+material and in-depth analysis of the results, the reader is
+referred to the extended version of this paper [24] and to
+http://acg.cs.tau.ac.il/projects/LBT-RRT/project-page.
+V. FUTURE WORK
+We seek to suggest natural stopping criteria for LBT-RRT.
+Such criteria could possibly be related to the rate at which
+the quality is increased as additional samples are introduced.
+Once such a criterion is established, one can think of the fol-
+lowing framework: Run LBT-RRT with a large approximation
+factor, once the stopping criterion has been met, decrease the
+approximation factor and continue running. This may allow
+an even quicker convergence to ﬁnd any feasible path while
+allowing for reﬁnement as time permits (similar to [21]).
+Additionally, we wish to apply our framework to different
+quality measures. For certain measures, such as bottleneck
+clearance of a path, this is unlikely (as bounding the quality
+of an edge already identiﬁes if it is collision-free). However,
+for measures such as energy consumption, the framework may
+be used.
+4
+The Maze Scenario and the Cubicles Scenario are provided as part of the
+OMPL distribution.
+4684
+(a) Maze scenario (b) Alternating barriers scenario (c) Cubicles scenario (2-robots)
+Fig. 3. Benchmark scenarios. The start and goal conﬁguration are depicted in green and red, respectively.
+(a) Maze Scenario (b) Alternating barriers scenario (c) Cubicles scenario
+Fig. 5. Success rate for algorithms on different scenarios.
+(a) Maze Scenario (b) Alternating barriers scenario (c) Cubicles scenario
+Fig. 6. Path lengths for algorithms on different scenarios.
+REFERENCES
+[1] L. E. Kavraki, P. Svestka, J.-C. Latombe, and M. H. Overmars, “Prob-
+abilistic roadmaps for path planning in high dimensional conﬁguration
+spaces,” IEEE Trans. Robot., vol. 12, no. 4, pp. 566–580, 1996.
+[2] J. J. Kuffner and S. M. LaValle, “RRT-Connect: An efﬁcient approach
+to single-query path planning,” in ICRA, 2000, pp. 995–1001.
+[3] H. Choset, K. M. Lynch, S. Hutchinson, G. Kantor, W. Burgard, L. E.
+Kavraki, and S. Thrun, Principles of Robot Motion: Theory, Algorithms,
+and Implementation. MIT Press, June 2005.
+[4] S. Karaman and E. Frazzoli, “Sampling-based algorithms for optimal
+motion planning,” I. J. Robotic Res., vol. 30, no. 7, pp. 846–894, 2011.
+[5] O. Nechushtan, B. Raveh, and D. Halperin, “Sampling-diagram au-
+tomata: A tool for analyzing path quality in tree planners,” in WAFR,
+2010, pp. 285–301.
+[6] R. Geraerts and M. H. Overmars, “Creating high-quality paths for
+motion planning,” I. J. Robotic Res., vol. 26, no. 8, pp. 845–863, 2007.
+[7] B. Raveh, A. Enosh, and D. Halperin, “A little more, a lot better:
+Improving path quality by a path-merging algorithm,” IEEE Trans. on
+Robot., vol. 27, no. 2, pp. 365–371, 2011.
+[8] N. M. Amato, O. B. Bayazit, L. K. Dale, C. Jones, and D. Vallejo,
+“OBPRM: an obstacle-based PRM for 3d workspaces,” in WAFR.
+Natick, MA, USA: A. K. Peters, Ltd., 1998, pp. 155–168.
+[9] J.-M. Lien, S. L. Thomas, and N. M. Amato, “A general framework
+for sampling on the medial axis of the free space,” in ICRA, 2003, pp.
+4439–4444.
+[10] C. Urmson and R. G. Simmons, “Approaches for heuristically biasing
+RRT growth,” in IROS, 2003, pp. 1178–1183.
+[11] T. Sim´ eon, J.-P. Laumond, and C. Nissoux, “Visibility-based probabilis-
+tic roadmaps for motion planning,” Advanced Robotics, vol. 14, no. 6,
+pp. 477–493, 2000.
+[12] R. Geraerts and M. H. Overmars, “Creating high-quality roadmaps for
+motion planning in virtual environments,” in IROS, 2006, pp. 4355–
+4361.
+[13] N. A. Wedge and M. S. Branicky, “On heavy-tailed runtimes and restarts
+in rapidly-exploring random trees,” in AAAI, 2008, pp. 127–133.
+[14] D. Shaharabani, O. Salzman, P. K. Agarwal, and D. Halperin, “Spar-
+siﬁcation of motion-planning roadmaps by edge contraction,” in ICRA,
+2013, pp. 4083–4090.
+[15] J. D. Marble and K. E. Bekris, “Computing spanners of asymptotically
+optimal probabilistic roadmaps,” in IROS, 2011, pp. 4292–4298.
+[16] A. Dobson and K. E. Bekris, “Improving sparse roadmap spanners,” in
+ICRA, 2013, pp. 4091–4096.
+[17] A. Perez, S. Karaman, A. Shkolnik, E. Frazzoli, S. Teller, and M. Walter,
+“Asymptotically-optimal path planning for manipulation using incremen-
+tal sampling-based algorithms,” in IROS, 2011, pp. 4307–4313.
+[18] F. Islam, J. Nasir, U. Malik, Y . Ayaz, and O. Hasan, “RRT*-Smart:
+Rapid convergence implementation of RRT* towards optimal solution,”
+in ICMA, 2012.
+[19] O. Arslan and P. Tsiotras, “Use of relaxation methods in sampling-based
+algorithms for optimal motion planning,” in ICRA, 2013, pp. 2413–2420.
+[20] D. Ferguson and A. Stentz, “Anytime RRTs,” in IROS, 2006, pp. 5369
+– 5375.
+[21] R. Alterovitz, S. Patil, and A. Derbakova, “Rapidly-exploring roadmaps:
+Weighing exploration vs. reﬁnement in optimal motion planning,” in
+ICRA, 2011, pp. 3706–3712.
+[22] R. Luna, I. A. S ¸ucan, M. Moll, and L. E. Kavraki, “Anytime solution
+optimization for sampling-based motion planning,” in ICRA, 2013, pp.
+5053–5059.
+[23] S. Karaman, M. Walter, A. Perez, E. Frazzoli, and S. Teller, “Anytime
+motion planning using the RRT,” in ICRA, 2011, pp. 1478–1483.
+[24] O. Salzman and D. Halperin, “Asymptotically near-optimal RRT
+for fast, high-quality, motion planning,” CoRR, vol. abs/1308.0189,
+abs/1308.0189, 2013.
+[25] I. A. S ¸ucan, M. Moll, and L. E. Kavraki, “The Open Motion Planning
+Library,” IEEE Robotics & Automation Magazine, vol. 19, no. 4, pp.
+72–82, 2012.
+4685

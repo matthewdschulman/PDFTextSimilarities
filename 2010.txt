@@ -1,0 +1,1864 @@
+Multi-Sensor Fusion for Robust Autonomous Flight in Indoor and
+Outdoor Environments with a Rotorcraft MA V
+Shaojie Shen, Yash Mulgaonkar, Nathan Michael, and Vijay Kumar
+Abstract? We present a modular and extensible approach
+to integrate noisy measurements from multiple heterogeneous
+sensors that yield either absolute or relative observations at
+different and varying time intervals, and to provide smooth
+and globally consistent estimates of position in real time for
+autonomous ight. We describe the development of algorithms
+and software architecture for a new 1:9 kg MA V platform
+equipped with an IMU, laser scanner, stereo cameras, pressure
+altimeter, magnetometer, and a GPS receiver, in which the state
+estimation and control are performed onboard on an Intel NUC
+3
+rd
+generation i3 processor. We illustrate the robustness of our
+framework in large-scale, indoor-outdoor autonomous aerial
+navigation experiments involving traversals of over 440 meters
+at average speeds of 1:5 m/s with winds around 10 mph while
+entering and exiting buildings.
+I. INTRODUCTION
+Rotorcraft micro aerial vehicles (MA Vs) are ideal plat-
+forms for surveillance and search and rescue in conned
+indoor and outdoor environments due to their small size,
+superior mobility, and hover capability. In such missions,
+it is essential that the MA V is capable of autonomous
+ight to minimize operator workload. Robust state estimation
+is critical to autonomous ight especially because of the
+inherently fast dynamics of MA Vs. Due to cost and payload
+constraints, most MA Vs are equipped with low cost propri-
+oceptive sensors (e.g. MEMS IMUs) that are incapable for
+long term state estimation. As such, exteroceptive sensors,
+such as GPS, cameras, and laser scanners, are usually fused
+with proprioceptive sensors to improve estimation accuracy.
+Besides the well-developed GPS-based navigation tech-
+nology [1, 2]. There is recent literature on robust state es-
+timation for autonomous ight in GPS-denied environments
+using laser scanners [3, 4], monocular camera [5, 6], stereo
+cameras [7, 8], and RGB-D sensors [9]. However, all these
+approaches rely on a single exteroceptive sensing modality
+that is only functional under certain environment conditions.
+For example, laser-based approaches require structured envi-
+ronments, vision based approaches demand sufcient lighting
+and features, and GPS only works outdoors. This makes them
+prone to failure in large-scale environments involving indoor-
+outdoor transitions, in which the environment can change
+S. Shen, Y . Mulgaonkar, and V . Kumar are with the GRASP Laboratory,
+University of Pennsylvania, Philadelphia, PA 19104, USA. fshaojie,
+yashm, kumarg@grasp.upenn.edu
+N. Michael is with the Robotics Institute, Carnegie Mellon University,
+Pittsburgh, PA 15213, USA. nmichael@cmu.edu
+We gratefully acknowledge the support of AFOSR Grant FA9550-10-1-
+0567, ARL grant W911NF-08-2-0004, ONR grants N00014-07-1-0829 and
+N00014-09-1-1051, NSF grants PFI-1113830 and CNS-1138110, and the
+UPS Foundation.
+Fig. 1. Our 1:9 kg MA V platform equipped with an IMU, laser scanner,
+stereo cameras, pressure altimeter, magnetometer, and GPS receiver. All the
+computation is performed onboard on an Intel NUC computer with 3
+rd
+generation i3 processor.
+signicantly. It is clear that in such scenarios, multiple mea-
+surements from GPS, cameras, and lasers may be available,
+and the fusion of all these measurements yields increased
+estimator accuracy and robustness. In practice, however, this
+extra information is either ignored or handled as switching
+between sensor suites [10].
+The main goal of this work is to develop a modular and
+extensible approach to integrate noisy measurements from
+multiple heterogeneous sensors that yield either absolute or
+relative observations at different and varying time intervals,
+and to provide smooth and globally consistent estimates of
+position in real time for autonomous ight. The rst key
+contribution, that is central to our work, is a principled
+approach, building on [11], to fusing relative measurements
+by augmenting the vehicle state with copies of previous states
+to create an augmented state vector for which consistent
+estimates are obtained and maintained using a ltering frame-
+work. A second signicant contribution is our Unscented
+Kalman Filter (UKF) formulation in which the propagation
+and update steps circumvent the difculties that result from
+the semi-deniteness of the covariance matrix for the aug-
+mented state. Finally, we demonstrate results with a new
+experimental platform (Fig. 1) to illustrate the robustness
+of our framework in large-scale, indoor-outdoor autonomous
+aerial navigation experiments involving traversals of over 440
+meters at average speeds of 1:5 m/s with winds around 10
+mph while entering and exiting two buildings.
+Next, we present previous work on which our work is
+based. In Section III, we outline the modeling framework
+before presenting the key contributions of UKF-based sensor
+fusion scheme in Section IV. We bring all the ideas together
+in our description of the experimental platform and the
+experimental results in Section VI.
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 4974
+II. PREVIOUS WORK
+We are interested in applying constant computation com-
+plexity ltering-based approaches, such as nonlinear variants
+of the Kalman lter, to fuse all available sensor information.
+We stress that although SLAM-based multi-sensor fusion
+approaches [12, 13] yield optimal results, they are com-
+putationally expensive for real-time state feedback for the
+purpose of autonomous control.
+While it is straightforward to fuse multiple absolute
+measurements such as GPS, pressure/laser altimeter in a
+recursive ltering formulation, the fusion of multiple relative
+measurements obtained from laser or visual odometry are
+more involved. It is common to accumulate the relative
+measurements with the previous state estimates fuse them
+as pseudo-absolute measurements [5, 14]. However, such
+fusion is sub-optimal since the resulting global position
+and yaw covariance is inconsistently small compared to
+the actual estimation error. This violates the observability
+properties [6], which suggests that such global quantities are
+in fact unobservable. As such, we develop our method based
+on state augmentation techniques [11] to properly account
+for the state uncertainty when applying multiple relative
+measurements from multiple sensors.
+We aim to develop a modular framework that allows easy
+addition and removal of sensors with minimum coding and
+mathematical derivation. We note that in the popular EKF-
+based formulation [5, 8], the computation of Jacobians can
+be problematic for complex systems like MA Vs. As such,
+we employ a loosely coupled, derivative-free Unscented
+Kalman Filter (UKF) framework [1]. Switching from EKF
+to UKF poses several challenges, which will be detailed
+and addressed in Sect. IV-A. [15] is similar to our work.
+However, the EKF-based estimator in [15] does not support
+fusion of multiple relative measurements.
+III. MULTI-SENSOR SYSTEM MODEL
+We dene vectors in the world and body frames as ()
+w
+and ()
+b
+respectively. For the sake of brevity, we assume
+that all onboard sensors are calibrated and are attached to
+the body frame. The main states of the MA V is dened as:
+x =
+
+p
+w
+; 
+w
+; _ p
+b
+; b
+b
+a
+; b
+b
+!
+; b
+w
+z
+
+T
+where p
+w
+= [x
+w
+; y
+w
+; z
+w
+]
+T
+is the 3D position in the world
+frame, 
+w
+= [ 
+w
+; 
+w
+; 
+w
+]
+T
+is the yaw, pitch, and roll Euler
+angles that represent the 3-D orientation of the body in the
+world frame
+1
+, from which a matrix R
+w
+b
+that represent the
+rotation of a vector from the body frame to the world frame
+can be obtained. _ p
+b
+is the 3D velocity in the body frame.
+b
+b
+a
+and b
+b
+!
+are the bias of the accelerometer and gyroscope,
+both expressed in the body frame. b
+w
+z
+models the bias of the
+laser and/or pressure altimeter in the world frame.
+1
+It is straightforward to formulate the lter with quaternion-based rotation
+representation [8, 15], We present the direct formulation for the brevity of
+presentation in Sect. IV.
+We consider an IMU-based state propagation model:
+u
+t
+=
+
+a
+b
+; !
+b
+
+T
+v
+t
+= [v
+a
+; v
+!
+; v
+ba
+; v
+b!
+; v
+bz
+]
+T
+x
+t+1
+=f(x
+t
+; u
+t
+; v
+t
+)
+(1)
+where u is the measurement of linear accelerations and
+angular velocities from the IMU in the body frame. v
+t
+
+N (0; D
+t
+) 2 R
+m
+is the process noise. v
+a
+and v
+!
+repre-
+sent additive noise associated with the gyroscope and the
+accelerometer. v
+ba
+,v
+b!
+, v
+bz
+model the Gaussian random
+walk of the gyroscope, accelerometer and altimeter bias. The
+function f() is a discretized version of the continuous time
+dynamical equation [6].
+Exteroceptive sensors are usually used to correct the
+errors in the state propagation. Following [11], we consider
+measurements as either being absolute or relative, depending
+on the nature of the underlying sensor. We allow an arbitrary
+number of either absolute or relative measurement models.
+A. Absolute Measurements
+All absolute measurements can be modeled in the form:
+z
+t+m
+=h
+a
+(x
+t+m
+; n
+t+m
+) (2)
+where n
+t+m
+N (0; Q
+t
+)2 R
+p
+is the measurement noise
+that can be either additive or not. h
+a
+() is in general a
+nonlinear function. An absolute measurement connects the
+current state with the sensor output. Examples are shown in
+in Sect. V-B.
+B. Relative Measurements
+A relative measurement connects the current and the past
+states with the sensor output, which can be written as:
+z
+t+m
+=h
+r
+(x
+t+m
+; x
+t
+; n
+t+m
+) (3)
+The formulation accurately models the nature of odometry-
+like algorithms (Sect. V-C and Sect. V-D) as odometry
+measures the incremental changes between two time in-
+stants of the state. We also note that, in order to avoid
+temporal drifting, most state-of-the-art laser/visual odometry
+algorithms are keyframe based. As such, we allow multiple
+future measurement (m2M,jMj> 1) that corresponds to
+the same past state x
+t
+.
+IV. UKF-BASED MULTI-SENSOR FUSION
+We wish to design a modular sensor-fusion lter that is
+easily extensible even for inexperienced users. This means
+that amount of coding and mathematical deviation for the
+addition/removal of sensors should be minimal. One disad-
+vantage of the popular EKF-based ltering framework is the
+requirement of computing the Jacobian matrices, which is
+proven to be difcult and time consuming for a complex
+MA V system. As such, we employ the derivative-free UKF-
+based approach [1]. The key of UKF is the approximation
+of the propagation of Gaussian random vectors through
+nonlinear functions via the propagation of sigma points. Let
+xN (^ x; P
+xx
+)2R
+n
+and consider the nonlinear function:
+y =g(x); (4)
+4975
+and let:
+X =
+h
+^ x; ^ x
+
+p
+(n +)P
+xx
+
+i
+i
+for i = 1;:::;n
+Y
+i
+=g(X
+i
+);
+(5)
+where g() is a nonlinear function,  is a UKF parameter.
+
+p
+(n +)P
+xx
+
+i
+is the i
+th
+column of the square root
+covariance matrix, which is usually computed via Cholesky
+decomposition. And X are called the sigma points. The
+mean, covariance of the random vector y, and the cross-
+covariance between x and y, can be approximated as:
+^ y =
+2n
+X
+i=0
+w
+m
+i
+Y
+i
+P
+yy
+=
+2n
+X
+i=0
+w
+c
+i
+(Y
+i
+  ^ y)(Y
+i
+  ^ y)
+T
+P
+yx
+=
+2n
+X
+i=0
+w
+c
+i
+(Y
+i
+  ^ y)(X
+i
+  ^ x)
+T
+(6)
+where w
+m
+i
+and w
+c
+i
+are weights for the sigma points. This
+unscented transform can be used to keep track of the covari-
+ance in both the state propagation and measurement update,
+thus avoiding the need of a Jacobian-based covariance ap-
+proximation.
+A. State Augmentation for Multiple Relative Measurements
+Since a relative measurement depends both thecurrent and
+past states, it is a violation of the fundamental assumption in
+the Kalman lter that the measurement should only depend
+on the current state. One way to deal with this is through
+state augmentation [11], where a copy of the past state is
+maintained in the lter. Here we present an extension of [11]
+to handle arbitrary number of relative measurement models
+with the possiblity that multiple measurements correspond to
+the same augmented state. Our generic ltering framework
+allows convenient setup, and facilitates addition and removal
+of absolute and relative measurement models.
+Note that a measurement may not affect all components in
+the state x. For example, a visual odometry only affects the
+6-DOF pose, not the velocity or the bias terms. We dene the
+i
+th
+augmented state as x
+i
+2R
+ni
+, n
+i
+n. x
+i
+is an arbitrary
+subset of x. We dene a binary selection matrix B
+i
+of size
+n
+i
+n, such that x
+i
+= B
+i
+x. Consider a time instant, there are
+I augmented states in the lter, along with the covariance:
+ x = [^ x; ^ x
+1
+; :::; ^ x
+I
+]
+T
+
+P =
+2
+6
+6
+6
+4
+P
+xx
+P
+xx1
+ P
+xx
+I
+P
+x1x
+P
+x1x1
+ P
+x1x
+I
+.
+.
+.
+.
+.
+.
+.
+.
+.
+.
+.
+.
+P
+x
+I
+x
+P
+x
+I
+x1
+ P
+x
+I
+x
+I
+3
+7
+7
+7
+5
+:
+(7)
+The addition of a new augmented state x
+I+1
+can be done
+by:
+ x
++
+= M
++
+ x; M
++
+=
+
+I
+n+
+P
+I
+ni
+B
+I+1
+
+(8)
+Similarly, the removal of an augmented state x
+j
+is given as:
+ x
+ 
+= M
+ 
+ x; M
+ 
+=
+
+I
+a
+0
+anj
+0
+ab
+0
+bn
+0
+bnj
+I
+b
+
+;
+where a = n +
+P
+j 1
+i=1
+n
+i
+and b =
+P
+I
+i=j+1
+n
+i
+. The updated
+augmented state covariance is given as:
+
+P
+
+= M
+
+
+PM
+T
+:
+The change of keyframes in an odometry-like measurement
+model is simply the removal of an augmented state x
+i
+followed by the addition of another augmented state with
+the same B
+i
+. Since we allow multiple relative measurements
+that correspond to the same augmented state, contrast to [11],
+augmented states are not deleted after measurement updates
+(Sect. IV-D).
+This state augmentation formulation works well in an
+EKF setting, however, it poses issues when we try to apply
+it to the UKF. Since the addition of a new augmented
+state (8) is essentially a copy of the main state. The resulting
+covariance matrix
+
+P
++
+will not be positive denite, and the
+Cholesky decomposition (5) for state propagation will fail
+(non-unique). We now wish to have something that is similar
+to the Jacobian matrices for EKF, but without explicitly
+computing the Jacobians.
+B. Jacobians for UKF
+In [16], the authors present a new interpretation of the
+UKF as a Linear Regression Kalman Filter (LRKF). In
+LRKF, we seek to nd the optimal linear approximation
+y = Ax + b + e of the nonlinear function (4) given a
+weighted discrete (or sigma points (6)) representation of the
+distributionN (^ x; P
+xx
+). The objective is to nd the regres-
+sion matrix A and vector b that minimize the linearizion
+error e:
+min
+A;b
+2n
+X
+i=0
+w
+i
+(Y
+i
+  AX
+i
+  b)(Y
+i
+  AX
+i
+  b)
+T
+:
+As shown in [16], the optimal linear regression is given by:
+A = P
+yx
+P
+xx
+ 1
+; b = ^ y  A^ x (9)
+The linear regression matrix A in (9) serves as the linear
+approximation of the nonlinear fuction (4). It is similar to the
+Jacobian in the EKF formulation. As such, the propagation
+and update steps in UKF can be performed in a similar
+fashion as EKF.
+C. State Propagation
+Observing the fact that during state propagation only
+the main state changes, we start off by partitioning the
+augmented state and the covariance (7) into:
+ x
+tjt
+=
+
+^ x
+tjt
+^ x
+I
+tjt
+
+;
+
+P
+tjt
+=
+"
+P
+xx
+tjt
+P
+xx
+I
+tjt
+P
+x
+I
+x
+tjt
+P
+x
+I
+x
+I
+tjt
+#
+:
+4976
+The linear approximation of the nonlinear state propaga-
+tion (1), applied on the augmented state (7), is:
+ x
+t+1jt
+=f( x
+tjt
+; u
+t
+; v
+t
+)
+=
+
+F
+t
+0
+0 I
+jIj
+
+ x
+tjt
++
+
+J
+t
+G
+t
+0 0
+
+u
+t
+v
+t
+
++ b
+t
++ e
+t
+;
+(10)
+from which we can see that the propagation of the full aug-
+mented state is actually unnecessary since the only nontrivial
+regression matrix corresponds to the main state. We can
+propagate only the main state x via sigma points generated
+from P
+xx
+tjt
+and use the UKF Jacobian F
+t
+to update the cross-
+covariance P
+xx
+I
+tjt
+. Since the covariance matrix of the main
+state P
+xx
+tjt
+is always positive denite, we avoid the Cholesky
+decomposition failure problem.
+Since the process noise is not additive, we augment the
+main state with the process noise and generate sigma points
+from:
+ x
+tjt
+=
+
+^ x
+tjt
+0
+
+;
+
+P
+tjt
+=
+
+P
+xx
+tjt
+0
+0 D
+t
+
+: (11)
+The state is then propagated forward by substituting (11)
+into (1), (5) and (6). We obtain ^ x
+t+1jt
+, the estimated value
+of x at time t + 1 given the measurements up to t, as well
+as P
+xx
+t+1jt
+and P
+x x
+t+1jt
+. Following (9), we know that:
+P
+x x
+t+1jt
+
+P
+ 1
+tjt
+= [F
+t
+; G
+t
+]:
+The propagated augmented state and its covariance is updated
+according to (10):
+ x
+t+1jt
+=
+
+^ x
+t+1jt
+^ x
+I
+tjt
+
+;
+
+P
+t+1jt
+=
+"
+P
+xx
+t+1jt
+F
+t
+P
+xx
+I
+tjt
+P
+x
+I
+x
+tjt
+F
+t
+T
+P
+x
+I
+x
+I
+tjt
+#
+:
+(12)
+D. Measurement Update
+Let there be m state propagations between two measure-
+ments, and we maintain  x
+t+mjt
+and
+
+P
+t+mjt
+as the newest
+measurement arrives. Consider a relative measurement (3)
+that depends on the j
+th
+augmented state, the measurement
+prediction and its linear regression approximation can be
+written as:
+^ z
+t+mjt
+=h
+r
+(^ x
+t+mjt
+; B
+j
+T
+^ x
+j
+t+mjt
+; n
+t+m
+)
+= H
+t+mjt
+ x
+t+mjt
++ L
+t+m
+n
+t+m
++ b
+t+m
++ e
+t+m
+H
+t+mjt
+=
+h
+H
+x
+t+mjt
+; 0; H
+xj
+t+mjt
+; 0
+i
+:
+Again, since only the main state and one augmented state
+are involved in each measurement update, we can construct
+another augmented state together with the possibly non-
+additive measurement noise:
+ x
+t+mjt
+=
+2
+4
+^ x
+t+mjt
+^ x
+j
+t+mjt
+0
+3
+5
+;
+
+P
+t+mjt
+=
+2
+4
+P
+xx
+t+mjt
+P
+xxj
+t+mjt
+0
+P
+xj x
+t+mjt
+P
+xj xj
+t+mjt
+0
+0 0 Q
+t+m
+3
+5
+:
+After the state propagation (12),
+
+P
+t+mjt
+is guaranteed to
+be positive denite, thus it is safe to perform sigma point
+propagation as in (5) and (6). We obtain ^ z
+t+mjt
+, P
+zz
+t+mjt
+,
+P
+z x
+t+mjt
+, and:
+P
+z x
+t+mjt
+
+P
+ 1
+t+mjt
+=
+h
+H
+x
+t+mjt
+; H
+xj
+t+mjt
+; L
+t+m
+i
+:
+We can apply the measurement update similar to an EKF:
+
+K
+t+m
+=
+
+P
+t+mjt
+H
+t+mjt
+T
+P
+zz
+ 1
+t+mjt
+ x
+t+mjt+m
+=  x
+t+mjt
++
+
+K
+t+m
+ 
+z
+t+m
+  ^ z
+t+mjt
+
+
+P
+t+mjt+m
+=
+
+P
+t+mjt
+ 
+
+K
+t+m
+H
+t+mjt
+
+P
+t+mjt
+;
+where z
+t+m
+is the actual sensor measurement. Both the main
+and augmented states will be corrected during measurement
+update. We note that entries in H
+t+mjt
+that correspond to
+inactive augmented states are zero. This can be utilized to
+speed up the matrix multiplication.
+The fusion of absolute measurements can simply be done
+by setting ^ x
+j
+t+mjt
+=  and applying the corresponding
+absolute measurement model (2).
+As shown in Fig. 9, fusion of multiple relative measure-
+ments results in slow growing, but unbounded covariance in
+the global position and yaw. This is consistent with results
+in [6] that these global quantities are unobservable.
+E. Delayed, Out-of-Order Measurement Update
+When fusing multiple measurements, it is possible that
+the measurements arrive out-of-order to the lter, that is,
+a measurement that corresponds to an earlier state arrives
+after the measurement that corresponds to a later state. This
+violates the Markov assumption of the Kalman lter. Also,
+due to the sensor processing delay, measurements may lag
+behind the state propagation.
+We address these two issues by storing measurements in
+a priority queue, where the top of the queue corresponds to
+the oldest measurement. A pre-dened a maximum allowable
+sensor delay t
+d
+of 100 ms was set for our MA V platform.
+Newly arrived measurements that correspond to a state older
+than t
+d
+from the current state (generated by state propaga-
+tion) are directly discarded. After each state propagation,
+we check the queue and process all measurements in the
+queue that are older than t
+d
+. The priority queue essentially
+serves as a measurement reordering mechanism (Fig. 2) for
+all measurements that are not older thant
+d
+from the current
+state. In the lter, we always utilize the most recent IMU
+measurement to propagate the state forward. We, however,
+only propagate the covariance on demand. As illustrated in
+Fig. 2, the covariance is only propagated from the time of
+the last measurement to the current measurement.
+F. An Alternative Way for Handling Global Pose Measure-
+ments
+As the vehicle moves through the environment, global
+pose measurements from GPS and magnetometer may be
+available. It is straightforward to fuse the GPS as a global
+pose measurement and generate the optimal state estimate.
+However, this may not be the best for real-world applications.
+A vehicle that operates in a GPS-denied environment may
+4977
+ 
+     
+? 4
+ ? 2
+ ? 1
+ 
+Arrival Sequence Update Sequence  
+? 2
+ 
+State Propagation 
+Covariance Propagation 
+Measurement Update 
+ ? 1
+ ? 2
+ ? 3
+ ? 4
+ ? 5
+ 
+ 
+Priority Queue, t
+? =3 
+? 4
+ 
+? 3
+ 
+? 3
+ 
+Fig. 2. Delayed, out-of-order measurement with priority queue. While z
+4
+arrives before z
+2
+, z
+2
+is rst applied to the lter. z
+4
+is temporary stored
+in the queue. z
+1
+is discarded since it is older than t
+d
+from the current
+state. The covariance is only propagated up to time where the most recent
+measurement is applied to the lter. The state is propagated till the most
+recent IMU input.
+suffer from accumulated drift. When the vehicle gains GPS
+signal, as illustrated in Fig. 3(a), there maybe large discrep-
+ancies between the GPS measurement and the estimated state
+(z
+5
+  s
+5
+). Directly applying GPS as global measurements
+will result in undesirable behaviors in both estimation (large
+linearizion error) and control (sudden pose change).
+This is not a new problem and it has been studied for
+ground vehicles [17] under the term of local frame-based
+navigation. However, [17] assumes that a reasonably accurate
+local estimate of the vehicle is always available (e.g. wheel
+odometry). This is not the case for MA Vs since the state esti-
+mates with only the onboard IMUs drifts away vastly within
+a few seconds. The major difference between dead reckoning
+with IMU and wheel odometry is that the former drifts
+temporally, while the latter only drifts spatially. However, we
+have relative exteroceptive sensors that are able to produce
+temporally drift-free estimates. As such, we only need to
+deal with the case that all relative exteroceptive sensors have
+failed. Therefore, our goal is to properly transform the global
+GPS measurement into the local frame to bridge the gap
+between relative sensor failures.
+Consider a pose-only graph SLAM formulation with s
+k
+=
+[x
+w
+k
+; y
+w
+k
+; 
+w
+k
+]
+T
+2  being 2D poses. The SLAM module
+may run at a much lower rate than the UKF-based estimator.
+We optimize the pose graph given incremental motion con-
+straints d
+k
+from laser/visual odometry, spatial loop closure
+constraints l
+k
+, and absolute pose constraints z
+k
+from GPS:
+min
+
+(
+M
+X
+k=1
+kh
+i
+(s
+k 1
+; d
+k
+)  s
+k
+k
+P
+d
+k
++
+L
+X
+k=1
+
+
+h
+l
+(s
+k
+; l
+k
+)  s
+l(k)
+
+
+P
+l
+k
++
+N
+X
+k=1
+kz
+k
+  s
+k
+k
+P
+z
+k
+)
+:
+The optimal pose graph conguration can be found with
+available solvers [18], as shown in Fig. 3(b). The pose
+graph is disconnected if there are no relative exteroceptive
+measurements between two nodes. Let two pose graphs be
+disconnected between k  1 and k.
+The pose graph SLAM provides the transformation be-
+tween the non-optimized s
+k 1
+and the SLAM-optimized
+s
++
+k 1
+state. This transform can be utilized to transform the
+ 
+? 5
+ ? 5
+ 
+? 1
+ 
+? 2
+ 
+? 3
+ 
+? 4
+ 
+(a)
+ 
+? 1
++
+ 
+? 2
++
+ ? 3
++
+ 
+? 4
++
+ 
+? 5
++
+ ? 5
+ 
+(b)
+Fig. 3. In Fig. 3(a), GPS signal is regained at k = 5, resulting in large
+discrepancies between the measurement z
+5
+and the state s
+5
+. Pose graph
+SLAM produces a globally consistent graph (Fig. 3(b)).
+ 
+? 5
+ 
+? 1
+ 
+? 2
+ 
+? 3
+ 
+? 4
+ 
+? 5
+?
+ 
+? 6
+?
+ 
+? 6
+ 
+? 7
+ 
+(a)
+ 
+? 1
++
+ 
+? 2
++
+ ? 3
++
+ 
+? 4
++
+ 
+? 5
++
+ ? 5
+ 
+? 7
++
+ 
+? 6
++
+ ? 6
+ 
+(b)
+Fig. 4. Fig. 4(a) illustrates the alternative GPS fusion, the discrepancy
+between transformed GPS measurementz
+ 
+5
+and the non-optimized states
+5
+is minimized. Fusion of such indirect GPS measurement will lead to smooth
+state estimate (green dashed line).
+global GPS measurement to be aligned with s
+k 1
+:
+
+t 1
+= s
+k 1
+	 s
++
+k 1
+z
+ 
+k 1
+= 
+t 1
+ z
+k 1
+;
+where and	 are pose compound operations as dened
+in [19]. The covariance P
+
+t 1
+of 
+t 1
+and subsequently the
+covariance P
+z
+ 
+t 1
+of z
+ 
+k 1
+can be computed following [19].
+This formulation minimizes the discrepancies between z
+ 
+k 1
+and s
+k 1
+, and thus maintains smoothness in the state es-
+timate. The transformed GPS z
+ 
+k 1
+, is still applied as an
+absolute measurement to the UKF (Fig. 4(a)).
+However, despite the large scale in our eld experiments
+(Sect. VI), we hardly nd a case where the accumulated drift
+is large enough to cause issues with direct GPS fusion. In
+the future, we will seek for even larger scale experiments to
+verify the necessity of the above local frame-based approach.
+V. IMPLEMENTATION DETAILS
+A. Experimental Platform
+The experimental platform shown in Fig. 1 is based on the
+Pelican quadrotor from Ascending Technologies, GmbH
+2
+.
+This platform is natively equipped with an AutoPilot board
+consisting of an IMU and a user-programmable ARM7
+microcontroller. The main computation unit onboard is an
+Intel NUC with a 1.8 GHz Core i3 processor with 8 GB of
+RAM and a 120 GB SSD. The sensor suite includes a u-
+blox LEA-6T GPS module, a Hokuyo UTM-30LX LiDAR
+and two mvBlueFOX-MLC200w grayscale HDR cameras
+2
+Ascending Technologies, GmbH, http://www.asctec.de/
+4978
+with sheye lenses that capture 752 480 images at 25 Hz.
+We use hardware triggering for frame synchronization. The
+onboard auto exposure controller is ne tuned to enable fast
+adaption during rapid light condition changes. A 3-D printed
+laser housing redirects some of the laser beams for altitude
+measurement. The total mass of the platform is 1.87kg. The
+entire algorithm is developed in C++ using ROS
+3
+as the
+interfacing robotics middleware.
+B. Absolute Measurements
+Some onboard sensors are capable of producing absolute
+measurements (Sect. III-A), here are their details:
+1) GPS And Magnetometer:
+z
+t
+=
+2
+6
+6
+6
+6
+4
+
+x
+w
+t
+y
+w
+t
+
+R
+w
+b
+
+_ x
+b
+t
+_ y
+b
+t
+
+ 
+w
+t
+3
+7
+7
+7
+7
+5
++ n
+t
+:
+2) Laser/Pressure Altimeter:
+z
+t
+=z
+w
+t
++ b
+w
+zt
++ n
+t
+:
+3) Pseudo Gravity Vector: If the MA Vs is near hover or
+moving at approximately constant speed, we may say that
+the accelerometer output provides a pseudo measurement of
+the gravity vector. Let g = [0; 0; g]
+T
+, we have:
+z
+t
+= R
+w
+b
+T
+g
+w
++ b
+b
+at
++ n
+t
+:
+C. Relative Measurement - Laser-Based Odometry
+We utilize the laser-based odometry that we developed
+in our earlier work [4]. Observing that man-made indoor
+environments mostly contains vertical walls, we can make a
+2.5-D environment assumption. With this assumption, we can
+make use of the onboard roll and pitch estimates to project
+the laser scanner onto a common ground plane. As such, 2D
+scan matching can be utilized to estimate the incremental
+horizontal motion of the vehicle. We keep a local map to
+avoid drifting while hovering.
+z
+t+m
+=	
+2d
+2
+4
+x
+w
+t
+y
+w
+t
+ 
+w
+t
+3
+5
+
+2d
+2
+4
+x
+w
+t+m
+y
+w
+t+m
+ 
+w
+t+m
+3
+5
++ n
+t+m
+;
+where p
+2dt
+= [x
+w
+t
+; y
+w
+t
+; 
+w
+t
+]
+T
+,
+2d
+and	
+2d
+are the 2-D pose
+compound operations as dened in [19].
+D. Relative Measurement - Visual Odometry
+We implemented a classic keyframe-based visual odome-
+try algorithm. Keyframe-based approaches have the benet
+of being temporally drift-free. We choose to use light-weight
+corner features but run the algorithm at a high-rate (25 Hz).
+Features are tracked across images via KLT tracker. Given a
+keyframe with a set of triangulated feature points, we run a
+robust iterative 2D-3D pose estimation [8] to estimate the 6-
+DOF motion of the vehicle with respect to the keyframe. New
+3
+Robot Operating System, http://www.ros.org/
+20 40 60 80 100
+?5
+0
+5
+Time (sec)
+X (m)
+ 
+ 
+Onboard
+Vicon
+20 40 60 80 100
+?4
+?2
+0
+2
+Time (sec)
+Y (m)
+20 40 60 80 100
+?2
+0
+2
+4
+Time (sec)
+Z (m)
+(a) Position
+20 40 60 80 100
+?5
+0
+5
+Time (sec)
+Vx (m/s)
+ 
+ 
+Onboard
+Vicon
+20 40 60 80 100
+?4
+?2
+0
+2
+Time (sec)
+Vy (m/s)
+20 40 60 80 100
+?2
+0
+2
+Time (sec)
+Vz (m/s)
+(b) Velocity
+Fig. 5. The MA V maneuvers aggressively with a maximum speed of
+3:5 m/s (Fig. 5(b)). The horizontal position also compares well with the
+ground truth with slight drift (Fig. 5(a)).
+keyframes are inserted depending on the distance traveled
+and the current number of valid 3D points.
+z
+t+m
+=	
+
+p
+w
+t
+
+w
+t
+
+
+
+p
+w
+t+m
+
+w
+t+m
+
++ n
+t+m
+E. Feedback Control
+To achieve stable ight across different environments with
+possibly large orientation changes, we choose to use a
+position tracking controller with a nonlinear error metric
+[20]. The 100 Hz lter output (Sect. IV) is used directly
+as the feedback for the controller. In our implementation,
+the attitude controller runs at 1 kHz on the ARM processor
+on the MA V's AutoPilot board, while the position tracking
+control operates at 100 Hz on the main computer. We
+implemented both setpoint trajectory tracking and velocity
+control to allow exible operations.
+VI. EXPERIMENTAL RESULTS
+Multiple experiments are conducted to demonstrate the
+robustness of our system. We begin with an quantitative
+evaluation in a lab environment equipped with a motion
+capture systems. We then test our system in two real-
+world autonomous ight experiments, including an industrial
+complex and a tree-lined campus.
+A. Evaluation of Estimator Performance
+We would like to push the limits of our onboard estimator.
+Therefore, we have a professional pilot to aggressively y the
+quadrotor with a 3:5 m/s maximum speed and large attitude
+of up to 40
+
+. The onboard state estimates are compared
+the ground truth from the motion capture system. Since
+there is no GPS measurement indoor, our system relies on
+a fusion of relative measurements from laser and vision.
+We do observe occasional laser failure due to large attitude
+violating the 2.5-D assumption (Sect. V-C). However, the
+multi-sensor lter still tracks the vehicle state throughout
+(Fig. 5). We do not quantify the absolute pose error since it
+is unbounded. However, the body frame velocity (Fig. 5(b))
+compares well with the ground truth with standard deviations
+off0:1021; 0:1185; 0:0755g
+T
+(m/s) in x, y, and z, respec-
+tively.
+4979
+ 
+ 
+G & V & L
+V & L
+G & V
+G & L
+G
+V
+L
+Fig. 7. Vehicle trajectory aligned with satellite imagery. Different colors
+indicate different combinations of sensing modalities. G=GPS, V=Vision,
+and L=Laser.
+0 100 200 300 400 500
+GPS
+Vision
+Laser
+Time (sec)
+Fig. 8. Sensor availability over time. Note that failures occurred to all
+sensors. This shows that multi-sensor fusion is a must for this kind of
+indoor-outdoor missions.
+B. Autonomous Flight in Large-Scale Indoor and Outdoor
+Environments
+We tested our system in a challenging industrial complex.
+The testing site spans a variety of environments, including
+outdoor open space, densely lled trees, cluttered building
+area, and indoor environments (Fig. 6). The MA V is au-
+tonomously controlled using the onboard state estimates.
+However, a human operator always has the option of sending
+high level waypoints or velocity commands to the vehicle.
+The total ight time is approximately 8 minutes, and the
+vehicle travels 445 meters with an average speed of 1:5 m/s.
+As shown in the map-aligned trajectory (Fig. 7), during
+the experiment, frequent sensor failures occurred (Fig. 8),
+indicating the necessity of multi-sensor fusion. Fig. 9 shows
+the evolution of covariance as the vehicle ies through a GPS
+shadowing area. The global x, y and yaw error is bounded
+by GPS measurement, without which the error will grow
+unbounded. This matches the observability analysis results.
+It should be noted that the error on body frame velocity does
+not grow, regardless of the availability of GPS. The spike in
+velocity covariance in Fig. 9 is due to the camera facing
+direct sunlight.
+200 220 240 260 280 300 320
+0
+0.5
+1
+1.5
+Time (sec)
+XY 3*std
+ 
+ 
+GPS Available
+200 220 240 260 280 300 320
+2
+4
+Yaw 3*std
+Time (sec)
+200 220 240 260 280 300 320
+0
+0.5
+XY Vel 3*std
+Time (sec)
+Fig. 9. Covariance changes as the vehicle ies through a dense building
+area (between 200s - 300s, top of Fig. 7, green line). The GPS comes in and
+out due to building shadowing. The covariance of x, y, and yaw increases as
+GPS fails and decreases as GPS resumes. Note that the body frame velocity
+are observable regardless of GPS measurements, and thus its covariance
+remains small. The spike in the velocity covariance is due to the vehicle
+directly facing the sun. The X-Y covariance is calculated from the Frobenius
+norm of the covariance submatrix.
+ 
+ 
+G & V & L
+V & L
+G & V
+G & L
+G
+V
+L
+Fig. 10. Vehicle trajectory overlaid on a satellite map. The vehicle operates
+in a tree-lined campus environment, where there is high risk of GPS failure
+during operation.
+C. Autonomous Flight in Tree-Lined Campus
+We also conduct experiments in a tree-lined campus en-
+vironment, as shown in Fig. 10. Autonomous ight in this
+environment is challenging due to nontrivial light condition
+changes as the vehicle moves in and out of tree shadows.
+The risk of GPS failure is also very high due to the trees
+above the vehicle. Laser-based odometry only works when
+close to buildings. The total trajectory length is 281 meters.
+VII. CONCLUSION AND FUTURE WORK
+In this work, we present a modular and extensible ap-
+proach to integrate noisy measurements from multiple het-
+(a) (b)
+Fig. 11. Onboard (Fig. 11(a)) and external (Fig. 11(b)) camera images
+as the MA V autonomously ies through a tree-lined campus environment.
+Note the nontrivial light condition.
+4980
+(a) (b) (c) (d)
+(e) (f) (g) (h)
+Fig. 6. Images from the onboard camera (Figs. 6(a)- 6(d)) and an external camera (Figs. 6(e)- 6(h)). Note the vast variety of environments, including open
+space, trees, complex building structures, and indoor environments. We highlight the position of the MA V with a red circle. Videos of the experiments are
+available in the video attachment and at http://mrsl.grasp.upenn.edu/shaojie/ICRA2014.mp4.
+erogeneous sensors that yield either absolute or relative
+observations at different and varying time intervals. Our
+approach generates high rate state estimates in real-time
+for autonomous ight. The proposed approach runs onboard
+our new 1:9 kg MA V platform equipped with multiple
+heterogeneous sensors. We demonstrate the robustness of our
+framework in large-scale, indoor and outdoor autonomous
+ight experiments that involves traversal through a industrial
+complex and a tree-lined campus.
+In the near future, we would like to integrate higher level
+planning and situational awareness on our MA V platform
+to achieve fully autonomous operation across large-scale
+complex environments.
+REFERENCES
+[1] S. J. Julier and J. K. Uhlmann, ?A new extension of the kalman lter
+to nonlinear systems,? in Proc. of SPIE, I. Kadar, Ed., vol. 3068, July
+1997, pp. 182?193.
+[2] R. V . D. Merwe, E. A. Wan, and S. I. Julier, ?Sigma-point kalman l-
+ters for nonlinear estimation: Applications to integrated navigation,? in
+Proc. of AIAA Guidance, Navigation, and Controls Conf., Providence,
+RI, Aug. 2004.
+[3] A. Bachrach, S. Prentice, R. He, and N. Roy, ?RANGE-robust au-
+tonomous navigation in gps-denied environments,? J. Field Robotics,
+vol. 28, no. 5, pp. 644?666, 2011.
+[4] S. Shen, N. Michael, and V . Kumar, ?Autonomous multi-oor indoor
+navigation with a computationally constrained MA V,? in Proc. of the
+IEEE Intl. Conf. on Robot. and Autom., Shanghai, China, May 2011,
+pp. 20?25.
+[5] S. Weiss, M. W. Achtelik, S. Lynen, M. Chli, and R. Siegwart, ?Real-
+time onboard visual-inertial state estimation and self-calibration of
+mavs in unknown environments,? in Proc. of the IEEE Intl. Conf. on
+Robot. and Autom., Saint Paul, MN, May 2012, pp. 957?964.
+[6] D. G. Kottas, J. A. Hesch, S. L. Bowman, and S. I. Roumeliotis, ?On
+the consistency of vision-aided inertial navigation,? in Proc. of the
+Intl. Sym. on Exp. Robot., Quebec, Canada, June 2012.
+[7] F. Fraundorfer, L. Heng, D. Honegger, G. H. Lee, L. Meier, P. Tan-
+skanen, , and M. Pollefeys, ?Vision-based autonomous mapping and
+exploration using a quadrotor MA V,? in Proc. of the IEEE/RSJ Intl.
+Conf. on Intell. Robots and Syst., Vilamoura, Algarve, Portugal, Oct.
+2012.
+[8] K. Schmid, T. Tomic, F. Ruess, H. Hirschmuller, and M. Suppa,
+?Stereo vision based indoor/outdoor navigation for ying robots,? in
+Proc. of the IEEE/RSJ Intl. Conf. on Intell. Robots and Syst., Tokyo,
+Japan, Nov. 2013.
+[9] A. S. Huang, A. Bachrach, P. Henry, M. Krainin, D. Maturana, D. Fox,
+and N. Roy, ?Visual odometry and mapping for autonomous ight
+using an RGB-D camera,? inProc.oftheIntl.Sym.ofRobot.Research,
+Flagstaff, AZ, Aug. 2011.
+[10] T. Tomic, K. Schmid, P. Lutz, A. Domel, M. Kassecker, E. Mair, I. L.
+Grixa, F. Ruess, M. Suppa, and D. Burschka, ?Autonomous UA V:
+Research platform for indoor and outdoor urban search and rescue,?
+IEEE Robot. Autom. Mag., vol. 19, no. 3, pp. 46?56, 2012.
+[11] S. I. Roumeliotis and J. W. Burdick, ?Stochastic cloning: A generalized
+framework for processing relative state measurements,? in Proc. of the
+IEEE Intl. Conf. on Robot. and Autom., Washington, DC, May 2002,
+pp. 1788?1795.
+[12] J. Carlson, ?Mapping large urban environments with GPS-aided
+SLAM,? Ph.D. dissertation, CMU, Pittsburgh, PA, July 2010.
+[13] D. Schleicher, L. M. Bergasa, M. Ocaa, R. Barea, and E. Lpez, ?Real-
+time hierarchical GPS aided visual SLAM on urban environments,? in
+Proc. of the IEEE Intl. Conf. on Robot. and Autom., Kobe, Japan, May
+2009, pp. 4381?4386.
+[14] S. Shen, Y . Mulgaonkar, N. Michael, and V . Kumar, ?Vision-based
+state estimation and trajectory control towards high-speed ight with
+a quadrotor,? in Proc. of Robot.: Sci. and Syst., Berlin, Germany, 2013.
+[15] S. Lynen, M. W. Achtelik, S. Weiss, M. Chli, and R. Siegwart, ?A
+robust and modular multi-sensor fusion approach applied to mav
+navigation,? in Proc. of the IEEE/RSJ Intl. Conf. on Intell. Robots
+and Syst., Tokyo, Japan, Nov. 2013.
+[16] T. Lefebvre, H. Bruyninckx, and J. D. Schuller, ?Comment on ?a new
+method for the nonlinear transformation of means and covariances in
+lters and estimators?,? IEEE Trans. Autom. Control, vol. 47, no. 8,
+pp. 1406?1409, 2002.
+[17] D. C. Moore, A. S. Huang, M. Walter, and E. Olson, ?Simultaneous
+local and global state estimation for robotic navigation,? in Proc. of
+the IEEE Intl. Conf. on Robot. and Autom., Kobe, Japan, May 2009,
+pp. 3794?3799.
+[18] R. Kuemmerle, G. Grisetti, H. Strasdat, K. Konolige, and W. Burgard,
+?g2o: A general framework for graph optimizations,? in Proc. of the
+IEEE Intl. Conf. on Robot. and Autom., Shanghai, China, May 2011,
+pp. 3607?3613.
+[19] R. Smith, M. Self, and P. Cheeseman, ?Estimating uncertain spatial
+relationships in robotics,? in Proc. of the IEEE Intl. Conf. on Robot.
+and Autom., vol. 4, Rayleigh, NC, Mar. 1987, p. 850.
+[20] T. Lee, M. Leoky, and N. McClamroch, ?Geometric tracking control
+of a quadrotor uav on SE(3),? in Proc. of the Intl. Conf. on Decision
+and Control, Atlanta, GA, Dec. 2010, pp. 5420?5425.
+4981

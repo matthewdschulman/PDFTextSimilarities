@@ -1,0 +1,1835 @@
+Robust Calibration of an Ultralow-Cost Inertial Measurement Unit and
+a Camera: Handling of Severe System Uncertainty
+Chang-Ryeol Lee, Ju Hong Yoon, and Kuk-Jin Yoon
+AbstractÑ Recently, mobile devices such as smart phones and
+quad-copters are being equipped with inertial measurement
+units (IMUs) because of advances in micro-electro-mechanical
+systems technology. This has increased the importance of IMUÐ
+camera fusion for vision-based applications. However, ultralow-
+cost IMUs take much less accurate measurements than low-cost
+and high-cost IMUs. This uncertainty degrades the accuracy
+and reliability of IMUÐcamera calibration, which is the most
+important step for IMUÐcamera fusion technology. In this
+paper, we propose three effective algorithms for robust IMUÐ
+camera calibration with uncertain measurements: boundary
+constraint, adaptive prediction, and angular velocity constraint.
+These algorithms incorporate a Bayesian Þltering framework
+to estimate calibration parameters more efÞciently. The exper-
+imental results on both simulation and real data demonstrated
+the superiority of the proposed algorithms.
+I. INTRODUCTION
+Inertial measurement unit (IMU)Ðcamera fusion has great
+advantages for various vision-based applications such as
+mobile robot localization because the two sensors can com-
+plement each other. For example, an IMU can be used
+to estimate the motion of a device even when the motion
+is fast. However, motion estimation eventually drifts after
+long sequences because the estimation errors from the IMU
+measurements accumulate. With a camera, motions can be
+estimated more robustly even for long sequences. However,
+when the device moves fast or the camera captures only a
+textureless scene, the motion estimation becomes unreliable.
+Because of the complementary properties of the IMU and
+camera, many researchers have tried fusing them to achieve
+better motion estimation.
+Recently, mobile devices such as smart phones and quad-
+copters are being equipped with ultralow-cost IMUs and
+cameras, which has made IMUÐcamera fusion more im-
+portant and common than ever. The most important step
+to fuse two heterogeneous sensors is calibration, where a
+six degrees-of-freedom (DOF) transformation (3-DOF rota-
+tion and 3-DOF translation) is estimated to represent the
+relation between the IMU and camera frames. Without the
+calibration, the sensors cannot be used together for motion
+estimation.
+However, measurements from ultralow-cost IMUs typi-
+cally contain more severe noise than those from low-cost
+and high-cost IMUs. Fig. 1 presents ultralow-cost and low-
+cost IMUs. Although the former is about four times smaller
+than the latter and much cheaper, it generates 10 times more
+C. Lee, J. Yoon, and K. Yoon are with the School of Information and
+Communications at the Gwang-ju Institute of Science and Technology,
+Gwang-ju, Korea fcrlee, jhyoon, kjyoong@gist.ac.kr
+(a) Ultralow-cost IMU: price
+is $50.
+(b) Low-cost IMU: price is
+about $1000.
+Fig. 1. Ultralow-cost IMU vs. low-cost IMU.
+TABLE I
+COMPARISON OF GAUSSIAN NOISE OF ULTRALOW-COST AND LOW-COST
+IMUS.
+Ultralow-cost IMU Low-cost IMU
+Accelerometer (m=s
+2
+)
+Std. dev.
+s
+a
+x
+0.2550 0.0076
+s
+a
+y
+0.2450 0.0080
+s
+a
+z
+0.2550 0.0092
+Gyroscope (
+
+=s)
+Std. dev.
+s
+g
+x
+0.1780 0.0031
+s
+g
+y
+0.2590 0.0029
+s
+g
+z
+0.2360 0.0032
+noise, as described in Table I. Since the IMU measurement
+noise critically affects the IMUÐcamera calibration, the noise
+needs to be alleviated or avoided. We considered four types
+of noises, which can be categorized as internal or external
+noise.
+Internal noise: There are two kinds of internal noise: natural
+sensor noise, which is typically assumed to be additive
+Gaussian noise and slowly time varying bias [1]; and errors
+of scale, bias, and misalignment parameters that are caused
+by deÞcient intrinsic calibration of an IMU [2].
+External noise: General data acquisition problems include
+missing data and time-delayed measurements. With time-
+delayed IMU measurements, it is not possible to estimate
+the motion of a device accurately, and missing data because
+of unknown sensor failure act like outliers [3]. Both kinds
+of noise can be considered to be non-Gaussian, as shown in
+Fig. 2.
+To achieve robust IMUÐcamera calibration that considers
+various types of IMU noise, we propose the following three
+effective algorithms. First, we use the boundary constraint
+(BC) to prevent the estimated states from drifting because of
+severe IMU noise. Second, we use adaptive prediction (AP)
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 3020
+0 2 4 6 8 10
+0
+100
+200
+300
+400
+Time (sec)
+Time interval (ms)
+(a) Abrupt delay of sampling
+period.
+0 2 4 6 8 10
+-20
+-10
+0
+10
+20
+Time (sec)
+Angular velocity (¡/s)
+  
+ 
+ 
+w
+x
+w
+y
+w
+z
+(b) Outlier in angular velocity mea-
+surement.
+Fig. 2. Non-Gaussian noise in IMU measurements.
+to avoid unreliable prediction because of external noise. AP
+exploits two motion models and selects one by consider-
+ing the error magnitude of IMU measurements. Third, we
+impose an angular velocity constraint (A VC) on the IMUÕs
+orientation to lessen the accumulation error. These three
+sub-algorithms are incorporated into a Bayesian Þltering
+framework to estimate the calibration parameters efÞciently.
+In this study, we adopted a well-known Bayesian Þlter: the
+unscented Kalman Þlter (UKF) [4].
+Our method estimates the rotation and translation simul-
+taneously by using a Bayesian Þlter. Therefore, it can be
+applied to any calibration algorithm using a nonlinear state
+estimation Þlter such as the EKF, UKF, or gray-box system
+identiÞcation. To the best of our knowledge, this is the Þrst
+work on handling the severe uncertainty of an ultralow-cost
+IMU for IMUÐcamera calibration.
+II. PREVIOUS WORKS
+In the preliminary stages of this study, we estimated
+the 6-DOF transformation between an IMU and a camera
+using a CAD plot or range sensor. Johnson et al. used a
+three-dimensional (3D) laser scanner for calibration purposes
+[5][6]. To avoid the use of high-cost equipment, Lobo and
+Dias proposed a two-step algorithm [7]. Their inputs were
+several still images and the corresponding IMU measure-
+ments. This algorithm is easy and intuitive, but the setup is
+tricky because the IMU needs to be at the exact center of
+the turntable. Moreover, errors in the rotation estimates are
+propagated to the translation estimates.
+To overcome these drawbacks, several algorithms have
+been proposed that estimate rotation and translation. These
+take a video-based strategy and only need a checkerboard
+or scene with many textures. Popular methods are to exploit
+nonlinear state estimation techniques such as the extended
+Kalman Þlter (EKF) and UKF [8]. These approaches are a
+classic way to deal with system identiÞcation issues [9]. The
+calibration problem can be transformed to state estimation
+by augmenting parameters into the state.
+Mirzaei and Roumeliotis were the Þrst to present Þlter-
+based IMUÐcamera calibration [6]. They exploited an error-
+state (indirect) Kalman Þlter and analyzed the observability
+of the algorithm using Lie derivatives [10]. One drawback
+is information loss caused by Þrst-order approximation of
+the EKF. Hol and Gustafsson adopted gray-box system
+identiÞcation where they combined a Þlter-based framework
+and optimization technique [11]. They minimized the inno-
+vation (prediction error) of the Þlter-based method. Kelly
+and Sukhatme proposed a general calibration algorithm that
+does not require additional equipment [12]. They employed
+the UKF to handle the nonlinearity of the model well.
+Furthermore, they considered gravity as a state to be esti-
+mated because it depends on geo-location. Panahandeh et
+al. exploited a mirror instead of a checkerboard to acquire
+measurements from a camera [13]. They also estimated the
+intrinsic parameters of a camera for more accurate calibra-
+tion. Similarly, Zachariah and Jansson estimated the intrinsic
+parameters of an IMU and the transformation between an
+IMU and a camera simultaneously [14]. Brink and Soloviev
+extended this framework to an IMU and multi-camera system
+for an autonomous vehicle [15].
+Several approaches based on optimization techniques have
+been used to initialize the estimator. Dong-Si and Mourikis
+formulated rotation calibration as a convex problem [16].
+Fleps et al. exploited the alignment between each trajectory
+of an IMU and a camera as a cost function [17]. They were
+the Þrst to compare various calibration algorithms using real
+datasets.
+III. NOTATION
+Before presenting the problem formulation and proposed
+algorithms, we brießy present some notations to make our
+formulation more clear.fIg denotes the IMU frame, andfWg
+represents the world frame. Special subscripts (i.e.,
+W
+I
+and
+I
+C
+)
+explain the parameter frame explicitly. For example, when p
+denotes the 3D position,
+W
+I
+p represents the IMU 3D position
+with respect to the world framefWg; here, the subscript
+I represents an IMU. When t denotes 3D translation,
+I
+C
+t
+represents camera translation with respect to the IMU frame
+fIg; here, the subscript C represents a camera.
+IV. SYSTEM DESCRIPTION
+We estimate the state x in (1) by using the measurement
+z in (5) with the UKF because both the state transition and
+state measurement models are nonlinear functions.
+A. State Vector
+We divide a state vector x into three vectors:
+x=
+h
+x
+>
+calib
+x
+>
+imu
+x
+>
+con
+i
+>
+; (1)
+where x
+calib
+is a calibration state, x
+imu
+is an IMU state, and
+x
+con
+is a control input state. The calibration state comprises
+fundamental states for IMUÐcamera calibration. The IMU
+state consists of the IMUÕs intrinsic parameters. The control
+input state is composed of the inertial state.
+The calibration state vector represents 3D poses of an
+IMU, the transformation between the IMU and camera, and
+gravity:
+x
+calib
+=
+h
+W
+I
+p
+> W
+I
+v
+> W
+I
+q
+> W
+g
+> I
+C
+t
+> I
+C
+q
+>
+i
+>
+;
+3021
+where
+W
+I
+q2R
+4
+is a unit quaternion representing the orien-
+tation,
+W
+I
+p2R
+3
+is the position, and
+W
+I
+v2R
+3
+is the velocity.
+I
+C
+t2R
+3
+denotes the translation between an IMU and a
+camera,
+I
+C
+q2R
+4
+is a unit quaternion representing the rotation
+between an IMU and a camera, and
+W
+g2R
+3
+is the gravity
+for the world frame.
+The IMU state vector includes misalignment, scale, and
+bias of the IMU measurements, as described in [14]. Because
+of the incomplete manufacturing process, the acceleration
+and gyroscope coordinates of the ultralow-cost IMUs are
+different. Hence, to estimate the difference, we include
+G
+A
+q
+T
+in the IMU state vector, which is a unit quaternion
+representing the rotation between the acceleration framefAg
+and gyroscope framefGg. Here,fGg is equal to the IMU
+framefIg.
+x
+imu
+=
+h
+G
+A
+q
+>
+m
+>
+a
+m
+>
+g
+s
+>
+a
+s
+>
+g
+b
+>
+a
+b
+>
+g
+i
+>
+;
+where m
+a
+2R
+3
+and m
+g
+2R
+6
+comprise misalignment ma-
+trices, s
+a
+2R
+3
+and s
+g
+2R
+3
+comprise scale matrices, and
+b
+a
+2R
+3
+and b
+g
+2R
+3
+are bias vectors.
+The control input state vector comprises the acceleration
+and angular velocity of the IMU.
+x
+con
+=
+h
+W
+a
+> I
+w
+>
+i
+>
+;
+where
+W
+a2R
+3
+is the acceleration in the world frame and
+I
+w2R
+3
+is the angular velocity in the IMU frame.
+B. State Transition Model
+The state transition model is formulated as
+x
+k+1
+=
+2
+4
+x
+calib
+k+1
+x
+imu
+k+1
+x
+con
+k+1
+3
+5
+= f(x
+k
+)+n
+k
+=
+2
+4
+f
+calib
+(x
+k
+)
+f
+imu
+(x
+k
+)
+f
+con
+(x
+k
+;u
+k
+)
+3
+5
++n
+k
+; (2)
+where the modeling noise n
+k
+2R
+51
+is assumed to be the
+white Gaussian noise n
+k
+N (0;Q) and Q2R
+5151
+, and
+u
+k
+2R
+6
+is a control input obtained from the IMU.
+The calibration state transition model from (2) is formu-
+lated with x
+calib
+and x
+con
+based on the basic law of uniformly
+accelerated motion [11], and
+W
+g,
+I
+C
+t, and
+I
+C
+q are modeled to
+be constant.
+x
+calib
+k+1
+= f
+calib
+(x
+k
+)
+=
+2
+6
+6
+6
+6
+6
+6
+4
+W
+I
+p
+k+1
+W
+I
+v
+k+1
+W
+I
+q
+k+1
+W
+g
+k+1
+I
+C
+t
+k+1
+I
+C
+q
+k+1
+3
+7
+7
+7
+7
+7
+7
+5
+=
+2
+6
+6
+6
+6
+6
+6
+6
+4
+W
+I
+p
+k
++
+W
+I
+v
+k
+DT+
+W
+I
+a
+k
+DT
+2
+2
+W
+I
+v
+k
++
+W
+I
+a
+k
+DT
+e
+ 
+W
+I
+w
+k
+DT
+2
+
+W
+I
+q
+k
+W
+g
+k
+I
+C
+t
+k
+I
+C
+q
+k
+3
+7
+7
+7
+7
+7
+7
+7
+5
+;
+(3)
+where the operator denotes the quaternion product.
+In (2), the IMU state was modeled as Brownian motion
+x
+imu
+k+1
+= f
+imu
+(x
+k
+) = x
+imu
+k
+because the misalignment and
+scale terms do not have a dynamic motion model, and the
+bias term of the IMU measurements varies slowly with time.
+The control input state transition model is formulated with
+x
+calib
+, x
+imu
+, and u
+k
+. We utilized two transition models: an
+IMU-based motion model f
+con;1
+(x
+k
+;u
+k
+) and constant motion
+model f
+con;2
+(x
+k
+).
+IMU-based motion model: The control input state vector is
+propagated with measurements from the IMU through the
+inverse of the process [18]:
+x
+con
+k+1
+= f
+con;1
+(x
+k
+;u
+k
+)=
+
+W
+a
+k+1
+I
+w
+k+1
+
+=
+
+R
+ 
+W
+I
+q
+k
+
+S
+ 1
+a
+M
+ 1
+a
+[a
+m;k
+  b
+a;k
+  n
+a
+]
+
++
+W
+g
+k
+S
+ 1
+w
+M
+ 1
+w
+[w
+m;k
+  b
+w;k
+  n
+w
+]
+
+;
+(4)
+where n
+w
+and n
+a
+are the angular and acceleration noise,
+respectively, and assumed to be white Gaussian noise,
+fa
+m;k
+;w
+m;k
+g u
+k
+are the measurements from the IMU, M
+a
+and M
+w
+are misalignment matrices composed of states m
+a
+and m
+w
+, and S
+a
+and S
+w
+are scale matrices from states s
+a
+and s
+w
+[14], the matrix R() denotes a direct cosine matrix
+converted from the unit-quaternion q.
+Constant motion model: In visual SLAM, constant velocity
+and constant angular velocity models that assume that the
+velocity and angular velocity have Gaussian proÞles are
+commonly used because of the smooth motion [19]. We used
+the constant acceleration and constant angular velocity model
+x
+con
+k+1
+= f
+con;2
+(x
+k
+)= x
+con
+k
+because the IMUÐcamera setup
+also has to move smoothly because of the constraint of the
+cameraÕs frame rate. The constant acceleration model is more
+sophisticated because it is a second-order approximation.
+C. State Measurement Model
+We used two-dimensional (2D) image feature points as
+measurements. When we utilize M 2D feature points, the
+measurement consists of a stacked vector of M 2D features:
+z=
+
+z
+1
+>
+:::z
+M
+>
+
+>
+;
+(5)
+where each 2D feature point is extracted from an image [6].
+Therefore, the measurement model describes the transforma-
+tion of 3D feature points (in the world frame) to 2D feature
+points. In the model, 3D feature points are Þrst transformed
+to the IMU frame and then transformed to the camera frame.
+Therefore, the measurement is formulated as a nonlinear
+function.
+z
+i
+=
+
+u
+i
+v
+i
+
+= h(x;f
+W
+i
+)+ m
+i
+=
+
+x
+i
+=z
+i
+y
+i
+=z
+i
+
++ m
+i
+;
+2
+4
+x
+i
+y
+i
+z
+i
+3
+5
+= KR(
+I
+C
+q)
+
+R(
+W
+I
+q)
+
+f
+W
+i
+ 
+W
+I
+p
+
+ 
+I
+C
+p
+
+;
+(6)
+where f
+W
+i
+is the i-th 3D feature point in the world frame,
+m
+i
+is white Gaussian noise with the noise covariance matrix
+R
+i
+=(s
+R
+i
+)
+2
+I
+2
+, and K is a camera-intrinsic matrix. Since the
+measurement is a stacked vector of M 2D feature points, its
+noise covariance is expressed as diag(R
+1
+;:::;R
+M
+).
+3022
+IMU 
+Adaptive 
+Prediction 
+(AP) 
+Boundary 
+Constraint 
+(BC) 
+Angular Velocity 
+Constraint  
+(AVC) 
+2D feature 
+points 
+Boundary 
+Constraint 
+(BC) 
+1
+( | ,)
+kk k
+p
++
+xz u
+1 1
+( | ,)
+k k k
+p
++ +
+x zu
+1
+( | ,)
+k k k
+p
++
+x x u
+11
+( |)
+AVC
+kk
+p
+++
+zx
+1 1
+(| )
+AVC
+k k
+p
++ +
+xz
+11
+( |)
+Feature
+k k
+p
++ +
+zx
+1 1
+(| )
+Feature
+k k
+p
++ +
+xz
+Fig. 3. Block diagram of framework.
+V. PROPOSED ALGORITHMS
+To achieve robust calibration, we incorporate three sub-
+algorithms into the Bayesian Þltering framework as described
+in Fig. 3: boundary constraint (BC), adaptive prediction (AP),
+and angular velocity constraint (A VC).
+A. Boundary Constraint (BC)
+To prevent states from drifting, we impose an inequality
+constraint on states. The prior knowledge on the transfor-
+mation between the IMU and camera is expressed as an
+inequality constraint.
+The translation
+I
+C
+t cannot exceed a certain boundary since
+the IMU and camera are rigidly fastened to each other. This
+inequality is expressed as
+
+
+I
+C
+t 
+I
+C
+t
+0
+
+
+2
+t
+1
+: (7)
+Equation (7) expresses a constraint region deÞned as a sphere
+from the initial translation
+I
+C
+t
+0
+. The rotation
+I
+C
+q has a true
+value near the initial rotation q
+0
+because we use the simple
+LoboÕs algorithm [7], which estimates the rotation between
+an IMU and a camera. The inequality is given as
+dist(
+I
+C
+q;q
+0
+)t
+2
+: (8)
+The distance between two quaternions is deÞned by the
+geodesic distance in rotation space [20].
+These inequality constraints are placed on the constrained
+region by the projection scheme [21]. Technically, the states
+outside the constrained region are moved to the boundary
+of the constrained region. We carry out the projection by
+interpolating the initial states and estimates. The translation
+and rotation between the IMU and camera are deÞned in
+Cartesian coordinate and four-dimensional rotation space,
+respectively. Therefore, linear and spherical interpolations
+are required. The projection function pro j(
+I
+C
+t;
+I
+C
+q) is deÞned
+as follows with (9)-(10).
+I
+C
+÷
+t,
+
+I
+C
+t if
+
+
+I
+C
+t 
+I
+C
+t
+0
+
+
+2
+t
+1
+(1 t
+1
+)
+I
+C
+t
+0
++t
+1
+I
+C
+t otherwise
+; (9)
+I
+C
+÷ q,
+(
+I
+C
+q if dist(
+I
+C
+q;
+I
+C
+q
+0
+)t
+2
+
+sin(1 t
+2
+)a
+sina
+
+I
+C
+q
+0
++
+
+sin(t
+2
+)a
+sina
+
+I
+C
+q otherwise
+;
+(10)
+-20
+0
+20
+-20
+0
+20
+-30
+-20
+-10
+0
+10
+20
+30
+x (cm) y (cm)
+z (cm) (a) Standard calibration
+-20
+0
+20
+-20
+0
+20
+-30
+-20
+-10
+0
+10
+20
+30
+x (cm) y (cm)
+z (cm)
+ 
+ 
+ 
+ 
+ 
+GT
+Start Point
+End Point
+Translation trajectory
+Constrained region
+(b) BC calibration
+Fig. 4. Effect of boundary constraints on calibration under severe
+uncertainty of IMU.
+where a = cos
+ 1
+(
+I
+C
+q
+0
+
+I
+C
+q
+k
+). The inequality constraint is
+applied to states after sigma point generation of the predic-
+tion and update [21]. As a consequence, since we use the
+UKF, the state covariance is determined within the Þltering
+process. In particular, this constraint is more important
+during prediction because the IMU uncertainty has a large
+effect on the system model.
+The BC restricts the solution space of the estimates. This
+effect can be visually displayed because of its geometric
+meaning. The translation
+I
+C
+t can be represented as a point
+in 3D space. Then, its BC can be expressed as a sphere.
+Fig. 4 shows how the BC works for translation estimation.
+The estimated translation is indicated as a trajectory in the
+translation space. Unfortunately, we cannot visualize the ef-
+fect on rotation estimation because the rotation
+I
+C
+q is deÞned
+as a quaternion. However, more accurate calibration results
+would indicate a similar effect on the rotation estimation.
+B. Adaptive Prediction (AP)
+As noted in Section I, the IMU measurement sometimes
+contains severe external noise. To avoid wrong predictions
+because of outliers, we select one of two transition models
+using IMU-based motion or constant motion. The criterion
+for selection is the innovation e, which the system uncer-
+tainty largely affects [22]. Therefore, it can be used to judge
+whether IMU measurements are reliable or not.
+e = z
+k+1
+  ö z
+k+1
+; (11)
+ö z
+k+1
+= h
+0
+@
+f
+calib
+(x
+k
+)
+f
+imu
+(x
+k
+)
+f
+con;1
+(x
+k
+;u
+k
+)
+; f
+W
+1
+A
+: (12)
+0 5 10 15 20 25 30
+0
+0.5
+1
+1.5
+2
+2.5
+3
+3.5
+4
+4.5
+5
+Innovation (pixel)
+time (sec)
+(a) Strandard calibration
+0 5 10 15 20 25 30
+0
+0.5
+1
+1.5
+2
+2.5
+3
+3.5
+4
+4.5
+5
+Innovation (pixel)
+time (sec)
+(b) AP calibration
+Fig. 5. Comparison of innovations for same dataset with and without AP.
+3023
+The threshold for selection was determined to be three times
+the measurement noise because innovation over the threshold
+means that the IMU measurements have extremely severe
+noise.
+f
+con
+(x;u),
+
+f
+con;1
+(x;u) if e 3s
+R
+f
+con;2
+(x) otherwise:
+(13)
+Fig. 5 shows that the adaptive prediction provides rela-
+tively consistent innovation. In contrast, standard calibration
+has a number of abrupt changes in innovation.
+C. Angular Velocity Constraints (AVC)
+Although the AP and BC handle uncertainty well based on
+the geometric distance relation, they are limited in handling
+accumulation of error by severe noise. To moderate the error,
+we add a constraint on the IMUÕs orientation. As pointed out
+in [1], the orientation estimates of the IMU have a critical
+impact on trajectory estimation of the IMU. For this reason,
+the noise of the angular velocity has to be handled carefully.
+The angular velocity from the camera has much less noise;
+this attenuates the noise of the IMU measurements.
+As a constraint, we exploit the fact that the angular
+velocities of the camera and IMU have identical magnitudes.
+This is suitable for the IMUÐcamera calibration problem
+because it does not require transformation between the two
+units. The angular velocity of the camera is computed by the
+homography-based pose estimation scheme [23].
+z
+A VC
+=
+
+
+C
+w
+
+
+2
+: (14)
+The predicted angular velocity ö z
+A VC
+of the IMU is determined
+by the L-2 norm of the angular velocity state
+I
+w2 x
+con
+:
+ö z
+A VC
+= h
+A VC
+(
+I
+w)+e
+A VC
+=
+
+
+I
+w
+
+
+2
++e
+A VC
+; (15)
+e
+A VC
+=
+
+z
+A VC
+  h
+A VC
+(x
+con
+)
+
+: (16)
+The innovation vectore
+A VC
+describes the condition that must
+be maintained between the visual and inertial observations.
+Consequently, IMUÐcamera calibration can avoid divergence
+because of noisy angular velocities. The A VC is incorporated
+into the measurement update to augment the measurement
+model [24].
+Fig. 6 shows that the angular velocity constraint increases
+the accuracy of the estimated IMU pose. This is a represen-
+tative indicator that the A VC helps IMUÐcamera calibration.
+0 5 10 15 20 25 30
+0
+2
+4
+6
+8
+10
+12
+time (s)
+W
+I
+p
+z
+ (cm)
+ 
+ 
+STD-Calib
+AVC-Calib
+ 
+ 
+ 
+ 
+S
+ 
+ 
+ 
+ 
+A
+Fig. 6. Comparison of error in position (z-axis) estimates for the same
+dataset with and without A VC.
+VI. EXPERIMENTS
+We evaluated the performance of the proposed algorithms
+using both simulated and real data. For the calibration
+problem, the convergence of states is not a good evaluation
+tool. Therefore, the results of the simulated data, which used
+ground truth, were more valuable than those of the real
+data for analysis of the advantages and disadvantages of the
+proposed algorithms.
+A. Simulation
+For the experiments, we generated a smooth IMUÐcamera
+motion by combining sinusoidal functions. The three-axis ac-
+celeration and angular velocity of the IMU were computed by
+differentiating the IMU trajectory. The 2D feature points of
+an image sequence were computed by projecting 3D feature
+points in the framefWg with the given intrinsic parameters.
+The camera followed the pinhole model with 320 240 pixel
+image resolution and a Þeld of view of about 50
+
+. The IMU
+and camera measurements were received at 100 and 25 Hz
+with synchronization. The rotation and translation between
+the IMU and camera were set to [50 -50 50]
+
+and [5 5 -
+5]
+T
+cm, respectively. For estimation, the initial translation and
+rotation was set to [0 0 0]
+T
+cm and to be rotated from the
+ground truth up to [-5 5 5]
+T
+, respectively. Zero-initialization
+was reasonable because guessing the initial IMUÐcamera
+translation is difÞcult.
+Intrinsic parameters such as the scale, misalignment, and
+bias were uniformly determined within limit ranges (s
+a;w
+=
+[1.05 - 1.1], m
+a;g
+= [0.05 - 0.1], b
+a
+= [0.1 - 0.3] m=s
+2
+, b
+g
+=
+[0.3 - 0.5]
+
+=s). Furthermore, we added the Gaussian noise
+(s
+n
+a
+= 0.25m=s
+2
+, s
+n
+g
+= 0.26
+
+=s) and non-Gaussian noise
+(missing data at 1%) into the IMU measurement. The noise
+strength was determined from real data by the algorithm
+described in [1]. The 2D feature points had a measurement
+error, which was white Gaussian noise with a low standard
+deviation of 1 pixel, because they were extracted from a
+checkerboard.
+We intensively drew a comparison between the three
+proposed sub-algorithms and standard UKF-based calibration
+[12] because the UKF is a popular and good estimator for
+model nonlinearity. Fig. 7 plots the average error of the
+estimated rotation and translation between an IMU and a
+camera over 100 Monte Carlo simulations. The quaternion
+I
+C
+q, which expresses the rotation between an IMU and a
+camera, was converted to the corresponding Euler angle
+I
+C
+F
+for more intuitive understanding. The standard calibration
+produced an unstable estimation, whereas the proposed algo-
+rithms produced a stable estimation. In particular, the average
+errors of the estimates were lowest when all of the sub-
+algorithms were combined together. This means that each
+sub-algorithm affected individual factors for the estimation
+of the IMU uncertainty with no redundancy.
+Table II lists the average RMSE of the Þnal estimates
+for calibration. The calibrations with each sub-algorithm
+(BC, AP, A VC) provided more accurate estimates for both
+translation and rotation than standard calibration. In par-
+ticular, the accuracy of the translation estimates showed
+3024
+0 5 10 15 20 25 30
+0
+5
+10
+time (sec)
+I
+C
+t
+x
+ (cm)
+0 5 10 15 20 25 30
+0
+5
+10
+time (sec)
+I
+C
+t
+y
+ (cm)
+0 5 10 15 20 25 30
+0
+5
+10
+time (sec)
+I
+C
+t
+z
+ (cm)
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+STD-UKF
+BC-UKF
+AP-UKF
+AVC-UKF
+ALL-UKF
+(a) Average errors of translation estimates
+0 5 10 15 20 25 30
+0
+5
+time (sec)
+I
+C
+?
+r
+ (¡)
+0 5 10 15 20 25 30
+0
+5
+time (sec)
+I
+C
+?
+p
+ (¡)
+0 5 10 15 20 25 30
+0
+5
+time (sec)
+I
+C
+?
+y
+ (¡)
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+STD-UKF
+BC-UKF
+AP-UKF
+AVC-UKF
+ALL-UKF
+(b) Average errors of rotation estimates
+Fig. 7. Time history of calibration estimates with each sub-algorithm.
+1) STD-UKF: standard UKF-based calibration, 2) BC-UKF: calibration
+with boundary constraint, 3) AP-UKF: calibration with adaptive prediction,
+4) A VC-UKF: calibration with angular velocity constraint, 5) ALL-UKF:
+calibration with all sub-algorithms.
+Fig. 8. IMUÐcamera experimental setup (PointGrey Grasshoper camera
+with Navitar wide angle lens and E2box IMU).
+marked improvement. Interestingly, when all sub-algorithms
+were combined, the estimator usually delivered an estimate
+near the most accurate calibration of the individual sub-
+algorithms.
+B. Real Data
+The experimental setup consisted of a tightly connected
+FireWire camera and ultralow-cost IMU (Fig. 8). We used
+a camera with a resolution of 320  240 pixels with a
+frame rate of 30 Hz. The camera (PointGrey Grasshopper)
+was mated to a 3.5 mm Navitar lens (94
+
+73
+
+Þeld of
+TABLE II
+ERROR STATISTICS OF FINAL ESTIMATES FOR TRANSLATION AND
+ROTATION BETWEEN THE IMU AND CAMERA.
+Average RMSE Translation (cm)
+I
+C
+t
+x
+I
+C
+t
+y
+I
+C
+t
+z
+I
+C
+t
+avg:
+STD-UKF 3.29 2.31 3.58 3.04
+BC-UKF 1.87 2.96 1.51 2.11
+AP-UKF 2.90 1.77 1.52 2.06
+A VC-UKF 2.65 1.90 1.68 2.07
+ALL-UKF 1.37 1.38 1.44 1.39
+Initial error 5 5 5 5
+Average RMSE Rotation (
+
+)
+I
+C
+f
+r
+I
+C
+f
+p
+I
+C
+f
+y
+I
+C
+f
+avg:
+STD-UKF 2.10 1.21 1.55 1.62
+BC-UKF 2.02 0.73 1.71 1.48
+AP-UKF 0.94 0.29 1.22 0.81
+A VC-UKF 1.18 0.64 0.90 0.90
+ALL-UKF 1.12 0.76 0.86 0.91
+Initial error 5 5 5 5
+view). The mounted ultralow-cost IMU provided three-axis
+acceleration and angular velocity measurements at a rate
+of 100 Hz. The IMU and camera were synchronized by a
+B-spline interpolation scheme for the measurements as the
+time stamp [17]. The IMUÐcamera moved smoothly around
+1 m over the calibration pattern while recording images of
+the pattern over 40 s. The checkerboard pattern was drawn
+with a 5 6 pattern, and the grid size was 3 cm. It was
+placed horizontally to the ground. The intrinsic parameters
+of the camera and radial distortion of the lens were computed
+using BouguetÕs camera calibration toolbox [25]. The angular
+velocities for the A VC were calculated by differentiating the
+rotational trajectory of the input sequence obtained from this
+toolbox. The initial rotation between the IMU and camera
+was determined by a modiÞed version of [7]; the initial
+translation was set to [ 0 0 0 ]
+T
+.
+In the real data experiments, the measurement performance
+of the IMUÐcamera calibration algorithms was unclear be-
+cause there was no ground truth. Instead, we used these ex-
+periments to judge the reliability and consistency, which were
+expressed as the variance of the estimated transformation of
+the IMUÐcamera.
+We tested the proposed algorithms against the standard
+calibration based on the UKF [12]. Fig. 9 illustrates the
+calibration results with each sub-algorithm using box and
+whisker diagrams. Similar to the simulation results, cali-
+bration with the proposed algorithms outperformed standard
+calibration. When all sub-algorithms were combined, the
+estimator produced the most consistent results. The standard
+calibration produced good rotation estimates but poor trans-
+lation estimates. With our framework, the accuracy of the
+translation estimates was notably improved.
+3025
+-10
+-8
+-6
+-4
+-2
+0
+2
+4
+6
+8
+10
+1 2 3 4 5
+I
+C
+t
+x
+ (cm)
+-5
+0
+5
+10
+15
+1 2 3 4 5
+I
+C
+t
+y
+ (cm)
+-10
+-8
+-6
+-4
+-2
+0
+2
+4
+6
+8
+10
+1 2 3 4 5
+I
+C
+t
+z
+ (cm)
+-30
+-25
+-20
+-15
+-10
+-5
+0
+1 2 3 4 5
+I
+C
+?
+r
+ (¡)
+-100
+-95
+-90
+-85
+-80
+-75
+-70
+-65
+-60
+1 2 3 4 5
+I
+C
+?
+p
+ (¡)
+90
+95
+100
+105
+110
+115
+120
+1 2 3 4 5
+I
+C
+?
+y
+ (¡)
+Fig. 9. Comparison of calibration results with each sub-algorithm (1: STD-UKF, 2: BC-UKF, 3: AP-UKF, 4: A VC-UKF, 5: ALL-UKF).
+VII. CONCLUSIONS
+In this paper, we presented new algorithms to calibrate
+an IMU and camera to handle severe system uncertainty
+from the IMU. This represents one of the Þrst attempts to
+accurately calibrate an ultralow-cost IMU and a camera. Each
+sub-algorithm is designed to handle internal and external
+factors that cause the noise for an IMU. The proposed
+calibration algorithms provided more reliable performance
+for the fusion of ultralow-cost inertial and visual sensors.
+Furthermore, they can be used to deal with system uncer-
+tainty in inertial-visual navigation systems. The simulation
+and experimental results demonstrated the accuracy and
+potential industrial value of the proposed algorithms.
+ACKNOWLEDGMENT
+This work was supported by the Global Frontier R&D
+Program on <Human-centered Interaction for Coexistence>
+funded by the National Research Foundation of Ko-
+rea grant funded by the Korean Government(MSIP)
+(2012M3A6A3055690).
+This research was supported by Basic Science Research
+Program through the National Research Foundation of Ko-
+rea(NRF) funded by the Ministry of Science, ICT & Future
+Planning (2012R1A1A1010871).
+REFERENCES
+[1] O. J. Woodman, ÒAn introduction to inertial navigation,Ó University
+of Cambridge, Computer Laboratory, Tech. Rep., 2007.
+[2] G. Panahandeh, I. Skog, and M. Jansson, ÒCalibration of the ac-
+celerometer triad of an inertial measurement unit, maximum likelihood
+estimation and cramer-rao bound,Ó in International Conference on
+Indoor Positioning and Indoor Navigation, 2010.
+[3] J. Mattingely and S. Boyd, ÒReal-time convex optimization in signal
+processing,Ó IEEE Signal Processing Magazine, vol. 27, no. 3, pp.
+50Ð61, 2010.
+[4] R. van der Merwe, ÒSigma-point kalman Þlters for probabilistic
+inference in dynamic state-space models,Ó Ph.D. dissertation, Oregon
+Health & Science University, 2004.
+[5] A. Johnson, R. Willson, J. Goguen, J. Alex, and D. Meller, ÒField
+testing of the mars exploration rovers descent image motion estimation
+system,Ó 2005.
+[6] F. M. Mirzaei and S. I. Roumeliotis, ÒA kalman Þlter-based algorithm
+for imu-camera calibration: Observability analysis and performance
+evaluation,Ó IEEE Transactions on Robotics and Automation, vol. 24,
+no. 5, pp. 1143Ð1156, 2008.
+[7] J. Lobo and J. Dias, ÒRelative pose calibration between visual and
+inertial sensors.Ó International Journal of Robotics Research, vol. 26,
+no. 6, pp. 561Ð575, 2007.
+[8] D. Simon, Optimal State Estimation: Kalman, H InÞnity, and Nonlin-
+ear Approaches. Wiley-Interscience, 2006.
+[9] L. Ljung and T. Soderstrom, Theory and Practice of Recursive
+IdentiÞcation. MIT Press, 1987.
+[10] R. Hermann and A. J. Krener, ÒNonlinear controllability and observ-
+ability,Ó IEEE Transactions On Automatic Control, vol. 22, no. 5, pp.
+728Ð740, 1977.
+[11] J. D. Hol, T. B. Sch¬ on, and F. Gustafsson, ÒModeling and calibration
+of inertial and vision sensors,Ó International Journal of Robotics
+Research, vol. 29, no. 2, pp. 231Ð244, 2010.
+[12] J. Kelly and G. S. Sukhatme, ÒVisual-inertial sensor fusion: Local-
+ization, mapping and sensor-to-sensor self-calibration,Ó International
+Journal of Robotics Research, vol. 30, no. 1, pp. 56Ð79, 2011.
+[13] G. Panahandeh, D. Zachariah, and M. Jansson, ÒMirror based imu-
+camera and internal camera calibration,Ó in International Conference
+on Robot,Vision and Signal Processing, 2011.
+[14] D. Zachariah and M. Jansson, ÒJoint calibration of an inertial measure-
+ment unit and coordinate transformation parameters using a monocular
+camera,Ó in International Conference on Indoor Positioning and In-
+door Navigation, 2010.
+[15] K. B. A. Soloviev, ÒFilter-based calibration for an imu and multi-
+camera system,Ó in IEEE/ION Position, Location and Navigation
+Symposium, 2012.
+[16] T. Dong-Si and A. I. Mourikis, ÒInitialization in vision-aided iner-
+tial navigation with unknown camera-imu calibration,Ó in IEEE/RSJ
+International Conference on Intelligent Robots and Systems, 2012.
+[17] M. Fleps, E. Mair, O. Ruepp, M. Suppa, and D. Burschka, ÒOpti-
+mization based imu camera calibration.Ó in IEEE/RSJ International
+Conference on Intelligent Robots and Systems, 2011.
+[18] A. B. ChatÞeld, Fundamentals of high accuracy inertial navigation.
+Reston, V A. American Institute of Aeronautics and Astronautics, Inc.,
+1997.
+[19] A. J. Davison, ÒReal-time simultaneous localisation and mapping with
+a single camera,Ó in IEEE International Conference on Computer
+Vision, 2003.
+[20] R. I. Hartley and F. Kahl, ÒGlobal optimization through rotation space
+search,Ó International Journal of Computer Vision, vol. 82, no. 1, pp.
+64Ð79, 2009.
+[21] R. Kandepu, L. Imsland, and B. A. Foss, ÒConstrained state estimation
+using the unscented kalman Þlter,Ó in Mediterranean Conference on
+Control and Automation, 2008.
+[22] P. Ruckdeschel, ÒOptimally robust kalman Þltering,Ó Fraunhofer
+ITWM, Tech. Rep., 2010.
+[23] Z. Zhang, ÒFlexible camera calibration by viewing a plane from un-
+known orientations,Ó in IEEE International Conference on Computer
+Vision, 1999.
+[24] D. Simon, ÒKalman Þltering with state constraints: a survey of linear
+and nonlinear algorithms,Ó IET Control Theory & Applications, vol. 4,
+no. 8, pp. 1303Ð1318, 2010.
+[25] J. Y . Bouguet. (2008) Camera calibration toolbox for matlab. [Online].
+Available: http://www.vision.caltech.edu/bouguetj/calib doc/
+3026

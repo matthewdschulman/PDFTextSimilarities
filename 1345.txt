@@ -1,0 +1,1301 @@
+Assignment Algorithms for Modeling Resource Contention and
+Interference in Multi-Robot Task-Allocation
+Changjoo Nam and Dylan A. Shell
+Abstract— We consider optimization of the multi-robot task-
+allocation problem when the overall performance of the team
+need not be a standard sum-of-cost model. We introduce a
+generalization that allows for the additional cost incurred by
+resource contention to be treated in a straightforward manner.
+In this variant, robots may choose one of shared resources to
+perform a task, and interference may be modeled as occurring
+when multiple robots use the same resource. We investigate the
+general NP-hard problem and instances where the interference
+results in linear or convex penalization functions.
+We propose an exact algorithm for the general problem
+and polynomial-time algorithms for the other problems. The
+exact algorithm ﬁnds an optimal assignment in a reasonable
+time on small instances. The other two algorithms quickly
+ﬁnd an optimal and a high-quality approximation assignment
+even if a problem is of considerable size. In contrast to
+conventional approximation methods, our algorithm provides
+the performance guarantee.
+I. INTRODUCTION
+The literature on multi-robot coordination has grown enor-
+mously in the past few decades, reﬂecting the potential ad-
+vantages of a team of robots over a single robot. Multi-robot
+task-allocation (MRTA) addresses optimization of collective
+performance by reasoning about which robots in the team
+should perform which tasks. Although resource contention
+and physical interference have long been known to limit
+performance [1], the vast majority of MRTA work considers
+settings for which interference is treated as negligible (cf.
+review in [2]). This limits the applicability of these methods,
+and computing a task assignment under assumptions of
+noninterference may produce suboptimal behavior even if the
+algorithm solves the assignment problem optimally. Several
+authors have proposed task allocation approaches that model
+or avoid interference (usually physical interference), see for
+example, [3], [4]. These works, however, do not set out to
+achieve global optimality, or understand the computational
+consequences of a model of interference.
+In this paper, we assume a centralized system in which
+all information is known by a dispatcher, which optimizes
+task allocation. We also assume that a robot can perform
+only one task at a time, each task requires only one robot
+to execute it, and that the allocation of tasks to robots need
+consider only instantaneously available information and need
+not hedge against future plans. This problem can be posed
+as an Optimal Assignment Problem (OAP), which is well-
+studied, and can be cast as an integral linear program. This
+conventional MRTA problem does not specify how robots
+use resources so it is unable for it to account for interfer-
+This work was supported by National Science Foundation (award num-
+bers CMMI-1100579 and IIS-1302393). Both authors are with the Depart-
+ment of Computer Science and Engineering at Texas A&M University, Col-
+lege Station, Texas, USA.fcjnam,dshellg at cse.tamu.edu
+ence incurred by sharing resources. Instead, it assumes that
+resources are individually allocated to robots or, if shared,
+that they impose no limits.
+In our problem, however, robots may have choice in
+using resources to perform tasks (e.g., several routes to
+reach a destination, or use of other shared resources), and
+the costs of performing the tasks may vary depending on
+the choice. If several robots use the same resource, we
+allow interference between them to be modeled. Inter-agent
+interference is treated mathematically as a penalization to the
+cost of performing that task. In this manner, we can model
+shared resources and generalize the conventional MRTA
+problem formulation to include resource contention. The
+result is an optimization problem for ﬁnding the minimum-
+cost solution including the interference induced penalization
+cost. We term this the multiple-choice assignment problem
+with penalization (mAPwP).
+In general, there are many ways penalization costs
+could be estimated. When evaluation of the interference is
+polynomial-time computable, we call this the mAPwP with
+polynomial-time computable penalization function (mAP-
+wPP). Even with a cheaply computable penalization function,
+mAPwPP is NP-hard [5]. We also investigate two other
+problems that have particular forms of penalization functions:
+linear and general convex functions, which are in P and
+NP-hard, respectively [5]. We provide an exact algorithm
+and two polynomial-time algorithms for the problems. The
+algorithms are domain-independent so that it can be used
+for many multi-agent scenarios that have quantiﬁable inter-
+ference between agents.
+II. RELATED WORK
+Recent studies dealing with limited shared resources in
+multi-robot systems are mainly focused on the multi-robot
+path planning (MPP) problem: [6] employ a mixed-integer
+quadratic programming methods to optimize trajectories of
+robots while avoiding collisions; [7] propose an integer
+linear programming method to ﬁnd collision-free paths for
+multiple robots; [8] suggest an MPP algorithm that consists
+of macro-, micro-, and meso-scale planners. Their meso-
+scale planner considers groups of other robots as a coherent
+moving obstacle while the micro-scale planner locally avoids
+individual obstacles. Although those methods quickly ﬁnd
+high-quality solutions, their approaches are domain-speciﬁc
+so not appropriate for general problems where robots contend
+for arbitrary shared resources, not necessarily only physi-
+cal space. Moreover, resources modeled in [7] are able to
+accommodate only one robot at each time step, which is
+restrictive to model real-world applications. In [8], the micro-
+scale collision avoidance is based on local observations, and
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 2158
+it does not achieve global optimality. We are not aware of
+previous hardness results with respect to resource sharing in
+multi-robot systems.
+The equivalence of the classical assignment problem by a
+network ﬂow problem has been well known for decades. This
+may lead to the suggestion that one can prevent interference
+by imposing additional constraints in the form of capacity
+constraints in the ﬂow formulation. This can be solved
+by a centralized [9] or a distributed manner [10]. However,
+that approach models interference as a binary penalization,
+which is zero or inﬁnite, whereas additional costs incurred
+by resource contention are more widely applicable if the
+interference is modeled as a continuous function that in-
+creases proportionally to the amount of interference. (See, for
+example, our use of published and validated trafﬁc models
+in Section VI.)
+An alternative is for the mAPwPP can be cast as a linearly
+constrained 0-1 programming problem, with the penalization
+function incorporated into the objective function with the
+cost sum. The objective function is optimized over a polytope
+deﬁned by the mutual exclusion and integral constraints. The
+results in this paper suggest that one can have an optimal
+solution in polynomial time if the penalization function is
+linear. When the penalization is more complex, a common
+method to solve the problem is enumeration, for example
+using the branch-and-bound method, but its time complexity
+in the worst case is as bad as that of an exhaustive search;
+rather more insight is gained by employing the method
+we introduce in this paper. Many practical algorithms such
+as [11] and [12] are suggested in the literature, but they
+may also have exponential running time. Linearizing the
+complex penalization function could be an alternative to have
+polynomial running time but has no performance guarantee.
+III. PROBLEM DESCRIPTION
+A. Bipartite Multigraph
+The mAPwP problem can be expressed as a bipartite
+multigraph. Let G = (R;T;E) be a bipartite multigraph
+consisting of two independent sets of vertices R and T ,
+wherejRj = n andjTj = m, and a collection of edges E.
+An edge is a set of two distinct vertices denoted (i;j) and
+incident to i and j. Each edge in G is incident to both a
+vertex in R and a vertex in T , and p
+ij
+is the number of
+edges between two vertices. The vertices inR andT can be
+interpreted as n robots and m tasks, respectively. An edge
+is a way in which a robot may use resources, for which it
+expected to select one among p
+ij
+choices for a given task.
+The precise interaction between resources is modeled via
+penalization function, described next.
+B. Multiple-Choice Assignment Problem with Penalization
+(mAPwP)
+Givenn robots andm tasks, the robots should be allocated
+to tasks with the minimum cost. Each allocation of a robot
+to a task can be done via one of the p
+ij
+choices where i
+and j are indices of the robots and the tasks, respectively.
+Each of thep
+ij
+choices represents some set of resources used
+by a robot to achieve a task. The multiple choices indicate
+the resources can be used in many ways. We assume we
+are given c
+ijk
+, the interference-free cost of the i-th robot
+performing the j-th task through the k-th choice. Let x
+ijk
+be a binary variable that equals to 0 or 1, where x
+ijk
+= 1
+indicates that thei-th robot performs thej-th task in thek-th
+manner. Otherwise, x
+ijk
+= 0.
+In problem domains where multiple robots share re-
+sources, use of the same limited resource will typically
+incur a cost. We model this via a function which corrects
+the interference-free assignment cost (i.e., the linear sum
+of costs) by including the additional cost of the effects of
+resource contention (Q() in 1). We assume that the cost
+and the penalization are nonnegative real numbers. We also
+permit the cost to positive inﬁnity when interference is
+catastrophic (or, for example, only one robot is permitted
+to use the resource). We assume n =m. If n6=m, dummy
+robots or tasks would be inserted to make n =m. Then the
+mAPwP problem is ﬁnding x
+ijk
+that
+min
+n
+X
+i=1
+m
+X
+j=1
+p
+ij
+X
+k=1
+x
+ijk
+c
+ijk
++Q(x
+111
+;x
+112
+;:::;x
+11p
+11
+;:::;xnmpnm
+);
+(1)
+subject to
+m
+X
+j=1
+p
+ij
+X
+k=1
+x
+ijk
+= 1 8i; (2)
+n
+X
+i=1
+p
+ij
+X
+k=1
+x
+ijk
+= 1 8j; (3)
+0x
+ijk
+ 1 8fi;j;kg; (4)
+x
+ijk
+2Z
++
+8fi;j;kg: (5)
+We note —without proof, owing to limited space— that (5)
+is superﬂuous because the constraint matrix satisﬁes the
+property of totally unimodular (TU) matrix.
+1
+C. Penalization
+The penalization function maps a particular assignment
+to the additional cost associated with the interference. In the
+formulation of mAPwP earlier,Q() denotes the penalization
+function in most general terms. The mAPwP becomes the
+mAPwPP when Q() is computable in polynomial time.
+The input domain for Q has  O(maxfn;mg! 
+(maxfp
+ij
+g)
+minfn;mg
+) elements; in most cases a penalization
+function is more conveniently written in some factorized
+form. One example is if one is concerned only with the
+number of robots using a resource, not precisely the identities
+of the robots that are. If Q
+l
+(n
+l
+) is the penalization function
+of the l-th choice where n
+l
+is the number of robots for that
+choice, then the total penalization could be written as:
+Q(x
+111
+;x
+112
+;:::;x
+11p
+11
+;:::;xnmpnm
+)
+=Q
+1
+(n
+1
+)+Q
+2
+(n
+2
+)+:::+Qq(nq)
+=
+q
+X
+l=1
+Q
+l
+(n
+l
+):
+(6)
+whereq is the total number of choices in an environment. If
+the robots are homogeneous, n
+l
+is the same as the number
+of robots on the l-th choice. Otherwise, each robot has a
+weight that represents the occupancy of the robot. IfQ() is
+convex, the mAP becomes the mAP with convex penalization
+1
+The standard treatment of the OAP without a penalization factor for task
+allocation (e.g., in [2]) considers only a bipartite graph (i.e.,8
+i
+8
+j
+p
+ij
+= 1).
+Although TU is well-known for the problem, we believe this to be the ﬁrst
+recognition of this fact for the problem above.
+2159
+R1
+R2
+R3
+T2
+T3
+Conflict!
+T1
+(a) An example of the mAPwP prob-
+lem.
+r 2
+r 1
+r 3 t 3
+t 2
+t 1
+R T
+x 111
+x 121
+x 211
+x 221
+x 131
+x 231
+(b) A weighted bipartite
+multigraph.
+Fig. 1: An example of the mAPwP problem. (a) Robots have multiple ways
+to reach their destinations. Interference occurs when both R
+1
+and R
+2
+use
+the passage in the center. (b) A weighted bipartite multigraph representation
+of the example. (Weights are omitted for brevity.) An edge represents a
+resource (a passage) to perform a task (to reach a destination).
+function (mAPwCP). Especially, it comes to be the mAP with
+linear penalization function (mAPwLP) if Q() is linear.
+D. An Example
+An example of the mAPwP is shown in Fig. 1(a). The
+goal is to minimize the total traveling time by distributing
+robots (R
+1
+;R
+2
+andR
+3
+) to three destinations (T
+1
+;T
+2
+andT
+3
+).
+R
+1
+and R
+2
+can use all the paths, but R
+3
+cannot use the
+narrow passage that T
+1
+and T
+2
+are located in because R
+3
+is
+wider than the passage. There will be interference if bothR
+1
+and R
+2
+try to reach their destinations through the passage,
+so a time delay is incurred, which must be added to the
+total traveling time. A weighted bipartite multigraph that is
+equivalent to the example is shown in Fig. 1(b). The graph
+hasjRj =jTj = 3 vertices, and every pair of vertices has
+2 edges except for p
+31
+= p
+32
+= p
+33
+= 1. In this example,
+x
+111
+;x
+121
+;x
+131
+;x
+211
+;x
+221
+and x
+231
+are indicator variables
+reﬂecting use of the narrow passage, and interference occurs
+when more than one of these six variables are nonzero.
+IV. NP-HARDNESS OF MAPWP PROBLEMS
+In this section, we show the mAPwPP and mAPwCP
+are NP-hard optimization problems, and the mAPwLP is
+in P. We prove the corresponding decision problem of
+the mAPwPP (D-mAPwPP) is NP-complete to prove the
+problem is an NP-hard optimization problem [13]. Then we
+brieﬂy describe the mAPwLP is in P and show the mAPwCP
+is NP-hard.
+A. The mAPwPP is NP-hard
+Theorem 4.1 The D-mAPwPP problem is in NP.
+Theorem 4.2 The D-mAPwPP is NP-hard.
+The proofs of Theorm 4.1 and 4.2 are detailed in [5].
+Corollary 4.3 By Theorem 4.1 and 4.2, the D-mAPwPP
+problem is NP-complete. Therefore, the mAPwPP problem
+is NP-hard optimization problem.
+B. The mAPwLP is in P
+Mathematically, the mAPwLP can be cast as an integer lin-
+ear programming problem whose constraint matrix satisﬁes
+the property of totally unimodularity. This problem can be
+solved in polynomial time as described in [14, Corollary 2.2].
+Therefore, the mAPwLP is in P.
+C. The mAPwCP is NP-hard
+The mAP with a convex quadratic penalization function
+(mAPwCQP) is a proper subset of the mAPwCP, and is a
+natural next step after examining mAPwLP. The mAPwCQP
+has the form
+minfx
+T
+Hx+cx:Axb;x2f0;1gg (7)
+where H is positive semideﬁnite and symmetric, c is non-
+negative, A is TU, and b is integer.
+The following binary quadratic programming (BQP) is an
+NP-hard problem [15, Theorem 4.1]. The BQP problem is
+minfy
+T
+My+dy:A
+0
+yb
+0
+;y2f0;1gg (8)
+whereM =L
+T
+DL,D =I,d = 0,L is TU and nonsingular,
+A
+0
+is TU, and b
+0
+is integer.
+Theorem 4.4 The mAPwCQP is NP-hard.
+The proof of Theorem 4.4 is also detailed in [5].
+Lemma 4.5 mAPwCQP( mAPwCP.
+Corollary 4.6 By Theorem 4.4 and Lemma 4.5, the mAP-
+wCP is NP-hard.
+V. ALGORITHMS FOR MAP PROBLEMS
+In this section, we devise algorithms for mAP problems.
+The exact algorithm for the mAPwPP recursively enumer-
+ates unpenalized assignments and their costs from the best
+assignment in terms of optimality, by calling a combinatorial
+optimization algorithm for each iteration. However, no enu-
+meration and optimization algorithm exists for multigraphs,
+so we must extend Murty’s ranking algorithm [16] and the
+Hungarian method [17] to the weighted bipartite multigraphs.
+Then we suggest polynomial-time algorithms for the mAP-
+wLP and the mAPwCP. For brevity, we denote them by
+the (optimal) mAPwLP algorithm and the (approximate)
+mAPwCP algorithm, respectively. The algorithms consist of
+two phases: the optimization phase and the rounding phase.
+In the ﬁrst phase, we relax the integral constraint (5) so
+that a solution can be obtained in polynomial time, but it
+can be fractional. Thus, the second phase rounds a fractional
+solution to ensure the integrality of the assignment.
+A. The Multiple-Choice (MC) Hungarian Method
+We modify the labeling operations (the initialization and
+the update operations) and the path augmentation from the
+original Hungarian method. The labeling operations include
+all p
+ij
+edges incident to i and j. In the path augmentation
+step, the minimum-weighted edge among p
+ij
+is selected
+as the path between i and j. The time complexity of this
+algorithm is O(p
+2
+(maxfn;mg)
+3
+).
+B. The Multiple-Choice (MC) Murty’s Ranking Algorithm
+We modify the partitioning part of the original ranking
+algorithm. The set of all matchings is partitioned into subsets
+by removing each vertex and edges of s-th matching. After
+ﬁnding an optimal solution of each subset by Alg. ??, the
+vertices and the edges of the optimal solution are recovered.
+In the removing and recovering procedures, p
+ij
+edges are
+removed and recovered all together. The other parts are same
+as the original version. The time complexity of this algorithm
+is O(sp
+2
+(maxfn;mg)
+4
+).
+C. Exact Algorithm for the mAPwPP
+The pseudocode is given in Alg. 1. We assume p
+ij
+=
+p;8fi:jg. Otherwise, we may add dummy edges with inﬁnite
+cost. We denote the cost of s-th assignment before/after
+penalization as c
+s =+
+. Similarly, Q
+s
+refers the penalization
+of the s-th assignment. In the ﬁrst iteration (i.e., s = 1), the
+algorithm computes the best assignment without penalization
+2160
+(c
+1 
+). The penalization of the best assignment (Q
+1
+) is
+computed and added to the cost of the best assignment
+(c
+1+
+= c
+1 
++ Q
+1
+). Then, the algorithm computes the
+next-best assignment and compares its unpenalized cost
+(c
+s 
+) with the minimum penalized cost to the previous step
+(minfc
+1+
+;:::;c
+(s 1)+
+g). The MC Murty’s ranking algorithm,
+which takes the previous-best assignmentX
+(s 1)
+as an input,
+enables recursive computation of the next-best assignment
+(line 3). The algorithm repeats each iteration until either
+of the following conditions are met: when an unpenalized
+cost is greater or equal to the minimum penalized cost
+so that minfc
+1+
+;:::;c
+(s 1)+
+g c
+s 
+, or the algorithm has
+enumerated all assignments (N
+
+=
+m
+P
+n
+ 
+n;m
+i;j
+p
+ij
+). The
+exact algorithm guarantees the optimality but has potentially
+impractical running-time in the worst case.
+Algorithm 1 Exact algorithm
+Input: Annmp cost matrix which is equivalent to a weighted bipartite
+multigraphG = (R;T;E) wherejRj =n;jTj =m andp
+ij
+=p;8fi;jg,
+and penalization functions Q
+l
+for all l.
+Output: An optimal assignment X
+
+and its cost c
+
+.
+1 Initialize s = 1
+2 while s<N
+
+3 Compute X
+s
+and c
+s 
+= MC Murty’s ranking algorithm=
+4 if s = 1
+5 Compute Q
+s
+and c
+s+
+=c
+s 
++Q
+s
+6 s =s+1
+7 else
+8 if (c
+s 
+ minfc
+1+
+;:::;c
+(s 1)+
+g)
+9 X
+
+=X
+s 1
+and c
+
+= minfc
+1+
+;:::;c
+(s 1)+
+g
+10 return X
+
+; c
+
+11 else
+12 Compute Q
+s
+and c
+s+
+=c
+s 
++Q
+s
+13 s =s+1
+14 end if
+15 end if
+16 end while
+17 X
+
+=X
+s
+and c
+
+= minfc
+1+
+;:::;c
+s+
+g
+18 return X
+
+; c
+
+D. Optimal Algorithm for the mAPwLP
+The ﬁrst phase uses an interior point method (IPM) for
+linear programming (LP). LP has the optimal solution on a
+vertex of a polytope. All vertices of a polytope deﬁned by
+a TU matrix are integer. However, an IPM may produce a
+fractional solution in which a problem has multiple optimal
+solutions [14]. In this case, all optimal solutions form an
+optimal face of the polytope [18]. It is then likely that an IPM
+converges to an interior point of this optimal face, which is
+not integer. In this case, we use the MC Hungarian method
+to choose one of the multiple optimal solutions which is
+integer. The pseudocode is not given due to the space limit
+but same with Alg. 2 except Line 1: it uses an IPM for LP.
+The time complexity of the IPM for LP that we
+used is O((maxf2n;nmpg)
+3
+L) [19]
+2
+where L is the bit
+length of input variables. The MC Hungarian method has
+O(p
+2
+(maxfn;mg)
+3
+) complexity so the overall time com-
+plexity is O((maxf2n;nmpg)
+3
+L). We use msklopt func-
+tion of MOSEK optimization toolbox for MATLAB [21].
+E. Approximation Algorithm for the mAPwCP
+The pseudocode is given in Alg. 2. The ﬁrst phase uses
+an IPM for a convex optimization problem. The objective
+2
+The state of the art is [20] whose complexity isO(
+max(2n;nmp)
+3
+ln max(2n;nmp)
+L).
+function must be twice differentiable to use the IPM. In con-
+vex programming, the solution could be fractional because
+not only are there multiple optimal solutions but also it is
+the unique optimal fractional solution. We also use the MC
+Hungarian method to round fractional solutions. Since the
+rounded solution may not be an optimal integer assignment,
+we provide its performance guarantee.
+Theorem 5.1 The performance guarantee of the mAPwCP
+algorithm is maxfQ
+1;:::;N
+g  minfQ
+1;:::;N
+g.
+The proof of Theorm 5.1 is detailed in [5]. Note that the
+performance guarantee depends solely on the penalization.
+The time complexity of an IPM for a convex optimization
+isO((maxf2n;nmpg)
+3:5
+L) [22] so it is same as the overall
+complexity. We use MOSEK mskscopt function for opti-
+mization. Table I summarizes the problems and algorithms.
+TABLE I: A summary of the problems and algorithms.
+Problem mAPwLP mAPwCP
+Objective function Linear Convex
+Complexity class P NP-hard
+Algorithm
+Step I Linear programming (IPM) Convex optimization (IPM)
+Step II The Multiple-Choice Hungarian method
+Overall complexity O((maxf2n;nmpg)
+3
+L) O((maxf2n;nmpg
+3:5
+L)
+Performance guarantee Optimal
+maxfQ
+1;:::;N
+
+g
+ minfQ
+1;:::;N
+
+g
+Algorithm 2 The mAPwCP algorithm
+Input: Annmp cost matrix which is equivalent to a weighted bipartite
+multigraph G = (R;T;E) wherejRj = n;jTj = m, p
+ij
+= p;8fi;jg,
+and convex penalization functions Q
+l
+for all l.
+Output: An optimal assignment X
+
+and its cost c
+
+.
+1 Compute X
+
+R
++
+and c
+
+R
++
+= IPM for CP=
+2 Compute
+^
+X
+
+Z
++
+and ^ c
+
+Z
++
+= MC Hungarian method=
+3 X
+
+=
+^
+X
+
+Z
++
+, c
+
+= ^ c
+
+Z
++
+4 return X
+
+, c
+
+VI. EXPERIMENTS
+We demonstrate that the exact algorithm works well and
+returns a result in reasonable time for practically sized
+cost matrices. The mAPwLP and the mAPwCP algorithms
+quickly produce solutions for even larger matrices. We
+implemented all the algorithms in MATLAB. The solution
+quality is measured by a ratio of an approximated solution to
+an optimal solution =
+c
+0
+c
+
+ 1. We assume thatn =m and
+p
+ij
+= p;8fi:jg for all the experiments. As we detail next,
+both randomly generated problem instances and instances
+based on real-world scenarios were used to validate the
+algorithms. Also, they are demonstrated with physical robots
+in small-scale experiments. First, we provide some detail on
+the particular penalization models used.
+A. Penalization Functions
+A penalization function models the interference incurred
+in a particular environment, and should consider the speciﬁc
+aspects of the robots and environment. Simple examples
+based on a factorization that adds costs as a function of the
+number of robots utilizing a resource, include models in the
+form of linear and an convex quadratic functions. Following
+the form in (6), let those penalization models for use of the
+l-th resource be
+Q
+l
+(n
+l
+) =
+
+
+L
+n
+l
++
+0
+L
+n
+l
+ 1
+0 otherwise,
+(9)
+and
+Q
+l
+(n
+l
+) =
+
+
+C
+n
+2
+l
++
+0
+C
+n
+l
++
+00
+C
+n
+l
+ 1
+0 otherwise,
+(10)
+where 
+L
+; 
+0
+L
+; 
+C
+; 
+0
+C
+; and 
+00
+C
+are constants.
+2161
+For the multi-vehicle transportation scenario, we used the
+classic ﬂow model developed by domain experts to quantify
+trafﬁc congestion [23]. Many models have been proposed in
+the literature that compute a trafﬁc speedv (m/s) according to
+trafﬁc density (vehicle/m). We let =n
+l
+because we only
+consider an instantaneous assignment problem. We use an
+exponential model for our application that travel time (sec)
+is used as cost
+Q
+l
+(n
+l
+) =
+8
+<
+:
+d
+l
+v
+f
+
+1 exp
+
+ 
+
+v
+f
+ 
+1
+n
+l
+ 
+1
+
+j
+	
+
+j
+n
+l
++1 otherwise,
+(11)
+wherev
+f
+is the free ﬂow speed (whenn
+l
+= 0),
+j
+is the jam
+density, and  is the slope of the headway-speed curve
+3
+at
+v = 0, andd
+l
+is the length of a resource that could be shared
+with other robots such as a passage.
+B. Random Problem Instances
+A uniform cost distribution (U(0; 60)) is used to test the
+algorithms. The penalization function (10) is used for the
+exact and the mAPwCP algorithm, and (9) is used for the
+mAPwLP (
+L
+= 
+C
+= 1 and 
+0
+L
+= 
+0
+C
+= 
+00
+C
+= 0). With
+ﬁxedp = 5, the size of the cost matrix (n) increases from 5
+to 100 at intervals of 5 (10 iterations for each). Fig. 2 shows
+running times and solution qualities of our algorithms, and
+they are compared to conventional methods such as branch
+and bound (BB) and randomized rounding. We do not report
+results for the BB method on mAPwCP because the running-
+time is impractical even when the instance size is small (e.g.,
+n = 10). We display only summarized results in Table II
+owing to the space limitations (See [5] for full data).
+The exact algorithm ﬁnds an optimal assignment in a
+reasonable time on small instances (n 8); even a small
+problem has a huge search space (e.g.,N
+
+= 375; 000 when
+n = 5 and p = 5). The mAPwLP and mAPwCP algorithms
+quickly ﬁnd solutions even if n is large. Our methods are
+faster than the BB methods and similar to the randomized
+rounding methods. However, the methods we propose are the
+only to have polynomial running time. The solution qualities
+of the mAPwCP is better than the BB method (also the
+proposed algorithms have a performance guarantee).
+TABLE II: Running time and solution quality of random instances.
+(a) The exact algorithm.
+n 3 4 5 6 7 8 9
+Running Mean 0.0041 0.0115 0.0208 0.0894 0.3324 3.8327 95.1580
+time (sec) Std. dev. 0.0043 0.0047 0.0144 0.0721 0.2467 2.6072 93.7848
+(b) The mAPwLP and mAPwCP algorithms. See [5] for full data.
+n 10 40 70 100
+mAPwLP
+Running Mean 0.2689 0.3003 0.3848 0.5786
+time (sec) Std. dev. 0.0040 0.0064 0.0059 0.0067
+Quality Mean 1.0000 1.0000 1.0000 1.0000
+() Std. dev. 0.0000 0.0000 0.0000 0.0000
+mAPwCP
+Running Mean 0.2296 0.2898 0.4908 0.8462
+time (sec) Std. dev. 0.0051 0.0044 0.0101 0.0311
+Quality Mean  1.0537 1.0092 1.0074 1.0030
+() Std. dev. 0.0282 0.0078 0.0089 0.0020
+C. Multi-Vehicle Transportation Problems
+A multi-vehicle transportation problem is used as a repre-
+sentative application. We assume thatn homogeneous robots
+and n tasks are distributed across p bridges in as shown in
+Fig. 3. The robots and the tasks are uniformly distributed
+within the boundaries. Distances from the robots to the
+3
+The ratio of (inﬁnitesimal) velocity change over (inﬁnitesimal) headway
+change.
+0 10 20 30 40 50
+0
+0.05
+0.1
+0.15
+0.2
+0.25
+0.3
+0.35
+0.4
+0.45
+0.5
+Running time (Uniformly distributed robots/tasks)
+Input size (n)
+Time (sec)
+ 
+ 
+Exact
+mAPwCP
+mAPwLP
+(a) Running times
+0 10 20 30 40 50
+0.9
+0.92
+0.94
+0.96
+0.98
+1
+1.02
+1.04
+1.06
+1.08
+1.1
+Solution quality (Uniformly distributed robots/tasks)
+Input size (n)
+Ratio (? = c/c
+*
+)
+ 
+ 
+mAPwCP
+mAPwLP
+(b) Solution qualities
+Fig. 4: Running time and solution quality of the multi-vehicle transportation
+problem. (a) The mAPwLP and mAPwCP algorithms quickly produce
+solutions. (b) The qualities are close to one for both algorithms.
+tasks through the bridges are collected using the Google
+API [24]. The raw data are in meters but converted to time
+(sec) according to v
+f
+. Thus, costs are travel times without
+congestion but penalized for the increased time owing to
+congestion. With ﬁxed p = 5, n increases from 5 to 50 (3
+to 9 for the exact algorithm). Other parameters are:
+v f = 16:67 m/s;
+d
+l
+= f500; 300; 250; 400; 200g m;
+
+j
+l
+= f120; 80; 70; 90; 80g robot/choice
+
+l
+= f0:1389; 0:1667; 0:1528; 0:1944; 0:1389g s
+ 1
+where the parameter settings reﬂect the characteristics of
+the real-world multi-vehicle transportation problem for l =
+1;:::; 5. We use (11) for the exact algorithm. However, our
+implementations for Alg. 2 do not allow a complex exponen-
+tial function like (11). Thus, we approximate (11) as linear
+and convex quadratic functions of the form (9) and (10).
+Fig. 4 and Table III show the results (10 iterations for each).
+The results are similar to the random instance case. This
+experiment shows that our algorithms can model realistic
+scenarios of robotic applications.
+Fig. 3: Robots and tasks are
+located across ﬁve bridges. n
+robots and tasks are uniformly
+distributed in the upper and
+lower boxes, respectively.
+TABLE III: Running time and solution quality of the multi-vehicle trans-
+portation problem.
+(a) The exact algorithm.
+n 3 4 5 6 7 8 9
+Running Mean 0.0044 0.0088 0.0395 0.1298 0.5913 4.2897 126.0774
+time (sec) Std. dev. 0.0015 0.0045 0.0290 0.1171 0.8772 6.8811 202.1757
+(b) The mAPwLP and mAPwCP algorithms. (See [5] for full data).
+n 10 20 30 40 50
+mAPwLP
+Running Mean 0.2627 0.2710 0.2855 0.2935 0.3118
+time (sec) Std. dev. 0.0054 0.0073 0.0108 0.0037 0.0033
+Quality Mean 1.0000 1.0000 1.0000 1.0000 1.0000
+() Std. dev. 0.0000 0.0000 0.0000 0.0000 0.0000
+mAPwCP
+Running Mean 0.2232 0.2417 0.2589 0.2976 0.3515
+time (sec) Std. dev. 0.0034 0.0058 0.0056 0.0133 0.0040
+Quality Mean 1.0000 1.0000 1.0000 1.0000 1.0000
+() Std. dev. 0.0000 0.0000 0.0000 0.0000 0.0000
+D. Physical Robot Experiment
+We demonstrate that our method achieves global opti-
+mality even interference is not negligible. Fig. 5 shows the
+experimental setting. Two identical iRobot Creates (R
+1
+and
+R
+2
+) have tasks of visiting the other robot’s position (T
+1
+and T
+2
+). There are two passages to reach their destinations
+2162
+0 20 40 60 80 100
+0
+0.5
+1
+1.5
+2
+2.5
+Running time (Uniform costs)
+Input size (n)
+Time (sec)
+ 
+ 
+Exact
+B&B: LP
+Rounding: CP
+mAPwCP
+Rounding: LP
+mAPwLP
+(a) Running times
+0 20 40 60 80 100
+1
+1.2
+1.4
+1.6
+1.8
+2
+2.2
+Solution quality (Uniform costs)
+Input size (n)
+Ratio (? = c/c
+*
+)
+ 
+ 
+B&B: LP
+Rounding: CP
+mAPwCP
+Rounding: LP
+mAPwLP
+(b) Solution qualities
+Fig. 2: Running time and solution quality of random instance. (a) The mAPwLP and mAPwCP algorithms are slightly faster than the rounding method
+whose worst case running time is exponential. (b) The mAPwCP has better solution quality than the rounding method.
+(a) Both R
+1
+and R
+2
+use p
+1
+. (b) R
+1
+uses p
+1
+, and R
+2
+uses p
+2
+.
+Fig. 5: Two cases of resource use. (a) Robots use the same resource
+which causes interference. (b) Robots use different resources to avoid the
+interference.
+(p
+1
+and p
+2
+). We use travel time as the cost and (11) for
+the penalization function. We compute the assignment with
+Alg. 1. Space constraints and the data from the previous
+experiments forced us to omit reporting quantitative results.
+When the robots move through the shortest path to the
+destination to attain the minimum travel time, they choose
+the same passage p
+1
+(Fig. 5a). However, this choice incurs
+interference. When the assignment is penalized, the best
+assignment is changed to the other assignment: R
+1
+uses p
+1
+and R
+2
+uses p
+2
+(Fig. 5b). When the robots use the same
+resource p
+1
+, the mean travel time is 101.9 sec whereas the
+interference-free assignment takes 88.8 sec (10 iterations for
+each, standard deviations are 3.35 and 3.85, respectively).
+VII. CONCLUSION
+In this paper, we deﬁne the mAPwP problems where the
+mAPwPP, mAPwCP are NP-hard and mAPwLP is in P. We
+present an exact algorithm that generalizes Murty’s ranking
+algorithm to solve the matching problem for weighted bipar-
+tite multigraphs, which employs the Hungarian method as a
+subroutine (which we also generalize to the multiple-choice
+case). In addition, we propose two polynomial-time algo-
+rithms for the mAPwLP and the mAPwCP. The mAPwLP
+algorithm produces an optimal assignment, and the mAPwCP
+algorithm computes a solution with bounded quality. In
+the experiments, we model interference among robots by
+introducing several penalization functions; the results show
+that the exact algorithm ﬁnds an optimal solution, and the
+mAPwLP and mAPwCP algorithms produce an optimal and
+a high-quality solution quickly. We also conduct physical
+robot experiments to show how resource contention aggra-
+vates optimality in practice and that the proposed algorithm
+achieves global optimality when an interference model is
+included.
+REFERENCES
+[1] D. Goldberg and M. Matari´ c, “Interference as a Tool for Designing
+and Evaluating Multi-Robot Controllers,” in Proc. of AAAI Nat. Conf.
+on Artiﬁcial Intell., 1997, pp. 637–642.
+[2] B. Gerkey and M. Matari´ c, “A formal analysis and taxonomy of task
+allocation in multi-robot systems,” IJRR, vol. 23, pp. 939–954, 2004.
+[3] J. Guerrero and G. Oliver, “Physical interference impact in multi-robot
+task allocation auction methods,” in Proc. of IEEE Workshop on Dist.
+Intell. Syst.: Collective Intell. and Its Apps., 2006, pp. 19–24.
+[4] H. Choi, L. Brunet, and J. How, “Consensus-based decentralized
+auctions for robust task allocation,” T-RO, vol. 25, no. 4, pp. 912–
+926, 2009.
+[5] C. Nam and D. Shell, “Modeling resource contention and interfer-
+ence in multi-robot task-allocation,” http://cse.tamu.edu/media/27241/
+2014-1-1.pdf, CSE Dept., Texas A&M Univ., Tech. Rep., 2014.
+[6] J. Alonso-Mora, M. Ruﬂi, R. Siegwart, and P. Beardsley, “Collision
+avoidance for multiple agents with joint utility maximization,” in Proc.
+of ICRA, 2013, pp. 2833–2838.
+[7] J. Yu and S. LaValle, “Planning optimal paths for multiple robots on
+graphs,” in Proc. of ICRA, 2013, pp. 3612–3617.
+[8] L. He and J. van den Berg, “Meso-scale planning for multi-agent
+navigation,” in Proc. of ICRA, 2013, pp. 2839–2844.
+[9] T. Du, E. Li, and A.-P. Chang, “Mobile agents in distributed network
+management,” Commun. of the ACM, vol. 46.
+[10] A. Kumar, B. Faltings, and A. Petcu, “Distributed constraint opti-
+mization with structured resource constraints,” in Proc. of Int. Conf.
+on Autonomous Agents and Multiagent Syst., 2009, pp. 923–930.
+[11] H. L. Jr, “Integer programming with a ﬁxed number of variables,”
+Math. of Operations Research, pp. 538–548, 1983.
+[12] D. Dadush, C. Peikert, and S. Vempala, “Enumerative lattice algo-
+rithms in any norm via m-ellipsoid coverings,” in Proc. of IEEE Annu.
+Symp. on Found. of Comput. Sci., 2011, pp. 580–589.
+[13] V . Kann, “On the approximability of np-complete optimization prob-
+lems,” Ph.D. dissertation, Royal Institute of Technology, 1992.
+[14] T. Dey, A. Hirani, and B. Krishnamoorthy, “Optimal homologous
+cycles, total unimodularity, and linear programming,” SIAM J. on
+Computing, vol. 40, no. 4, pp. 1026–1044, 2011.
+[15] R. Baldick, “A uniﬁed approach to polynomially solvable cases of
+integer “non-separable” quadratic optimization,” Discrete Appl. Math.,
+vol. 61, no. 3, pp. 195–212, 1995.
+[16] K. Murty, “An algorithm for ranking all the assignments in order of
+increasing cost,” Operations Research, vol. 16, pp. 682–687, 1968.
+[17] H. Kuhn, “The hungarian method for the assignment problem,” Naval
+Research Logistic Quarterly, vol. 2, no. 1-2, pp. 83–97, 1955.
+[18] L.-H. Zhang, W. Yang, and L.-Z. Liao, “On an efﬁcient implementation
+of the face algorithm for linear programming,” J. of Computational
+Math., vol. 31, no. 4, pp. 335–354, 2013.
+[19] C. Gonzaga, An algorithm for solving linear programming problems
+in O(n
+3
+L) operations. Springer, 1989.
+[20] K. Anstreicher, “Linear programming ino([
+n
+3
+lnn
+]l) operations,” SIAM
+J. on Optimization, vol. 9, no. 4, pp. 803–812, 1999.
+[21] Mosek, “The mosek optimization software version 6,” Online at
+http://www.mosek.com, 2009.
+[22] Y . Nesterov, A. Nemirovskii, and Y . Ye, Interior-point polynomial
+algorithms in convex programming. SIAM, 1994, vol. 13.
+[23] G. Newell, “Nonlinear effects in the dynamics of car following,”
+Operations Research, vol. 9, no. 2, pp. 209–229, 1961.
+[24] Google, “The Google Directions API,” https://developers.google.com/
+maps/documentation/directions/, 2013.
+2163

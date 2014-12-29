@@ -1,0 +1,1311 @@
+Toward Featureless Visual Navigation: Simultaneous Localization and
+Planar Surface Extraction Using Motion Vectors in Video Streams
+Wen Li and Dezhen Song
+Abstract— Unlike the traditional feature-based methods, we
+propose using motion vectors (MVs) from video streams as
+inputs for visual navigation. Although MVs are very noisy and
+with low spatial resolution, MVs do possess high temporal reso-
+lution which means it is possible to merge MVs from different
+frames to improve signal quality. Homography ﬁltering and
+MV thresholding are proposed to further improve MV quality
+so that we can establish plane observations from MVs. We
+propose an extended Kalman ﬁlter (EKF) based approach to
+simultaneously track robot motion and planes. We formally
+model error propagation of MVs and derive variance of the
+merged MVs. We have implemented the proposed method and
+tested it in physical experiments. Results show that the system
+is capable of performing robot localization and plane mapping
+with a relative trajectory error of less than 5:1%.
+I. INTRODUCTION
+Many visual navigation approaches rely on correspon-
+dence of features between individual images to establish
+geometric understandings of image data. To do that, im-
+age data are often ﬁrst reduced to a feature set such as
+points. Then extensive statistical approaches such as random
+sample consensus (RANSAC) are employed to search for
+feature matches that satisfy the expected geometry rela-
+tionships. Such geometric relationships enable us to derive
+robot/camera ego-motion estimation or scene understandings
+in different applications such as visual odometry or simul-
+taneous localization and mapping (SLAM) [1]. The inherent
+drawback of these approaches is the expensive computation
+load and robustness of feature extraction, which is often
+hindered by varying lighting conditions and occlusions.
+On the other hand, recent streaming videos are transmitted
+after complex compression. These algorithms exploit sim-
+ilarities between blocks of pixels in adjacent frame sets,
+which are characterized as motion vectors (MVs), to reduce
+bandwidth needs (Fig. 1(a)). Compared with optical ﬂows,
+MVs have lower spatial resolution (per block vs. per pixel)
+but higher temporal resolution because MVs are extracted
+from multiple frames instead of mere two adjacent frames.
+MVs carry the correspondence information and are readily
+available from the encoded video data.
+Despite all the aforementioned advantages, MVs are not
+easy to use because of their low spatial resolution and
+relatively high noise. Here we explore how to use MVs
+for simultaneous localization and planar surface extraction
+(SLAPSE) for a mobile robot equipped with a single camera.
+We establish the MV noise models to capture the observation
+This work was supported in part by National Science Foundation under
+IIS-1318638.
+W. Li and D. Song are with CSE Department, Texas A&M University,
+College Station, TX 77843, USA. Email: fwli, dzsongg@cse.tamu.edu.
+(a) (b)
+(c)
+11
+10
+6
+4
+0
+(d)
+Fig. 1. (a) Original MVs represented by red arrows. (b) Filtered MVs
+represented by blue arrows. (c) Satellite image of an experiment site. Black
+line is manually measured ground truth camera trajectory, red line is the
+estimated trajectory. (d) Estimated plane positions and camera trajectory.
+error. We formulate the SLAPSE problem and study how to
+extract planes from MVs using planar homography ﬁltering.
+We then develop an extended Kalman ﬁlter (EKF) based
+approach with planes and robot motion as state variables.
+We have implemented our algorithm using C/C++ on a PC
+platform and tested the algorithm in physical experiments.
+The results show that the system is capable of performing
+robot localization and plane mapping with a relative trajec-
+tory error of less than 5:1%.
+II. RELATED WORK
+SLAPSE relates to visual navigation for mobile robots,
+MPEG compression, and dense 3D reconstruction.
+SLAPSE can be viewed as visual SLAM with special
+observation inputs. In a regular SLAM framework, the
+physical world is represented by a collection of landmarks
+which are primarily features observed from images, such
+as key points [2]–[5], line segments [6]–[11], curves [12],
+and surfaces [13]. In these feature-based approaches, SLAM
+performance is largely dependent of feature distributions and
+correspondences. Building on these approaches, our SLAPSE
+takes advantage of the fact that MVs encode correspondences
+of segmented scene by overcoming the noise in the MV data.
+Many efforts have been made to improve the accuracy and
+speed of MV computation in MPEG encoding. However, few
+studies have been conducted on utilizing MVs in complex
+vision problems. The main reason is because MVs are very
+noisy and have spatially low resolution. MVs have been
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 9
+applied in fast image-based camera rotation estimation [14],
+2D object tracking [15], and image stabilization [16]. All of
+these approaches employ voting or averaging like strategies
+with region-based smoothing to obtain either foreground or
+background information separately. SLAPSE problems need
+to recover both the scene structure and the robot motion
+which require MVs with much less errors. We merge MVs
+across multiple adjacent frames to improve the signal to noise
+ratio, analyze errors on merged MVs, and utilize geometry
+relationship for better noise ﬁltering.
+MVs directly provide correspondences between pixel
+blocks. Once planes are identiﬁed through MVs, their corre-
+sponding pixel blocks are subsequently reconstructed in 3D.
+This is close to feature-based dense reconstruction, which
+usually requires precise dense correspondence between im-
+ages. Recent dense reconstruction approaches start with a
+sparse set of salient points, and construct dense surfaces
+using photoconsistency and geometrical constraints [17].
+More relevant works [18] utilize variational optical ﬂow [19]
+to establish dense surface meshes from point clouds. These
+works inspire us to use MVs in scene mapping.
+Our group focuses on developing monocular visual nav-
+igation techniques for energy and computation constrained
+robots. Using a vector-ﬁeld approach [20], we develop a
+lightweight visual navigation algorithm for an autonomous
+motorcycle. We also have attempted different features for
+visual odometry such as vertical line segments [21] and
+high level features [22], [23] to improve robustness. Through
+the process, we have learned shortcomings of feature-based
+approaches, which has motivated this work.
+III. BACKGROUND AND PROBLEM DEFINITION
+A. A Brief Introduction to Motion Vectors
+Video encoders such as MPEG 1/2/4 often utilize block
+motion compensation (BMC) to achieve better data com-
+pression. BMC partitions each frame into small macroblocks
+(MB) (e.g. each MB is 16 16 pixels for MPEG 2). During
+encoding, block matching is employed to search for similar
+MBs in anchor frames. If a matching block is found, an MV
+is established as a 2D shift in the image frame.
+P I B B P B B 
+time 
+(a)
+B 
+I P 
+ 
+MB 
+  
+ 
+ 
+(b) (c)
+Fig. 2. (a) GOP structure for an MPEG 2 video stream. Note that the arrows
+on top of the frames refer to reference relationship in computing MVs. (b)
+MVs between adjacent I and P frames can be obtained either directly (e.g.
+red dotted lines) or indirectly through B frames (e.g. blue dashed lines). (c)
+Sample MVs overlaid on top of their video frame.
+We use MPEG 2 as an example, and our analysis can
+be easily extended to other BMC-based encoding formats.
+There are often three types of frames (or slices of a frame):
+intra-coded, predictive-coded, and bidirectionally predictive-
+coded, namely, I, P, and B frames, respectively. P and B
+frames consist of MBs deﬁned by MVs pointing to their
+anchor frames. I and P frames are used as anchor frames
+for block matching. As illustrated in Fig. 2(a), a P frame is
+always predicted from the closest previous P or I frame and
+each MB has only one MV referring to the past. To achieve
+more compression, B frames utilize the closest P or I frames
+from both the past and the future as anchor frames. Each MB
+in B frame has up to two MVs point to both future and past
+anchor frames. The frame sequencing structure is referred to
+as group of pictures (GOP) in the MPEG protocols. In more
+advanced video format (e.g. MPEG 4), an MB can have as
+many as 16 MVs pointing to many reference frames.
+B. Modeling Noise in Motion Vectors
+If an MB centered at (u
+i
+;v
+i
+) in frame i ﬁnds the cor-
+responding position (u
+j
+;v
+j
+) in the anchor frame j through
+block matching algorithm (BMA), then the resultingl-th MV
+can be deﬁned as
+m
+i!j
+l
+(u
+i
+;v
+i
+) =
+
+
+u
+
+v
+
+=
+
+u
+j
+ u
+i
+v
+j
+ v
+i
+
+; (1)
+where u and v are frame coordinates. For simplicity, we
+sometimes use m
+i!j
+l
+to represent an MV between the two
+frames. An MB may contain many MVs. Some of them
+originate from the center of the MB and others may not (e.g.
+the reverse MV ofm
+i!j
+l
+(u
+i
+;v
+i
+) is not necessarily located at
+the center of an MB in frame j).
+Although containing image correspondence information,
+MVs are difﬁcult to use due to noise introduced by BMA,
+which searches the most similar block in a given range.
+When video frames contain repetitive patterns, false matches
+can occur. This is not a problem for video compression but
+presents a huge challenge to scene understandings. Some-
+times, occlusions and scene changes may cause BMA to fail
+to ﬁnd a matching. Say that BMA ﬁnds the correct matching
+with probabilityp, which is deﬁned as eventE
+M
+. It is worth
+noting thatp is also often affected by camera moving speed.
+To avoid that, we can set frame rate proportional to the
+moving speed to reduce the variation inp. As observed from
+data, a regular street driving in urban area often hasp> 0:6.
+Even when a correct matching is found, BMA still has
+limited accuracy. MPEG 2 and 4 warrant 0.5 and 0.25 pixel
+accuracy, respectively. When the correct matching is found,
+this error e
+i!j
+l
+= m
+i!j
+l
+   m
+i!j
+l
+can be modeled as a 2D
+zero mean Gaussian
+e
+i!j
+l
+jE
+M
+N(0
+21
+; ); (2)
+where termjE
+M
+indicates that this is a conditional distribu-
+tion,  m
+i!j
+l
+is the true mean of the MV , and covariance matrix
+ = diagf
+2
+;
+2
+g is a diagonal matrix. We set  = 0:25
+to conservatively capture the 0.5 pixel accuracy for MPEG
+2. This accuracy level is sufﬁcient for video presentation.
+However, due to the small time difference in adjacent frames,
+the motion parallax can be as small as 2-4 pixels, which leads
+10
+to large relative error. Compounded with false matches, MVs
+are too noisy to be directly used for scene understanding.
+C. Problem Formulation
+To formulate SLAPSE problem, we assume that the in-
+trinsic matrix of the camera is known as K through pre-
+calibration and the scene is dominated by planes, such as
+building facade and paved roads. Thus, the understanding of
+scene structure relies on estimating 3D planes. Here all the
+3D coordinate systems are right hand systems. Let us deﬁne
+ fC
+k
+g as the 3D camera coordinate system (CCS) in
+framek. For each CCS, its origin locates at the camera
+optical center, z-axis coincides with the optical axis and
+points to the forward direction of the camera, its x-axis
+and y-axis are parallel to the horizontal and vertical
+directions of the CCD sensor plane, respectively,
+ R
+k
+andt
+k
+as the rotation and translation offC
+k
+g w.r.t.
+framefC
+k 1
+g,
+ 
+i;k
+= [n
+T
+i;k
+;d
+i;k
+]
+T
+is thei-th 3D plane infC
+k
+g, where
+n
+i;k
+is the plane normal andd
+i;k
+is the plane depth, and
+ ~ 
+i;k
+=n
+i;k
+=d
+i;k
+as the inhomogeneous form of a plane.
+Therefore, the problem is deﬁned as below:
+Deﬁnition 1: Given the set of MVs up to time/frame k,
+fm
+i!j
+l
+ji;j  kg, extract planes, estimate plane equations
+and camera pose R
+k
+andt
+k
+in each frame.
+IV. SYSTEM ARCHITECTURE
+Initialization
+EKF Predict
+Plane 
+Extraction
+Delete Lost Planes
+EKF Update for 
+Existing Planes
+# plane > 0 ?
+Add New Planes
+MVs No
+Yes
+(a)
+MV Merging
+MV Thresholding
+Homography Fitting
+Output Planes
+MVs
+Correspondence Extraction
+(b)
+Fig. 3. System diagrams: (a) Overall SLAPSE diagram based on EKF. (b)
+A blowup view of plane extraction.
+The SLAPSE problem can be solved using an EKF-based
+ﬁltering approach as shown in Fig. 3(a). The system takes
+MVs as the input, and tracks the 3D conﬁguration of planes
+and camera poses. A key issue of the procedure is how to
+extract planes from MVs (see Fig. 3(b)). Let us start with
+the planar surface extraction.
+V. PLANAR SURFACE EXTRACTION
+Planes are identiﬁed through MVs. Given that MVs may
+have multiple reference frames, we need to merge them
+to facilitate the plane extraction. Moreover, it is necessary
+to understand how errors in MVs are accumulated and
+propagated in the MV merging process.
+I B B B P B B B P B B B I 
+(a)
+I 
+B 
+B 
+B 
+P 
+B 
+B 
+B 
+P 
+B 
+B 
+B 
+I 
+k k+1 k+2 k-1 
+time 
+(b)
+Fig. 4. MVs in B frames are merged into the nearest P and I frames.
+Arrows indicate the MV referencing directions. (a) A sample GOP. (b) The
+GOP can be decomposed into IP, PP and PI types.
+A. Motion Vector Merging
+According to the noise model in Section III-B, an MV
+represents correct MB correspondence between the current
+B or P frame and its reference frame with probability p.
+We name MVs with correct correspondence as in-line MVs
+(IMVs). From scene understanding point of view, IMVs have
+limited spatial resolution and relatively high noise. However,
+IMV set is actually temporally abundant. The adjacent frames
+differ by 1/30 or 1/25 seconds. If done properly, we can
+utilize IMV’s temporal abundance to further reduce noise
+level. Since IMV accuracy determines the accuracy of scene
+structure, it is important to monitor the IMV variance level.
+Therefore, the subsequent questions are 1) what is the
+probability that the IMVs exist across multiple frames and
+2) how accurate are these IMVs.
+We begin with question 1). For a sample GOP in Fig. 4(a),
+we can draw the MV reference relationship in Fig. 4(b).
+Interestingly, the continuous frame sequence can be broken
+into segments with each segment beginning with an I/P frame
+and ending with the nearest subsequent I/P frame. Segments
+overlap by sharing common I or P frames. Let n
+B
+be the
+number of B frames in each segment. n
+B
+= 3 in Fig. 4.
+Utilizing these natural segments, we check IMV existence
+every n
+B
++ 1 frames as deﬁned by each segment. There are
+three types of segments according to beginning/ending frame
+types: IP, PP, and PI. IP and PP share a similar structure: a
+direct reference between the two and n
+B
+indirect references
+from B frames. PI pairs do not have the direct reference
+because I frames are not constructed from MBs. Deﬁne
+events E
+IP
+, E
+PP
+, and E
+PI
+for the existence of IMV for an
+MB across the nearest IP, PP, and PI frames, respectively.
+We have the following lemma.
+Lemma 1: For an MB, the probability of existing at least
+one IMV across the nearest I/P frame pair is,
+P (E
+IP
+) =P (E
+PP
+) = 1  (1 p)(1 p
+2
+)
+n B
+; (3)
+P (E
+PI
+) = 1  (1 p
+2
+)
+n B
+: (4)
+The proof is elaborated in the online technical report [24].
+Lemma 1 indicates that using B frames can increase the
+probability of IMV existence. In fact, we often have more
+than one IMV for each MB. Let us deﬁne frame index (also
+used as time index) variablek andk +1 corresponding to an
+adjacent P/I pair in a segment (see Fig. 4(b)). Deﬁne setL
+IMV
+as the set of IMVs for the MB. We know that IMVs are from
+11
+two sources: the direct reference between I or P frames and
+indirect references from B frames. The error in the former
+follows N(0
+21
+; ) in (2) whereas the error in the latter is
+the summation of two independent 2D Gaussian in (2) and
+hence follows N(0
+21
+; 2). We deﬁne event E
+D
+if there
+exists a correct direct reference and d as the index for the
+MV . For each MB, we aggregate MVs at I or P frames by
+minimizing the Mahalanobis distance,
+m
+k+1!k
+l
+jE
+D
+=
+p
+2m
+k+1!k
+d
++
+P
+2L IMV;6=d
+m
+k+1!k
+
+p
+2 +jL
+IMV
+j  1
+;
+(5)
+m
+k+1!k
+l
+jE
+D
+=
+1
+jL
+IMV
+j
+X
+2L IMV
+m
+k+1!k
+
+: (6)
+The aggregation results in the following error distribution:
+Lemma 2: The error e
+k+1!k
+l
+= m
+k+1!k
+l
+   m
+k+1!k
+l
+of
+the resulting MV is distributed with zero mean:
+e
+k+1!k
+l
+jE
+
+N(0
+21
+; 
+
+jE
+
+); (7)
+where condition ‘’ represents IP, PP, and PI pairs, and three
+conditional covariance matrices are:
+ PIjE PI =
+"
+n
+B
+X
+i=1
+2
+i
+
+n B
+i
+
+p
+2i
+(1 p
+2
+)
+n
+B
+ i 1
+1 (1 p
+2
+)
+n
+B
+#
+; (8)
+ IPjE IP = PPjE PP = (1 p) PIjE PI
++p
+"
+n
+B
+X
+i=0
+2+i
+(i+
+p
+2)
+2
+
+n B
+i
+
+p
+2i
+(1 p
+2
+)
+n
+B
+ i
+#
+: (9)
+The proof is elaborated in the online technical report [24].
+Remark 1: Actually, both (8) and (9) are decreasing func-
+tions of n
+B
+. This means that merging MVs from B frames
+into the nearest I/P frames reduces error variance. This
+process allows us to exchange the redundant temporary
+resolution to better spatial resolution.
+This allows us to obtain a set of merged MVs, denoted
+asM
+k+1!k
+=fm
+k+1!k
+g, for each adjacent frames k + 1
+and k. Lemmas 1 and 2 ensure IMV existence and derive
+the corresponding error. A merged MV m
+k+1!k
+provides a
+correspondence relationship between an MB ink + 1 and an
+MB in k which leads to correspondence extraction step.
+B. Correspondence Extraction and MV Thresholding
+Deﬁnex
+k
+to be the homogeneous form of a point in image
+k. We represent the motion correspondence by a point pair:
+x
+k
+=x
+c
+k+1
++
+
+m
+k+1!k
+0
+
+; (10)
+where x
+c
+k+1
+is the center of m
+k+1!k
+’s MB in k + 1, and
+x
+k
+is its corresponding position in framek. Therefore, a set
+of correspondences between frame k and k + 1 is obtained:
+C
+k+1!k
+=fx
+k
+$x
+c
+k+1
+:m
+k+1!k
+2M
+k+1!k
+g: (11)
+To reduce the inﬂuence of MV noise in plane estimation,
+we only consider planes with sufﬁcient motion parallax. This
+is handled by eliminating MVs belonging to the plane at
+inﬁnity which is deﬁned as 
+1
+. According to [25], points
+in
+1
+remain still during camera translation, therefore, they
+can be detected if the camera rotation is eliminated.
+For a pair of adjacent framesk andk+1, their fundamen-
+tal matrix is ﬁrst estimated using correspondenceC
+k+1!k
+.
+Camera rotation and translation are then decomposed using
+[26]. We re-project all x
+k
+’s to frame k + 1 using only the
+rotation matrix, which results in a set of pointsx
+0
+k+1
+.
+x
+0
+k+1
+=sK(
+k
+k+1
+R)
+ 1
+K
+ 1
+x
+k
+; (12)
+where s is a scalar, and (
+k
+k+1
+R) is the matrix that rotates
+fC
+k
+g tofC
+k+1
+g according to the convention used in [27].
+The distance between x
+0
+k+1
+and x
+c
+k+1
+is calculated, and
+the MV is considered in 
+1
+if the distance is below a
+threshold 
+m
+. Denote the correspondence set for
+1
+as
+C
+k+1!k
+1
+=fx
+k
+$x
+c
+k+1
+:kx
+0
+k+1
+ x
+c
+k+1
+k<
+m
+g; (13)
+where subscript 1 means it corresponds to the plane at
+inﬁnity andkk represents the L
+2
+norm. Hence the set of
+correspondences is further reduced toC
+k+1!k
+m
+=C
+k+1!k
+n
+C
+k+1!k
+1
+; where subscript m means the thresholded corre-
+spondence set with sufﬁcient motion parallax.
+C. Homography Fitting
+With the correspondence set extracted, plane extraction
+can be performed by verifying the homography relationship.
+The extraction of planes also helps ﬁlter IMVs from the
+correspondence set. Consider two adjacent frames (IP, PP
+or PI) after MV merging and thresholding (Fig. 3(b)). We
+have the correspondence setC
+k+1!k
+m
+. We apply RANSAC
+framework to extract 2D planes and IMVs. RANSAC ﬁrst
+samples a minimum set of correspondences to obtain a
+homography that represents the coplanar relationship
+x
+k
+=Hx
+c
+k+1
+; (14)
+where H is a 3 3 matrix and  is a scalar.
+Each correspondence provides two equations to (14). Since
+a homography H has at most 8 degrees of freedom (DoFs),
+only four correspondences are needed to determine a minimal
+solution. A normalized direct linear transformation can be
+applied to obtain an initial H (pg. 109 of [25]). Then, a
+correspondence resulting in an error below a given threshold:
+kx
+k
+ Hx
+c
+k+1
+k<
+h
+; (15)
+is labeled as an inlier to the plane.
+To extract multiple planes, RANSAC is applied iteratively
+until it reaches a given maximum iteration number or there
+are not enough unlabeled correspondences to form a mini-
+mum solution. Denote the correspondence setC
+k+1!k
+;i
+for
+plane 
+i
+(deﬁned by homography H
+i
+) as
+C
+k+1!k
+;i
+=fx
+k
+$x
+c
+k+1
+:kx
+k
+ H
+i
+x
+c
+k+1
+k<
+h
+g: (16)
+Hence we obtain a set ofN
+k+1
+planes with correspondences
+fC
+k+1!k
+;1
+;:::;C
+k+1!k
+;N
+k+1
+g from frame k and k + 1.
+Note, if a set of planes with correspondences
+fC
+k!k 1
+;1
+;:::;C
+k!k 1
+;N
+k
+g have been extracted between
+frames k  1 and k, we ﬁrst run RANSAC to sample the
+12
+minimum solutions only from MBs of existing planes.
+Thus every existing plane 
+i
+has a chance to ﬁnd its
+corresponding plane correspondence setC
+k+1!k
+;i
+in frame
+k + 1. Then a regular RANSAC is applied to the remaining
+correspondences to discover new planes.
+VI. PLANE TRACKING WITH EKF
+With planes extracted, we can feed them as observations to
+an EKF framework to estimate the global plane equations and
+camera poses. An EKF ﬁltering approach usually consists of
+prediction and update steps.
+A. EKF Prediction
+In the state space description, let state vector 
+k
+be
+consisted of plane equations in inhomogeneous form, camera
+rotation angles and angular velocity, and camera translation
+and its velocity in frame k,
+
+k
+= [~ 
+T
+1;k
+;:::; ~ 
+T
+N
+k
+;k
+;r
+T
+k
+;t
+T
+k
+; _ r
+T
+k
+;
+_
+t
+T
+k
+]
+T
+; (17)
+wherer = [;;]
+T
+is the Euler rotation angles inX
+0
+Y
+0
+Z
+0
+order, t = [t
+x
+;t
+y
+;t
+z
+]
+T
+is the camera translation w.r.t. pre-
+vious frame, and
+_
+t is translation velocity in current frame.
+Denote Euler rotation matrix
+
+R
+k
+=R( _ r
+k
+) inY
+0
+X
+0
+Z
+0
+order.
+The state transition of the ith plane equation is
+~ 
+i;k+1
+=
+
+R
+T
+k
+~ 
+i;k
+
+_
+t
+T
+k
+
+R
+T
+k
+~ 
+i;k
++ 1
+: (18)
+We assume the camera follows constant angular velocity and
+linear translation velocity. Hence the state transition is,
+
+r
+k+1
+= _ r
+k
+; t
+k+1
+=
+_
+t
+k
+;
+_ r
+k+1
+= _ r
+k
+;
+_
+t
+k+1
+=
+
+R
+k
+_
+t
+k
+:
+B. EKF Update
+To utilize rich information from MVs, we do not consider
+simply making a direct observation of the plane equations.
+Instead, we use the correspondence setsC
+k!k 1
+;i
+’s to update
+the state vectors. For frame k, the observation of a plane
+
+i;k
+is a set of pointsfx
+k 1
+g fromC
+k!k 1
+;i
+. Deﬁne rotation
+matrix R
+k
+=R(r
+k
+) following the Y
+0
+X
+0
+Z
+0
+Euler form. The
+observation model for plane 
+i;k
+takes the state vector 
+k
+and an additional variablex
+c
+k
+as input:
+x
+k 1
+=h(
+k
+;x
+c
+k
+) =K[R
+k
+ t
+k
+~ 
+T
+i;k
+]K
+ 1
+x
+c
+k
+; (19)
+whereK is the intrinsic matrix of the camera. The Jacobian
+matrix is computed by taking partial derivatives on
+k
+.
+Lem. 2 in Sec. V-A provides the error model for the
+merged MVs, and is applied in setting the noise covariance
+for the EKF observation. Note that, since the camera rotation
+and translation are involved in the observation model for each
+plane,r
+k
+andt
+k
+are also updated with observations.
+C. Deleting and Adding Planes
+Similar to landmark management in SLAM, planes have
+ﬁnite lifespan in the continuous video stream. We need
+to handle the appearance and disappearance of planes (see
+Fig. 3(a)). When transiting from framek tok+1, if ~ 
+i;k
+has
+(a) 
+h
+= 1 (b) 
+h
+= 2 (c) 
+h
+= 2 (d) 
+h
+= 4
+Fig. 5. Example of extracted planes. Dots with different colors indicate
+different extracted planes. (a-b) show all planes extracted in the frame. (c-d)
+show two incorrect extractions.
+TABLE I
+PLANE EXTRACT RESULTS W.R.T. 
+h
+
+h
+(pixel) 1 2 3 4
+# extracted planes 101 183 174 215
+TP rate (%) 91:09 83:61 73:56 72:09
+TABLE II
+SLAPSE RESULTS
+Site D (m) 
+D
+(%) # planes 
+d
+(m) n (degs.)
+1 42:1 2:9 5 0:61 7:07
+2 37:5 5:1 4 0:65 3:26
+corresponding setC
+k+1!k
+;i
+=; in frame k + 1, then ~ 
+i;k+1
+in the state vector and its corresponding dimensions in the
+state covariance matrix are deleted, before EKF update.
+After EKF update in frame k, if a new plane is discov-
+ered in frame k, its initialized plane equation and variance
+are added to the state vector and state covariance matrix.
+Moreover, since the ﬁlter formulation relies purely on planes
+in EKF updating step, the update is skipped if there are no
+planes in current state vector. This is not an issue as long as
+building facades are in the ﬁeld of view.
+VII. EXPERIMENTS
+The proposed method is implemented in C/C++ on a
+desktop PC. Videos and images are acquired with Casio Ex-
+ZR200 and Panasonic DMC-ZS3 cameras, with a resolution
+of 640480 pixel captured at 30 frames per second. Cameras
+travel in an urban area at a speed between 25 and 50 kph.
+A. Plane Extraction
+To evaluate the performance of plane extraction, 7 videos
+of different scenes in MPEG-2 format have been acquired.
+We sample 50 pairs of adjacent frames from the videos, and
+manually label planes in images as ground truth. As the error
+threshold of RANSAC changes, the number of extracted
+planes and the true positive (TP) rates vary. Tab. I shows
+how the plane extraction result is inﬂuenced by
+h
+. Note that
+we restrict the minimum size of an extracted plane to be 20
+MBs. Fig. 5 shows four example frames. Dots in the same
+color indicate an extracted plane. It is clear that the algorithm
+is able to extract primary planes. However, it may miss some
+reﬂective glass/mirror surfaces, such as the leftmost wall in
+Fig. 5(b), and texture-less surfaces such as the ground. Some
+false extractions, such as Fig. 5(c), claim trees as a plane due
+to far depth. In fact, Fig. 5(d) shows the necessity of MV
+thresholding with 
+1
+(Sec. V-B), because far ﬁeld objects
+tend to mix together when 
+h
+is not tight enough.
+B. SLAPSE Results
+To evaluate overall system performance, we perform ﬁeld
+tests in two sites. Ground truth is manually acquired with
+13
+meters and Bosch ZLR225 laser distance measurer with an
+accuracy of1:5 mm. The 3D estimation is up to scale
+of the initial camera translation. Sample results from the
+ﬁrst site are shown in Fig. 1. It is clear that the system
+is able to extract dominant planes in the scene. We project
+the camera trajectories to fC
+0
+g and scale the results by
+the camera translation in the ﬁrst step. Comparison with
+manually measured ground truth is showed in Tab. II. We
+denote D as the total traveled distance in each site, and a^
+on a variable stands for the ground truth value. Denotet
+0!k
+as the estimated camera translation from frame 0 to k. The
+mean relative error of camera location is deﬁned as: 
+D
+=
+1
+N
+
+k
+kt
+0!k
+ 
+^
+t
+0!k
+k
+k
+^
+t
+0!k
+k
+; where N is the total number of tracked
+frames. We evaluate the estimated building facades and road
+segments which appear in the camera scene for at least half
+a second. The number of evaluated planes in each site are
+shown in Tab. II. Deﬁne the mean absolute error of plane
+depth 
+d
+and plane orientation 
+n
+as 
+d
+=
+1
+iNi
+
+i
+
+k
+jd
+i;k
+ 
+^
+d
+i;k
+j; and 
+n
+=
+1
+iNi
+
+i
+
+k
+j arccos(n
+T
+i;k
+ ^ n
+i;k
+)j; where N
+i
+is the number of frames plane i appears. Tab. II shows the
+mean errors for each site, where the depth errors are less
+than 0:65 meters and orientation errors are less than 7:07
+
+.
+VIII. CONCLUSIONS AND FUTURE WORK
+We explored how to use MVs from video streams for
+SLAPSE for a mobile robot equipped with a single camera.
+Using MVs in the MPEG-2 protocol as an example, we
+established the MV noise models to capture the observation
+error. We formulated the SLAPSE problem and studied
+how to extract planes from MVs using planar homography
+ﬁltering. We then developed an extended Kalman ﬁlter (EKF)
+based approach with planes and robot motion as state vari-
+ables. We implemented our algorithm using C/C++ on a PC
+platform, and tested the algorithm in physical experiments
+in two sites. The results showed that the system is capable
+of performing robot localization and plane mapping with a
+relative trajectory error of less than 5:1%. In the future, we
+plan to utilize the MVs in the plane at inﬁnity for rotation
+estimation. We can also detect moving obstacles by group
+MVs with similar motion. Also, the MVs can be combined
+with feature-based approaches and/or other sensors to form
+hybrid methods.
+ACKNOWLEDGEMENT
+Thanks for Y . Lu, J. Lee, M. Hielsberg, Z. Gui, S.-H. Mun, S. Jacob, M.
+Midori Hirami, P. Peelen, and A. Tuan for their inputs and contributions to
+the NetBot Laboratory, Texas A&M University.
+REFERENCES
+[1] S. Thrun, W. Burgard, and D. Fox, Probabilistic Robotics. MIT Press,
+2005.
+[2] A. Davison, L. Reid, N. Molton, and O. Stasse, “Monoslam: Real-
+time single camera slam,” IEEE Transactions on Pattern Analysis and
+Machine Intelligence, vol. 29, no. 6, pp. 1052–1067, June 2007.
+[3] P. Jensfelt, D. Kragic, J. Folkesson, and M. Bjorkman, “A framework
+for vision based bearing only 3d slam,” in IEEE International Con-
+ference on Robotics and Automation, Orlando, Florida, May 2006.
+[4] E. Ead and T. Drummond, “Scalable monocular slam,” in IEEE
+Conference on Computer Vision and Pattern Recognition (CVPR),
+vol. 1, New York, NY , Jun. 2006, pp. 469–476.
+[5] A. Gil, O. Mozos, M. Ballesta, and O. Reinoso, “A comparative
+evaluation of interest point detectors and local descriptors for visual
+slam,” vol. 21, no. 6, pp. 905–920, 2010.
+[6] P. Smith, I. Reid, and A. Davison, “Real-time monocular slam with
+straight lines,” in British Machine Vision Conference (BMVC), Sep.
+2006, pp. 17–26.
+[7] T. Lemaire and S. Lacroix, “Monocular-vision based slam using
+line segments,” in IEEE International Conference of Robotics and
+Automation, Roma, Italy, April 2007, pp. 2791–2796.
+[8] E. Eade and T. Drummond, “Edge landmarks in monocular slam,” in
+British Machine Vision Conference (BMVC), Sep. 2006, pp. 7–16.
+[9] G. Zhang and I. Suh, “Sof-slam: Segments-on-ﬂoor-based monocular
+slam,” in IEEE/RSJ International Conference on Intelligent Robots
+and Systems, Taipei, Taiwan, Oct. 2010.
+[10] ——, “Building a partial 3d line-based map using a monocular
+slam,” in IEEE International Conference on Robotics and Automation,
+Shanghai, China, May 2011.
+[11] A. Flint, C. Mei, I. Reid, and D. Murray, “Growing semantically
+meaningful models for visual slam,” in IEEE Conference on Computer
+Vision and Pattern Recognition, San Francisco, CA, Jun. 2010, pp.
+467–474.
+[12] D. Rao, S. Chung, and S. Hutchinson, “Curveslam: An approach for
+vision-based navigation without point features,” in IEEE/RSJ Inter-
+national Conference on Intelligent Robots and Systems, Vilamoura,
+Algarve, Portugal, Oct. 2012.
+[13] A. Gee, D. Chekhlov, A. Calway, and W. Mayol-Cuevas, “Discovering
+higher level structure in visual slam,” IEEE Transactions on Robotics,
+vol. 24, no. 5, pp. 980–990, Oct. 2008.
+[14] R. Wang and T. Huang, “Fast camera motion analysis in mpeg
+domain,” in International Conference on Image Processing, vol. 3,
+pp. 691–694.
+[15] L. Favalli, A. Mecocci, and F. Moschetti, “Object tracking for retrieval
+applications in mpeg-2.”
+[16] F. Vella, A. Castorina, M. Mancuso, and G. Messina, “Digital image
+stabilization by adaptive block motion vectors ﬁltering,” IEEE Trans-
+actions on Consumer Electronics, vol. 48, no. 3, pp. 796–801, 2002.
+[17] A. Argiles, J. Civera, and L. Montesano, “Dense multi-planar scene
+estimation from a sparse set of images,” in IEEE/RSJ International
+Conference on Intelligent Robots and Systems (IROS), San Francisco,
+CA, Sep. 2011, pp. 4448–4454.
+[18] R. Newcombe and A. Davison, “Live dense reconstruction with a
+single moving camera,” in IEEE Conference on Computer Vision and
+Pattern Recognition (CVPR), San Francisco, CA, Jun. 2010, pp. 1498–
+1505.
+[19] A. Bruhn, J.Weickert, and C. Schn¨ orr, “Lucas/kanade meets
+horn/schunk: combining local and global optical ﬂow methods,” In-
+ternational Journal of Computer Vision, vol. 61, no. 3, p. 211231,
+2005.
+[20] D. Song, H. Lee, J. Yi, and A. Levandowski, “Vision-based motion
+planning for an autonomous motorcycle on ill-structured roads,”
+Autonomous Robots, vol. 23, no. 3, pp. 197–212, Oct. 2007.
+[21] J. Zhang and D. Song, “Error aware monocular visual odometry using
+vertical line pairs for small robots in urban areas,” in Special Track on
+Physically Grounded AI (PGAI), the Twenty-Fourth AAAI Conference
+on Artiﬁcial Intelligence (AAAI-10), Atlanta, Georgia, USA, July 2010.
+[22] Y . Lu, D. Song, Y . Xu, A. Perera, and S. Oh, “Automatic building
+exterior mapping using multilayer feature graphs,” in IEEE Interna-
+tional Conference on Automation Science and Engineering Madison,
+Wisconsin, USA, Aug. 2013.
+[23] Y . Lu, D. Song, and J. Yi, “High level landmark-based visual naviga-
+tion using unsupervised geometric constraints in local bundle adjust-
+ment,” in IEEE International Conference on Robotics and Automation
+(ICRA), Hong Kong, China, May-June 2014.
+[24] W. Li and D. Song, “Toward featureless visual navigation: Simulta-
+neous localization and planar surface extraction using motion vectors
+in video streams,” Department of Computer Science and Engineering,
+Texas A&M University, Tech. Rep. TR2014-2-2, Feb. 2014. [Online].
+Available: http://www.cse.tamu.edu/academics/tr/2014-2-2
+[25] R. Hartley and A. Zisserman, Multiple View Geometry in Computer
+Vision, 2nd ed. Cambridge University Press, ISBN: 0521540518,
+2004.
+[26] V . Rabaud, “Vincent’s Structure from Motion Toolbox,”
+http://vision.ucsd.edu/ vrabaud/toolbox/.
+[27] J. Craig, Introduction to Robotics Mechanics and Control (Third
+Edition). Pearson Education, Upper Saddle River, New Jersey, 2005.
+14

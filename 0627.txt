@@ -1,0 +1,923 @@
+A Statistical Measure for Map Consistency in SLAM
+Mladen Mazuran Gian Diego Tipaldi Luciano Spinello Wolfram Burgard Cyrill Stachniss
+Abstract—Map consistency is an important requirement for
+applications in which mobile robots need to effectively perform
+autonomous navigation tasks. While recent SLAM techniques
+provide an increased robustness even in the context of bad
+initializationsordataassociationoutliers,thequestionofhowto
+determine whether or not the resulting map is consistent is still
+an open problem. In this paper, we introduce a novel measure
+for map consistency. We compute this measure by taking into
+account the discrepancies in the sensor data and leverage it to
+address two important problems in SLAM. First, we derive a
+statistical test for assessing whether a map is consistent or not.
+Second, we employ it to automatically set the free parameter
+of dynamic covariance scaling, a robust SLAM back-end. We
+present an evaluation of our approach on over 50 maps sourced
+from 16 publicly available datasets and illustrate its capability
+for the inconsistency detection and the tuning of the parameter
+of the back-end.
+I. INTRODUCTION
+Building consistent maps is an essential capability for
+autonomous robots, as maps are useful for a large variety
+of applications that requires the robot to navigate. It turns
+out that in SLAM there actually is no consistent notion of
+consistency. For example, in robot mapping, one often uses
+the term global consistency if the map is in line with the
+ground truth or at least resembles the topological structure
+of the environment. Local consistency, in contrast, is used to
+describe a locally correct alignment of the scans — despite
+a potential misalignment at the global scale. In this paper,
+we consider a map to be consistent from a sensor data point
+of view, i.e., when no noticeable artifacts are present and the
+topology of the environment is correctly represented.
+A large number of mapping approaches have been pro-
+posed in the past, see [3, 6] for an overview. A popular
+approach to SLAM comes from its graph-based formulation.
+Corresponding methods represent the map as a graph that
+consists of poses and constrains between the poses. They
+compute the maximum likelihood map by performing error
+minimization. Modern techniques apply robust kernels or
+related techniques during the minimization, with the aim of
+mitigating data association errors and computing a consistent
+map [1, 16, 13, 14]. Most robust kernels, such as dynamic
+covariance scaling (DCS) [1] and switchable constraints
+(SC) [16], depend on an additional parameter, which, loosely
+spoken, deﬁnes if a constraint is an inlier or an outlier. This
+parameter, typically is sensitive to the particular environment
+and needs to be set manually.
+All authors are with the University of Freiburg, Institute of Computer Science,
+79110 Freiburg, Germany. Cyrill Stachniss is also with the University of Bonn, Inst. of
+Geodesy and Geoinformation, 53115 Bonn, Germany. This work has partly been
+supported by the European Commission under FP7-600890-ROVINA, ERC-AG-PE7-
+267686-LIFENA V and FP7-610917-STAMINA.
+Fig. 1. Inconsistencies detected with our method in a corrupted Belgioioso
+castle dataset: (top) ground-truth, (middle) inconsistent alignment, (bottom)
+regions detected as inconsistent by our approach.
+The contribution of this paper is a novel method to
+automatically compute the consistency of static maps by
+taking into account the discrepancy between sensor readings.
+We introduce a score function that quantiﬁes the mismatch
+in the sensor data after optimization. It is partially inspired
+by the lazy data association approach of Hähnel et al. [11] in
+which a data association tree was computed during mapping.
+We combine the use of inconsistencies in observations with
+a cascaded hypothesis test on the entire map to test for
+global map consistency. Our score function also supports to
+compare changes in the graph conﬁguration and to evaluate
+the quality of the result. This allows us to formulate an
+optimization problem, which sits on top of DCS to tune its
+parameter automatically.
+We formulated both the hypothesis test and the parameter
+tuning, for 2D laser data. We further implemented and
+thoroughly evaluated our work on a large set of publicly
+available datasets. We show that the proposed hypothesis
+test allows to reliably identify inconsistent maps, without
+forsaking our ability to detect consistent ones.
+II. RELATED WORK
+Over the last two decades, a large number of SLAM
+approaches have been proposed [3, 6]. A recently popular
+technique to estimate a consistent map is the graph-based
+SLAM paradigm. A variety of approaches for minimizing the
+error in the corresponding constraint graph have been pro-
+posed, including relaxation methods [7], stochastic gradient
+descent and its variants [15, 8], smoothing techniques [5, 12],
+and hierarchical techniques [4, 10]. A comprehensive tutorial
+2014 IEEE International Conference on Robotics & Automation (ICRA)
+Hong Kong Convention and Exhibition Center
+May 31 - June 7, 2014. Hong Kong, China
+978-1-4799-3684-7/14/$31.00 ©2014 IEEE 3650
+on graph-based SLAM has been published by Grisetti et
+al [9].
+All these techniques assume Gaussian errors in the con-
+straints of the SLAM graph but show decreased performance
+with an increasing number of data association outliers. Over
+the last years, researchers invented SLAM back-ends that can
+deal with a substantial number of outliers [1, 16, 13, 14]. The
+method of Sünderhauf and Protzel [16] is able to switch off
+potential outlier constraints and the control of the switching
+behavior is handled within the optimizer. Related to that,
+Agarwal et al. [1] proposed dynamic covariance scaling,
+which is similar to switchable constraints [16] as it also
+re-weights constraints, but without the need to explicitly
+compute switching variables. Olson and Agarwal [14] in-
+troduced a maximum operator on Gaussian mixtures in the
+optimization process. It allows for dealing with multi-modal
+constraints and rejecting outliers, while maintaining com-
+putational efﬁciency. Latif et al. [13] proposed an approach
+that handles outliers by ﬁnding the maximum set of clustered
+edges that are consistent with each other.
+Although these methods for outlier rejection improve the
+robustness of SLAM back-ends, it is not yet possible to
+guarantee consistency of the resulting map. The ability to
+determine if a map is consistent has not received a lot of
+attention in the literature, with the notable exception of the
+work by Hähnel et al. [11]. Despite ﬁnding the correct data
+associations, Hähnel et al. determine the log-likelihood of a
+pairwise scan matching, given their pose estimate. The log-
+likelihood is computed by superimposing a scan onto a local
+occupancy grid map build by the other scan.
+Our approach can be seen as related to the work of Hähnel
+et al. as we provide a measure for the likelihood of a pairwise
+mismatch, but we further extend it in a multiple-overlapping-
+scans scenario, while abandoning the need for discretization.
+We furthermore exploit these concepts for performing a
+cascaded statistical test and apply them to automatically tune
+the parameter of dynamic covariance scaling [1].
+III. PAIRWISE INCONSISTENCY MEASURE
+In this section, we propose a measure of compatibility
+between scans. Our approach makes the assumption that
+the environment is static, although we will illustrate ex-
+perimentally that it is still robust with respect to a certain
+degree of dynamics. In the following, we will describe the
+methodology for 2D range scans.
+Our goal is to provide a value describing the discrepancy
+between two scans. To achieve this, we determine how much
+two laser range scans occlude each other’s free space. LetS
+1
+andS
+2
+be two laser scans, taken from two different poses and
+expressed in global coordinates. For each scan, we compute
+a polygon using its end points and the position of the robot.
+Each polygon describes the free space that is covered by the
+scan. The intuition is thatS
+1
+andS
+2
+are considered to be
+consistent with each other if none of the end points ofS
+1
+lies
+inside the polygon ofS
+2
+and vice versa. We call the points
+ofS
+1
+lying insideS
+2
+the inconsistent points ofS
+1
+w.r.t.S
+2
+.
+Fig. 2. Example showing inconsistency distances in S
+i
+w.r.t. S
+j
+. The set
+of green and black polygonal chains identify the observable boundary ofS
+i
+andS
+j
+, while the shaded green area represents the visibility polygon ofS
+i
+.
+The lengths of the dotted red lines represent the inconsistency distancies in
+S
+i
+w.r.t. S
+j
+, for all inconsistent points w.r.t. S
+j
+falling into the visibility
+polygon of S
+i
+.
+The measure we derive from this intuition computes the
+sum of the distances of each inconsistent point of the ﬁrst
+scan to the boundary of the polygon surrounding the second
+scan and vice versa. LetV
+i
+be the set of points deﬁning the
+visibility polygon ofS
+i
+andp
+k
+i
+itsk-th end point. We deﬁne
+the inconsistency distance d
+i
+(p) for a point p as:
+d
+i
+(p) =
+(
+dist(p;V
+i
+) if p insideV
+i
+0 otherwise
+; (1)
+where dist(p;V) is the Euclidian distance of a point p to
+the closest point on the polygon boundaryV. By summing
+over all the end points of the scans, we obtain the pairwise
+inconsistency measure
+M
+ij
+=
+X
+k
+d
+i
+(p
+k
+j
+) +
+X
+k
+d
+j
+(p
+k
+i
+): (2)
+See Fig. 2 for an example. In the remainder of this paper, we
+refer to the total number of inconsistent points inS
+i
+w.r.t.S
+j
+and inS
+j
+w.r.t.S
+i
+asn
+ij
+. A naïve implementation computes
+M
+ij
+inO(K
+2
+), where K is the number of end points.
+IV. STATISTICAL TEST FOR MAP CONSISTENCY
+In this section, we formulate a hypothesis test for the
+global consistency of a map, based on the pairwise measure
+of compatibility.
+A. Hypothesis Test for Pairs of Scans
+Under the assumption of a correct alignment of two scans
+S
+i
+andS
+j
+, we expect that on average 50% of the end points
+inS
+i
+are inconsistent points ofS
+j
+and vice versa. This is
+due to the inherent sensor noise in the laser measurements.
+If S
+i
+and S
+j
+are obtained from the exact same pose
+and the laser range values are normally distributed, the
+inconsistency distances are half-normally distributed, with
+the scale parameter s
+2
+given by twice the range variance of
+the laser. The half-normal distribution is the distribution of
+Y =jXj, with XN (0;s
+2
+).
+We further assume that the inconsistencies are i.i.d. ran-
+dom variables with ﬁnite mean  and variance 
+2
+. In the
+case of the half-normal distribution, we have
+ =s
+r
+2
+
+
+2
+=s
+2
+
+1 
+2
+
+
+: (3)
+3651
+According to the central limit theorem, M
+ij
+follows
+M
+ij
+ n
+ij
+
+p
+n
+ij
+
+nij!1
+N (0; 1): (4)
+The former can be generalized to situations in which the ran-
+dom variables follow different distributions, as long as they
+are independent and they satisfy Lindeberg’s condition [2].
+In this case, the limit of the mean is still normally distributed.
+We found that the approximation is very accurate even for
+as little as 20 half-normal samples.
+As a result of that, we can conduct a hypothesis test ifn
+ij
+is sufﬁciently large and and
+2
+are known. The hypothesis
+test allows us to determine whetherM
+ij
+N (n
+ij
+; 
+2
+n
+ij
+).
+It requires a one-sided test, as only large M
+ij
+values are
+relevant; a lowM
+ij
+value only implies that larger deviations
+from the perfect map assumption are accepted.
+Based onN laser scans, we can build anNN symmetric
+matrix	 containing standardized M
+ij
+values as follows:
+	 =
+
+M
+ij
+ n
+ij
+
+p
+n
+ij
+
+1iN
+1jN
+(5)
+Here, the sparsity of this matix depends on the amount of
+overlap between laser scans.
+Given	, we can infer whether two scansS
+i
+andS
+j
+are
+consistent with conﬁdence 1  by verifying the inequality
+	
+ij
+F
+ 1
+(1 ); (6)
+whereF
+ 1
+(p) is the inverse CDF of the normal distribution.
+By adopting a bounding box test and assuming that the
+pairwise measure of compatibility is determined inO(K
+2
+)
+complexity,	 can be computed inO(N
+2
++NRK
+2
+), where
+R denotes the average number of laser scans a scan overlaps
+with respect to the bounding box and K is the number of
+laser beams per scan.
+B. One-vs-All Consistency Test for Scans
+To asses global consistency, one can conduct the above
+described test for all pairs of scans and consider a map to be
+consistent if all tests are successful. The problem, however, is
+that a single statistical test will produce the wrong result with
+probability . Thus, testing a single scan that overlaps with
+r other scans yields a type I error probability of 1 (1 )
+r
+.
+This renders the direct application of the pairwise approach
+unsuitable.
+To overcome this problem, we model the outcome of a
+pairwise hypothesis test as a Bernoulli-distributed random
+variable with parameter . Thus, the number of failed tests
+follows a binomial distribution with parameters  and r.
+Given that, we can compute the maximum number
+^
+ of tests
+that can fail for a conﬁdence level 1 
+0
+as
+^
+ = min
+0r
+8
+<
+:
+
+
+
+
+
+
+
+r
+X
+i=+1
+
+r
+i
+
+
+i
+(1 )
+r i
+
+0
+9
+=
+;
+: (7)
+Computing
+^
+ according to (7) is numerically unstable.
+Thus, we exploit
+
+r
+i
+
+
+r
+(1 )
+r i
+=
+exp
+ 
+i log + (r i) log(1 ) + log  (r + 1)
+  log  (i + 1)  log  (r i + 1)
+
+; (8)
+where  () is the gamma function.
+This allows for computing a cascaded hypothesis test for
+the consistency of a scan with respect to all scans it overlaps
+with. We ﬁrst perform all pairwise hypothesis tests. Then,
+if the number of failed tests is smaller than
+^
+, the overall
+consistency test is positive.
+C. Estimating Distribution Parameters from Data
+In theory, one could compute the mean and variance
+2
+of the half-normal distribution directly from the variance of
+the laser range ﬁnder. In practice, however, this approach
+does not take into account the bias of the scan matcher
+nor artifacts due to the incidence angle of the laser beams.
+To improve robustness, we estimate them directly from
+data, assuming that the incremental solution, i.e., without
+loop closures, is consistent. Moreover, to account for the
+heteroscedasticity of the test variables M
+ij
+due to the scan
+matcher bias, we adaptively estimate a mean 
+i
+and a
+variance 
+2
+i
+for each scan.
+We assume here that the incremental scan matcher pro-
+duces correctly aligned scans locally. For the i-th scan,
+we deﬁne L
+i
+to be the set of scan indices in its local
+neighborhood. In our current implementation, this contains
+up to 20 scans.
+Formally, in order for all M
+ij
+to pass the hypothesis test
+with conﬁdence 1 , the following inequalities need to be
+satisﬁed:
+M
+ij
+ 
+i
+n
+ij
+
+i
+p
+n
+ij
+F
+ 1
+(1 ) 8j2L
+i
+8i (9)
+Recall that the inconsistency distances are half-normally
+distributed with mean and variance given by the scale pa-
+rameter s
+2
+i
+according to (3). By substituting (3) into (9) we
+obtain
+s
+i
+ max
+j2Li
+M
+ij
+n
+ij
+q
+2
+
++F
+ 1
+(1 )
+q
+n
+ij
+ 
+1 
+2
+
+
+: (10)
+There is one degree of freedom to choosing s
+2
+i
+, we thus
+consider the limiting behavior and replace the inequality with
+an equality.
+During the compatibility test of two scans on the overall
+map, we choose the largest scale parameter between s
+2
+i
+and
+s
+2
+j
+for the pairwise M
+ij
+test. This formulation, to some
+extent, allows to deal with dynamic environments, although
+the larger the amount of dynamics the worse the ability to
+detect inconsistencies.
+3652
+0.2 0.4 0.6 0.8 1.0
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+specificity
+recall
+(a) Static-world datasets
+0.2 0.4 0.6 0.8 1.0
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+specificity
+recall
+(b) Datasets with dynamics
+0.2 0.4 0.6 0.8 1.0
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+specificity
+recall
+(c) All 53 datasets
+Fig. 3. Pareto frontier for speciﬁcity and recall on the evaluated datasets. The method of Hähnel et al. is shown in blue while ours is in red.
+V. AUTOMATIC PARAMETER TUNING FOR DCS
+One current limitation of DCS [1] is the effect of the
+parameter  on the solution. In this section, we show how
+to use the proposed inconsistency measure in order to ﬁnd
+the  that produces the most consistent map.
+The parameter  inﬂuences the map optimization process,
+thus it implicitly affects the inconsistency measure M
+ij
+.
+Let () denote the number of pairs of overlapping scans,
+i.e., () =jf(i;j)jV
+i
+\V
+j
+6=;gj. We deﬁne the average
+inconsistency measure of a DCS solution as
+M() =
+1
+()
+N
+X
+i=1
+N
+X
+j=1
+M
+ij
+(); (11)
+where M
+ij
+() is the pairwise inconsistency measure com-
+puted on the DCS solution with parameter .
+The function M() allow us to compare the outcome of
+the map optimization for different values of . Our aim is
+to ﬁnd the 
+
+that minimizes (11). In the ideal, noise-free
+case M(
+
+) = 0 and by deﬁnition M(
+
+) 0. Thus, we
+aim to minimize M():
+
+
+= arg min
+2[0;+1)
+M() (12)
+Unfortunately, no closed form for M() is available and
+it is only pointwise evaluable. Therefore, we address (12) as
+a search problem over the
+p
+ space ( is an intrinsically
+quadratic value), by iteratively computing the DCS solution
+and itsM() value. We empirically found that a comparably
+simple search strategy is sufﬁcient. Rather than adopting
+procedures such as simulated annealing, a standard grid
+search approach followed by a bisection method for ﬁne
+tuning is successful to approach 
+
+.
+If a  such that the resulting map is consistent does not
+exist,M() may favor a few largeM
+ij
+() values over many
+small M
+ij
+() values. Intuitively, it may favor few strong
+inconsistencies, e.g., intersecting corridors, over many weak
+ones, e.g., misaligned corridors. While this effect is to some
+extent balanced by the number of overlapping scans (),
+we do not exclude the possibility of such an instance arising.
+In those cases, we recommend to perform the statistical
+hypothesis test on the resulting map, to assess its consistency.
+VI. EXPERIMENTAL EVALUATION
+This evaluation is designed to illustrate (a) the effective-
+ness of our statistical consistency test, and (b) the ability to
+automatically ﬁnd the  parameter in DCS for computing
+consistent maps.
+A. Map Consistency
+To evaluate the performance of the proposed hypothesis
+test, we executed it on 16 publicly available, 2D laser
+datasets
+1
+including ACES3, Belgioioso castle, Bicocca 25b,
+Bicocca 26a, MIT CSAIL, Edmonton, FHW, Freiburg 079,
+Freiburg 101, Intel lab, MIT Killian, Mexico Acapulco,
+Orebro, Intel Oregon, UW Seattle, Stanford gates, and
+University of Bremen. We partitioned the 16 datasets into
+two groups: static and dynamic. For each group, we have
+generated consistent and inconsistent maps, resulting in 53
+conﬁgurations.
+We compared our method with the one by Hähnel et
+al. [11] on each conﬁguration. For our method, we consider a
+map to be inconsistent if at least one cascaded hypothesis test
+failed. For the method of Hähnel et al. a map is inconsistent
+if the log-likelihood is below a set threshold. We run the
+experiments for multiple values of our conﬁdence parameters
+and the threshold of the method by Hähnel et al. Each
+parameter conﬁguration results in a point in the speciﬁcity-
+recall space. We compute the optimal Pareto frontiers of the
+two methods and report them in Fig. 3.
+In static environments, the plots show that our method
+improves both, recall and speciﬁcity, compared to the one
+of Hähnel et al, see Fig. 3(a). Our approach is close to the
+optimal result point (1; 1) in the speciﬁcity-recall space. The
+results show the advantage of using a cascaded hypothesis
+test rather than relying on a greedy parameter choice. Note
+that, the method proposed by Hähnel et al. only obtains high
+speciﬁcity scores at low recall values. Fig. 1 shows, as an
+example, the inconsistent regions detected by our method on
+a corrupted version of the Belgioioso castle.
+1
+http://www.informatik.uni-freiburg.de/~mazuran/
+files/tagged-datasets-icra14.tar.gz
+3653
+Bicocca multisession MIT CSAIL Edmonton FHW Intel lab
+(a)  = 1 (b)  = 1 (c)  = 1 (d)  = 1 (e)  = 1
+(f)  = 4:902 (g)  = 0:003 (h)  = 0:012 (i)  = 0:010 (j)  = 0:016
+M()
+0 1 4 9 16
+17
+18
+19
+20
+21
+22
+23
+0 1 4 9 16
+5
+10
+15
+20
+0 1 4 9 16
+0
+5
+10
+15
+20
+25
+30
+35
+0 1 4 9 16
+5
+10
+15
+20
+25
+30
+35
+0 1 4 9 16
+2
+4
+6
+8
+10
+12
+14
+16
+    
+Fig. 4.  sensitivity for different datasets: the top row shows the maps for the  = 1 baseline, while the middle row shows the maps for the  values
+computed by our algorithm. The last row displays the value ofM() on the bounded interval [0; 16]; the red line denotes the  coordinate of the minimum
+ofM().
+In case of dynamic environments, the difference be-
+tween the two approaches becomes even more evident (see
+Fig. 3(b)). The MIT-Killian dataset, for instance, contains
+a substantial amount of fast dynamics cased by walking
+people. Our approach is able to correctly identify those scans
+as being consistent, apart from two instances, which are
+depicted in Fig. 5. For these two scans, our algorithm detects
+two signiﬁcant instances of quasi-static elements, in the form
+of two objects that were absent when the robot ﬁrst visited
+the area, but were present in subsequent visits. By inspecting
+other dynamic datasets, we found that our method handles
+fast dynamics robustly, as long as their impact is moderate,
+i.e., does not cover large portions of the scans.
+The robustness w.r.t. dynamics comes from the adaptive
+estimation of the inconsistency distance distribution param-
+eters presented in Section IV-C. Mean and variance are
+increased when temporally local scans do not match well.
+This also allows to mitigate the effect of incorrect laser
+readings, due to bumps or slight slopes of the terrain, which
+occur in datasets such as Bicocca 25b.
+Fig. 3(c) shows the performance on all the datasets, includ-
+ing static and dynamic environments. The performance trend
+of both approaches is conﬁrmed. Our approach outperforms
+the one of Hähnel et al. in all the speciﬁcity-recall space.
+B. Parameter Optimization for SLAM
+This experiment is designed to show the impact of param-
+eter search for map optimization with DCS. We compare
+Fig. 5. Quasi-static objects in the MIT-Killian dataset marked in red.
+DCS with our parameter search method vs. DCS with the
+suggested default parameter value of  = 1 on ﬁve pub-
+licly available datasets
+2
+: Bicocca multisession, MIT CSAIL,
+Edmonton, FHW, and Intel lab.
+The Bicocca multisession dataset is the same one consid-
+ered by Latif et al. [13], including the initial guess. For all
+other datasets, we corrupted the initial guess to challenge our
+parameter tuning approach. In addition to that, we manually
+added data association outliers to the graphs of MIT CSAIL
+and Edmonton. For the FHW and Intel lab datasets, we
+generated false data association edges by running a SLAM
+2
+http://www.informatik.uni-freiburg.de/~mazuran/
+files/dcs-datasets-icra14.tar.gz
+3654
+Fig. 6. Example inconsistencies in the optimized Bicocca multisession
+dataset. The trajectory of the robot is not shown for clarity.
+TABLE I
+AVG. EXECUTION TIME OF THE STATISTICAL HYPOTHESIS TEST
+Dataset N R K Runtime [s]
+ACES3 706 32.7 180 3.6
+Belgioso castle 349 29.7 361 5.3
+Bicocca 25b 1268 26.7 181 4.5
+Bicocca 26a 1475 23.7 181 5.4
+MIT CSAIL 686 50.7 361 13.1
+MIT Killian 5489 56.0 180 42.0
+Edmonton 630 35.4 180 1.3
+FHW 1941 211.7 180 27.3
+Freiburg 079 833 118.4 360 29.5
+Freiburg 101 504 73.6 360 6.8
+Intel lab 1311 133.7 180 13.4
+Intel Oregon 485 62.4 181 2.9
+Mexico Acapulco 1547 72.7 181 3.4
+Orebro 237 19.5 181 0.7
+UW Seattle 233 22.8 361 3.5
+Stanford gates 1127 63.9 181 6.5
+U. Bremen 119 21.1 181 0.4
+front-end [17] with suboptimal parameters.
+For such challenging datasets, DCS with  = 1 provides
+a consistent solution only for the FHW dataset. Fig. 4 shows
+the resulting maps of the datasets considered during the
+experiment. The top row shows the output of DCS when
+ = 1, while the second row the output of DCS using the
+automatic parameter tuning procedure. The last row shows
+the proﬁle ofM() for different values of . Our approach
+is able to ﬁnd appropriate values for  and is producing
+consistent maps.
+Note that the best result for the Bicocca multisession
+dataset is obtained with a value of   5, which is in
+line with the work of Agarwal et al. [1]. The resulting map,
+however, does not pass the consistency test and it is barely
+usable for autonomous navigation. Fig. 6 illustrates this fact
+through a magniﬁed view of two portions of the map.
+C. Computation Time
+Conducting the statistical test increases the computational
+resources required to build a map. Table I summarizes the
+execution time on an Intel i7-3770K processor using 8 par-
+allel threads for different datasets. Our hypothesis test along
+with the parameter tuning is highly parallelizable, hence can
+be speeded-up if implemented in CUDA or OpenCL.
+VII. CONCLUSION
+In this paper, we addressed the problem of measuring
+map consistency. We introduced a pairwise measure of
+inconsistency between scans that calculates the amount of
+mismatches of globally aligned laser measurements. We
+furthermore described how the proposed measure enables us
+to derive a statistical hypothesis test to assess the consistency
+of a map and to provide a means for automatically tuning
+parameters of a SLAM back-end.
+We implemented and thoroughly tested our approach.
+We evaluated the proposed hypothesis test on publicly
+available datasets and showed the effectiveness of our
+approach in both tasks, namely detecting the consistency
+of a map and automatically tuning the free parameter
+in the dynamic covariance scaling approach. The latter
+allows us to retrieve the best map achievable by DCS
+without the need for user intervention or manually
+specifying the free parameter. We believe that the
+combination of an automatic parameter tuning method
+with a consistency hypothesis test is an important
+tool for verifying the success of a mapping process.
+The source code of the approach is freely available at
+www.informatik.uni-freiburg.de/~mazuran/consistency
+REFERENCES
+[1] P. Agarwal, G. Tipaldi, L. Spinello, C. Stachniss, and W. Burgard.
+Robust map optimization using dynamic covariance scaling. In
+Proc. of the IEEE Int. Conf. on Robotics & Automation (ICRA), 2013.
+[2] R. Ash and C. Doléans-Dade. Probability and Measure Theory.
+Harcourt/Academic Press, 2000.
+[3] T. Bailey and H. Durrant-Whyte. Simultaneous localization and map-
+ping (SLAM): Part II state of the art. Journ. of Rob. & Aut. Systems,
+2006.
+[4] M. Bosse, P. M. Newman, J. J. Leonard, and S. Teller. An ATLAS
+framework for scalable mapping. In Proc. of the IEEE Int. Conf. on
+Robotics & Automation (ICRA), 2003.
+[5] F. Dellaert. Factor graphs and GTSAM: A hands-on introduction.
+Technical report, Georgia Tech, 2012. GT-RIM-CP & R-2012-002.
+[6] H. Durrant-Whyte and T. Bailey. Simultaneous localization and
+mapping (SLAM): Part I the essential algorithms. Journ. of Rob. &
+Aut. Systems, 2006.
+[7] U. Frese, P. Larsson, and T. Duckett. A multilevel relaxation algorithm
+for simultaneous localisation and mapping. IEEE Transactions on
+Robotics, 21(2), 2005.
+[8] G. Grisetti, C. Stachniss, and W. Burgard. Non-linear constraint
+network optimization for efﬁcient map learning. IEEE Transactions
+on Intelligent Transportation Systems, 2009.
+[9] G. Grisetti, R. Kümmerle, C. Stachniss, and W. Burgard. A tutorial on
+graph-based SLAM. IEEE Transactions on Intelligent Transportation
+Systems Magazine, 2:31–43, 2010.
+[10] G. Grisetti, R. Kümmerle, C. Stachniss, U. Frese, and C. Hertzberg.
+Hierarchical optimization on manifolds for online 2D and 3D mapping.
+In Proc. of the IEEE Int. Conf. on Robotics & Automation (ICRA),
+2010.
+[11] D. Hähnel, W. Burgard, B. Wegbreit, and S. Thrun. Towards lazy
+data association in SLAM. In Proc. of the Int. Symposium of Robotics
+Research (ISRR), 2003.
+[12] M. Kaess, A. Ranganathan, and F. Dellaert. iSAM: Fast incremental
+smoothing and mapping with efﬁcient data association. In Proc. of
+the IEEE Int. Conf. on Robotics & Automation (ICRA), 2007.
+[13] Y . Latif, C. Cadena, and J. Neira. Robust loop closing over time. Proc.
+of Robotics: Science and Systems (RSS), 2012.
+[14] E. Olson and P. Agarwal. Inference on networks of mixtures for robust
+robot mapping. InProc.ofRobotics:ScienceandSystems(RSS), 2012.
+[15] E. Olson, J. Leonard, and S. Teller. Fast iterative optimization of pose
+graphs with poor initial estimates. In Proc. of the IEEE Int. Conf. on
+Robotics & Automation (ICRA), 2006.
+[16] N. Sünderhauf and P. Protzel. Switchable constraints for robust pose
+graph SLAM. InProc.oftheIEEE/RSJInt.Conf.onIntelligentRobots
+and Systems (IROS), 2012.
+[17] G. D. Tipaldi, L. Spinello, and W. Burgard. Geometrical FLIRT
+phrases for large scale place recognition in 2D range data. In Proc. of
+the IEEE Int. Conf. on Robotics & Automation (ICRA), 2013.
+3655
