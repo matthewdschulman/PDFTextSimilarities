@@ -1,4 +1,5 @@
 import java.io.BufferedReader;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -29,9 +30,9 @@ public class PDFTextSimilarity {
      * @param pdf the original PDF
      * @param txt the resulting text
      * @param englishDict 
-     * @throws IOException
+     * @catches IOException
      */
-    public void parsePdf(String pdf, String txt, HashSet<String> englishDict) throws IOException {
+    public static void parsePdf(String pdf, String txt, HashSet<String> englishDict) throws IOException {
     	try {
     		PdfReader reader = new PdfReader(pdf);
     		System.out.println("converting " + pdf);
@@ -64,7 +65,7 @@ public class PDFTextSimilarity {
      * @param englishDict 
      * @throws IOException
      */
-    public void extractFrequencies(String input, HashSet<String> englishDict) throws IOException {
+    public static void extractFrequencies(String input, HashSet<String> englishDict) throws IOException {
     	    
     	BufferedReader reader = new BufferedReader(new FileReader(input));
     			
@@ -109,27 +110,22 @@ public class PDFTextSimilarity {
     /**
      * Produces a set of words in the english dictionary provided by the 
      * /usr/share/dict/words unix directory
-     * @returns HashSet<String> that contains all words with length greater
+     * @param  
+     * @throws IOException if dictionary file doesn't exist
+     * @return HashSet<String> that contains all words with length greater
      * than 2 in the english dictionary
-     * @throws IOException
      */
-    private static HashSet<String> createEnglishDictionary() {
+    public static HashSet<String> createEnglishDictionary(String file) throws IOException {
     	HashSet<String> englishDict = new HashSet<String>();
-    	try {
-            BufferedReader in = new BufferedReader(new FileReader(
-                    "/usr/share/dict/words"));
-            String str;
-            while ((str = in.readLine()) != null) {
-            	//to avoid single letter words from getting put in the dictionary
-            	if (str.length() > 1) {
-            		englishDict.add(str.toLowerCase());
-            	}
-            }
-            in.close();
-            return englishDict;
-        } catch (IOException e) {
-        	System.out.println("Dictionary creation failed!");
+        BufferedReader in = new BufferedReader(new FileReader(file));
+        String str;
+        while ((str = in.readLine()) != null) {
+        	//to avoid single letter words from getting put in the dictionary
+        	if (str.length() > 1) {
+        		englishDict.add(str.toLowerCase());
+        	}
         }
+        in.close();
 		return englishDict;
 	}
 
@@ -140,7 +136,7 @@ public class PDFTextSimilarity {
      * @param args no arguments needed
      */
     public static void main(String[] args) throws IOException {
-    	HashSet<String> englishDict = createEnglishDictionary();
+    	HashSet<String> englishDict = createEnglishDictionary("englishDictionary.txt");
     	
     	//convert the input PDF files
     	for (int j = 0; j < maxNumOfInputFiles; j++) {
@@ -176,8 +172,14 @@ public class PDFTextSimilarity {
     	}
     	
     }
-
-	private static int[][] getSimilarityArr() {
+    
+    /**
+     * Gets the similarity array for all of the input documents.
+     * @param args no arguments needed
+     * @return a square matrix whose dimension is the number of documents 
+     * and element A[i][j] is equal to the similarity between the documents
+     */
+	public static int[][] getSimilarityArr() {
 		int[][] similarityArr = new int[numOfFiles][numOfFiles];
     	for (int i = 0; i < numOfFiles; i++) {
     		String curBaseFile = orderOfFiles.get(i);
@@ -191,7 +193,13 @@ public class PDFTextSimilarity {
 		return similarityArr;
 	}
 
-	private static int getSimilarity(String curBaseFile, String curCompFile) {
+	 /**
+     * Gets the similarity between two documents as the number of words they have  in common.
+     * @param args no arguments needed
+     * @return a square matrix whose dimension is the number of documents 
+     * and element A[i][j] is equal to the similarity between the documents
+     */
+	public static int getSimilarity(String curBaseFile, String curCompFile) {
 		int countOfDuplicateWords = 0;
 		for (String baseWord : wordFreqDatabase.get(curBaseFile.split(Pattern.quote("."))[0].toString() + ".words.txt").keySet()) {
 			if (wordFreqDatabase.get(curCompFile.split(Pattern.quote("."))[0].toString() + ".words.txt").keySet().contains(baseWord)) {
