@@ -106,6 +106,13 @@ public class PDFTextSimilarity {
     	
 	}
     
+    /**
+     * Produces a set of words in the english dictionary provided by the 
+     * /usr/share/dict/words unix directory
+     * @returns HashSet<String> that contains all words with length greater
+     * than 2 in the english dictionary
+     * @throws IOException
+     */
     private static HashSet<String> createEnglishDictionary() {
     	HashSet<String> englishDict = new HashSet<String>();
     	try {
